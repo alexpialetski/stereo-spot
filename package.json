@@ -1,0 +1,15 @@
+{
+  "name": "@stereo-spot/source",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {},
+  "private": true,
+  "dependencies": {
+    "nx-terraform": "0.9.0"
+  },
+  "devDependencies": {
+    "@cdktf/hcl2json": "^0.21.0",
+    "@nx/workspace": "22.0.2",
+    "nx": "22.0.2"
+  }
+}

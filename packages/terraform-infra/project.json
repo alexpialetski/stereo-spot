@@ -1,0 +1,18 @@
+{
+  "name": "terraform-infra",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "packages/terraform-infra",
+  "targets": {
+    "terraform-init": {
+      "metadata": {
+        "backendProject": "terraform-setup"
+      }
+    }
+  },
+  "metadata": {
+    "nx-terraform": {
+      "projectType": "module"
+    }
+  }
+}
