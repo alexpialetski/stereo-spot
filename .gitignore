@@ -4,6 +4,15 @@
 dist
 tmp
 out-tsc
+build
+*.egg-info
+*.egg
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
 
 # dependencies
 node_modules
