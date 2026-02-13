@@ -1,0 +1,161 @@
+"""DynamoDB implementations of JobStore and SegmentCompletionStore."""
+
+from typing import Any
+
+import boto3
+from boto3.dynamodb.conditions import Key
+from stereo_spot_shared import Job, JobListItem, JobStatus, SegmentCompletion, StereoMode
+
+
+def _job_to_item(job: Job) -> dict[str, Any]:
+    """Convert Job to DynamoDB item (native types for resource API)."""
+    d = job.model_dump(mode="json")
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _item_to_job(item: dict[str, Any]) -> Job:
+    """Convert DynamoDB item to Job."""
+    return Job.model_validate(item)
+
+
+def _completion_to_item(completion: SegmentCompletion) -> dict[str, Any]:
+    """Convert SegmentCompletion to DynamoDB item."""
+    d = completion.model_dump(mode="json")
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _item_to_completion(item: dict[str, Any]) -> SegmentCompletion:
+    """Convert DynamoDB item to SegmentCompletion."""
+    return SegmentCompletion.model_validate(item)
+
+
+class DynamoDBJobStore:
+    """JobStore implementation using DynamoDB Jobs table and status-completed_at GSI."""
+
+    GSI_NAME = "status-completed_at"
+
+    def __init__(
+        self,
+        table_name: str,
+        *,
+        region_name: str | None = None,
+        endpoint_url: str | None = None,
+    ) -> None:
+        self._table_name = table_name
+        self._client = boto3.client(
+            "dynamodb",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        self._resource = boto3.resource(
+            "dynamodb",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        self._table = self._resource.Table(table_name)
+
+    def get(self, job_id: str) -> Job | None:
+        """Return the job if it exists, otherwise None."""
+        resp = self._table.get_item(Key={"job_id": job_id})
+        item = resp.get("Item")
+        if not item:
+            return None
+        return _item_to_job(item)
+
+    def put(self, job: Job) -> None:
+        """Create or overwrite a job record."""
+        self._table.put_item(Item=_job_to_item(job))
+
+    def update(
+        self,
+        job_id: str,
+        *,
+        status: str | None = None,
+        total_segments: int | None = None,
+        completed_at: int | None = None,
+    ) -> None:
+        """Update selected attributes of a job by job_id."""
+        updates: list[str] = []
+        expr_names: dict[str, str] = {}
+        expr_values: dict[str, Any] = {}
+
+        if status is not None:
+            updates.append("#st = :st")
+            expr_names["#st"] = "status"
+            expr_values[":st"] = status
+        if total_segments is not None:
+            updates.append("#ts = :ts")
+            expr_names["#ts"] = "total_segments"
+            expr_values[":ts"] = total_segments
+        if completed_at is not None:
+            updates.append("#ca = :ca")
+            expr_names["#ca"] = "completed_at"
+            expr_values[":ca"] = completed_at
+
+        if not updates:
+            return
+
+        self._table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="SET " + ", ".join(updates),
+            ExpressionAttributeNames=expr_names,
+            ExpressionAttributeValues=expr_values,
+        )
+
+    def list_completed(
+        self,
+        limit: int,
+        exclusive_start_key: dict[str, Any] | None = None,
+    ) -> tuple[list[JobListItem], dict[str, Any] | None]:
+        """List jobs with status=completed, ordered by completed_at descending."""
+        params: dict[str, Any] = {
+            "IndexName": self.GSI_NAME,
+            "KeyConditionExpression": Key("status").eq(JobStatus.COMPLETED.value),
+            "ScanIndexForward": False,
+            "Limit": limit,
+        }
+        if exclusive_start_key:
+            params["ExclusiveStartKey"] = exclusive_start_key
+
+        resp = self._table.query(**params)
+        items = [
+            JobListItem(
+                job_id=row["job_id"],
+                mode=StereoMode(row["mode"]),
+                completed_at=int(row["completed_at"]),
+            )
+            for row in resp.get("Items", [])
+        ]
+        next_key = resp.get("LastEvaluatedKey")
+        return (items, next_key if next_key else None)
+
+
+class DynamoSegmentCompletionStore:
+    """SegmentCompletionStore implementation using DynamoDB SegmentCompletions table."""
+
+    def __init__(
+        self,
+        table_name: str,
+        *,
+        region_name: str | None = None,
+        endpoint_url: str | None = None,
+    ) -> None:
+        self._table_name = table_name
+        self._resource = boto3.resource(
+            "dynamodb",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        self._table = self._resource.Table(table_name)
+
+    def put(self, completion: SegmentCompletion) -> None:
+        """Write a segment completion record."""
+        self._table.put_item(Item=_completion_to_item(completion))
+
+    def query_by_job(self, job_id: str) -> list[SegmentCompletion]:
+        """Return all completions for the job, ordered by segment_index ascending."""
+        resp = self._table.query(
+            KeyConditionExpression=Key("job_id").eq(job_id),
+            ScanIndexForward=True,
+        )
+        return [_item_to_completion(row) for row in resp.get("Items", [])]

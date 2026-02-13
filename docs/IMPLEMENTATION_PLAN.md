@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. S3 event notifications (Step 4.2) and application packages (aws-adapters, workers, web-ui, Helm) are not yet implemented.
+**Current state:** Phase 1 and Step 2.1–2.2 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, and ObjectStorage (moto tests, env-based config). S3 event notifications (Step 4.2) and application packages (workers, web-ui, Helm) are not yet implemented.
 
 **Principles:**
 - Implement in dependency order: shared-types → workers & Lambda → web-ui → Helm → full AWS (EKS, etc.).
@@ -125,9 +125,9 @@ nx run aws-infra:terraform-plan
 - Document in `packages/aws-adapters/README.md` how to wire implementations (e.g. `STORAGE_ADAPTER=aws` and required env vars). List which packages consume aws-adapters (web-ui, chunking-worker, video-worker, reassembly-worker).
 
 **A/C:**
-- [ ] All four abstraction interfaces have AWS implementations in `packages/aws-adapters`.
-- [ ] Unit tests run against moto (or equivalent) and pass.
-- [ ] Documentation explains configuration and env vars.
+- [x] All four abstraction interfaces have AWS implementations in `packages/aws-adapters`.
+- [x] Unit tests run against moto (or equivalent) and pass.
+- [x] Documentation explains configuration and env vars.
 
 **Verification:**
 ```bash
