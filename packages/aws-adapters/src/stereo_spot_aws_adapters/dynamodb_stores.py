@@ -4,8 +4,8 @@ import time
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 from stereo_spot_shared import Job, JobListItem, JobStatus, SegmentCompletion, StereoMode
 
 
@@ -198,7 +198,9 @@ class ReassemblyTriggeredLock:
             self._table.update_item(
                 Key={"job_id": job_id},
                 UpdateExpression="SET reassembly_started_at = :now",
-                ConditionExpression="attribute_exists(job_id) AND attribute_not_exists(reassembly_started_at)",
+                ConditionExpression=(
+                    "attribute_exists(job_id) AND attribute_not_exists(reassembly_started_at)"
+                ),
                 ExpressionAttributeValues={":now": int(time.time())},
             )
             return True

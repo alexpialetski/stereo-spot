@@ -1,7 +1,6 @@
 """Tests for DynamoDB JobStore, SegmentCompletionStore, and ReassemblyTriggeredLock."""
 
 import boto3
-
 from stereo_spot_shared import Job, JobListItem, JobStatus, SegmentCompletion, StereoMode
 
 from stereo_spot_aws_adapters import (

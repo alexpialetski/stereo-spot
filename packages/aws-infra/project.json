@@ -13,6 +13,9 @@
       "metadata": {
         "backendProject": "aws-infra-setup"
       }
+    },
+    "terraform-plan": {
+      "dependsOn": ["reassembly-trigger:build"]
     }
   }
 }

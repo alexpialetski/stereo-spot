@@ -47,3 +47,20 @@ SMOKE_TEST_ENV_FILE=/path/to/terraform-outputs.env nx run aws-adapters:smoke-tes
 **LocalStack:**
 
 Point the adapters at LocalStack by setting `AWS_ENDPOINT_URL` (e.g. `http://localhost:4566`) and ensure the env file contains LocalStack resource names/URLs. Run the smoke test the same way.
+
+## Troubleshooting
+
+**`nx run-many -t test` fails with `OSError: No such file or directory: .../__editable__.stereo_spot_shared-0.1.0.pth`**
+
+This happens when pip’s editable install metadata for the monorepo packages is broken (e.g. after a cache restore or parallel installs). Fix it by uninstalling the local packages and re-running tests:
+
+```bash
+pip uninstall stereo-spot-shared stereo-spot-aws-adapters -y
+nx run-many -t test
+```
+
+If failures persist when running all tests in parallel, run tests serially so only one `pip install -e` runs at a time:
+
+```bash
+nx run-many -t test --parallel=1
+```

@@ -33,6 +33,7 @@ resource "aws_dynamodb_table" "jobs" {
 }
 
 # SegmentCompletions: PK job_id, SK segment_index; video-worker writes; reassembly Lambda/worker read
+# Stream enabled for reassembly-trigger Lambda (invoked when new segment completion is written)
 resource "aws_dynamodb_table" "segment_completions" {
   name         = "${local.name}-segment-completions"
   billing_mode = "PAY_PER_REQUEST"
@@ -49,6 +50,9 @@ resource "aws_dynamodb_table" "segment_completions" {
     name = "segment_index"
     type = "N"
   }
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   tags = merge(local.common_tags, {
     Name = "${local.name}-segment-completions"
