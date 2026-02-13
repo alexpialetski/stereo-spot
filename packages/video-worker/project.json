@@ -1,0 +1,34 @@
+{
+  "name": "video-worker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "packages/video-worker",
+  "implicitDependencies": ["shared-types", "aws-adapters"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -f packages/video-worker/Dockerfile -t stereo-spot-video-worker:latest .",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "outputs": []
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && pytest -v",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ruff check src tests",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    }
+  }
+}

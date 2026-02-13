@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, and ObjectStorage (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. S3 event notifications (Step 4.2) and application packages (workers, web-ui, Helm) are not yet implemented.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, and ObjectStorage (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. **Step 3.1** is done: **packages/chunking-worker** consumes the chunking queue (S3 event), parses input key via shared-types, fetches job and mode, runs ffmpeg chunking, uploads segments with canonical keys, updates Job to chunking_complete (unit tests, README, Dockerfile). **Step 3.2** is done: **packages/video-worker** consumes the video-worker queue (S3 event), parses segment key via shared-types, runs stub model (copy), uploads to output bucket, writes SegmentCompletion (unit tests, README). S3 event notifications (Step 4.2), reassembly-worker, Lambda, web-ui, and Helm are not yet implemented.
 
 **Principles:**
 - Implement in dependency order: shared-types → workers & Lambda → web-ui → Helm → full AWS (EKS, etc.).
@@ -170,9 +170,9 @@ nx run aws-adapters:smoke-test
 - Add `packages/chunking-worker/README.md`: purpose, env vars, local run, Docker build.
 
 **A/C:**
-- [ ] Worker uses only shared-types for key parsing and key building.
-- [ ] Unit tests pass; at least one test with mocked stores and optional small-file ffmpeg.
-- [ ] README documents behaviour and how to run.
+- [x] Worker uses only shared-types for key parsing and key building.
+- [x] Unit tests pass; at least one test with mocked stores and optional small-file ffmpeg.
+- [x] README documents behaviour and how to run.
 
 **Verification:**
 ```bash
@@ -193,9 +193,9 @@ nx run chunking-worker:build   # if Docker build is the “build” target
 - Add README: design for swapping model (StereoCrafter later), env vars, local run.
 
 **A/C:**
-- [ ] Video worker uses only shared-types segment key parser; no duplicate parsing.
-- [ ] Stub model allows pipeline to run without GPU.
-- [ ] Unit tests pass.
+- [x] Video worker uses only shared-types segment key parser; no duplicate parsing.
+- [x] Stub model allows pipeline to run without GPU.
+- [x] Unit tests pass.
 
 **Verification:**
 ```bash
