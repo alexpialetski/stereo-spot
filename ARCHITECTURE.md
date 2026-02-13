@@ -1,6 +1,10 @@
 This architecture is designed for
 
-**high-throughput, cost-optimized video processing** using a "Job-Worker" pattern. It leverages **EKS (Elastic Kubernetes Service)** with **Karpenter** for aggressive Spot instance management and **NX** for shared logic between your UI and Infrastructure-as-Code (IaC). 
+**high-throughput, cost-optimized video processing** using a "Job-Worker" pattern.
+
+> **Implementation:** For an incremental build plan with steps, acceptance criteria, and verification, see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+
+It leverages **EKS (Elastic Kubernetes Service)** with **Karpenter** for aggressive Spot instance management and **NX** for shared logic between your UI and Infrastructure-as-Code (IaC). 
 
 🏗️ NX Monorepo Structure
 
