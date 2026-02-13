@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Only `packages/aws-infra` and `packages/aws-infra-setup` exist (Terraform backend + placeholder module). All application packages are to be added.
+**Current state:** Phase 1 and Step 2.1 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. S3 event notifications (Step 4.2) and application packages (aws-adapters, workers, web-ui, Helm) are not yet implemented.
 
 **Principles:**
 - Implement in dependency order: shared-types → workers & Lambda → web-ui → Helm → full AWS (EKS, etc.).
@@ -23,9 +23,9 @@ This document provides an **incremental implementation plan** for the stereo-spo
 - Document in `packages/shared-types/README.md`: purpose, how to install locally, how to run tests.
 
 **A/C:**
-- [ ] Package is installable (e.g. `pip install -e packages/shared-types`).
-- [ ] `nx run shared-types:test` runs and passes (at least one test).
-- [ ] `packages/shared-types/README.md` describes the package and test commands.
+- [x] Package is installable (e.g. `pip install -e packages/shared-types`).
+- [x] `nx run shared-types:test` runs and passes (at least one test).
+- [x] `packages/shared-types/README.md` describes the package and test commands.
 
 **Verification:**
 ```bash
@@ -49,9 +49,9 @@ nx run shared-types:test
 - Update `packages/shared-types/README.md` with model summary and key conventions.
 
 **A/C:**
-- [ ] All models defined in shared-types; segment key parser and input key parser live only here.
-- [ ] Unit tests cover segment key round-trip, invalid key, input key, and model validation.
-- [ ] README documents segment key format and parser usage.
+- [x] All models defined in shared-types; segment key parser and input key parser live only here.
+- [x] Unit tests cover segment key round-trip, invalid key, input key, and model validation.
+- [x] README documents segment key format and parser usage.
 
 **Verification:**
 ```bash
@@ -71,9 +71,9 @@ nx run shared-types:test
 - Unit tests: mock implementations of interfaces to satisfy type checkers and one test per interface (e.g. “mock JobStore returns job”).
 
 **A/C:**
-- [ ] All four abstraction groups (job store, segment-completion store, queues, object storage) defined in shared-types.
-- [ ] Documentation lists interfaces and consumers.
-- [ ] Tests prove interfaces can be mocked and used.
+- [x] All four abstraction groups (job store, segment-completion store, queues, object storage) defined in shared-types.
+- [x] Documentation lists interfaces and consumers.
+- [x] Tests prove interfaces can be mocked and used.
 
 **Verification:**
 ```bash
@@ -98,10 +98,10 @@ nx run shared-types:test
 - No S3 event notifications yet (Step 4.2).
 
 **A/C:**
-- [ ] `terraform plan` / `apply` creates two S3 buckets, three SQS queues + DLQs, three DynamoDB tables and GSI.
-- [ ] CloudWatch alarms exist for chunking, video-worker, and reassembly DLQs (e.g. alarm when messages visible > 0).
-- [ ] Outputs expose bucket names and queue URLs and table names.
-- [ ] README updated with resource list and access patterns.
+- [x] `terraform plan` / `apply` creates two S3 buckets, three SQS queues + DLQs, three DynamoDB tables and GSI.
+- [x] CloudWatch alarms exist for chunking, video-worker, and reassembly DLQs (e.g. alarm when messages visible > 0).
+- [x] Outputs expose bucket names and queue URLs and table names.
+- [x] README updated with resource list and access patterns.
 
 **Verification:**
 ```bash

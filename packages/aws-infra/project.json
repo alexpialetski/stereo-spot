@@ -3,16 +3,16 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "packages/aws-infra",
+  "metadata": {
+    "nx-terraform": {
+      "projectType": "stateful"
+    }
+  },
   "targets": {
     "terraform-init": {
       "metadata": {
         "backendProject": "aws-infra-setup"
       }
-    }
-  },
-  "metadata": {
-    "nx-terraform": {
-      "projectType": "module"
     }
   }
 }
