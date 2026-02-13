@@ -1,6 +1,6 @@
-# Terraform Module: terraform-infra
+# Terraform Module: aws-infra
 #
-# This is a stateful Terraform module that uses backend: terraform-setup
+# This is a stateful Terraform module that uses backend: aws-infra-setup
 # Add your module resources here.
 
 # Example: Add your module resources
@@ -10,7 +10,7 @@
 #   }
 #
 #   provisioner "local-exec" {
-#     command = "echo 'Stateful module terraform-infra executed'"
+#     command = "echo 'Stateful module aws-infra executed'"
 #   }
 # }
 

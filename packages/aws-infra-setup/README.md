@@ -1,6 +1,6 @@
 # Terraform Backend: AWS S3
 
-This package (`terraform-setup`) provisions the AWS infrastructure required for a remote Terraform state backend using S3 and optional locking features.
+This package (`aws-infra-setup`) provisions the AWS infrastructure required for a remote Terraform state backend using S3 and optional locking features.
 
 ## 📋 Overview
 

@@ -1,12 +1,12 @@
 {
-  "name": "terraform-infra",
+  "name": "aws-infra",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "packages/terraform-infra",
+  "sourceRoot": "packages/aws-infra",
   "targets": {
     "terraform-init": {
       "metadata": {
-        "backendProject": "terraform-setup"
+        "backendProject": "aws-infra-setup"
       }
     }
   },
