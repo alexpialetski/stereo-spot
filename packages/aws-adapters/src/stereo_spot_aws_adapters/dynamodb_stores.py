@@ -1,8 +1,10 @@
-"""DynamoDB implementations of JobStore and SegmentCompletionStore."""
+"""DynamoDB implementations of JobStore, SegmentCompletionStore, and ReassemblyTriggered lock."""
 
+import time
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
 from stereo_spot_shared import Job, JobListItem, JobStatus, SegmentCompletion, StereoMode
 
@@ -159,3 +161,48 @@ class DynamoSegmentCompletionStore:
             ScanIndexForward=True,
         )
         return [_item_to_completion(row) for row in resp.get("Items", [])]
+
+
+class ReassemblyTriggeredLock:
+    """
+    ReassemblyTriggered table: used for idempotency (Lambda conditional create)
+    and reassembly-worker lock (conditional update: set reassembly_started_at
+    only if item exists and that attribute is absent).
+    """
+
+    def __init__(
+        self,
+        table_name: str,
+        *,
+        region_name: str | None = None,
+        endpoint_url: str | None = None,
+    ) -> None:
+        self._table_name = table_name
+        self._resource = boto3.resource(
+            "dynamodb",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        self._table = self._resource.Table(table_name)
+
+    def try_acquire(self, job_id: str) -> bool:
+        """
+        Try to acquire the reassembly lock for this job.
+
+        Performs a conditional update: SET reassembly_started_at = now()
+        only if the item exists AND attribute_not_exists(reassembly_started_at).
+        Returns True if the update succeeded (this worker won the lock),
+        False if another worker already started or the item does not exist.
+        """
+        try:
+            self._table.update_item(
+                Key={"job_id": job_id},
+                UpdateExpression="SET reassembly_started_at = :now",
+                ConditionExpression="attribute_exists(job_id) AND attribute_not_exists(reassembly_started_at)",
+                ExpressionAttributeValues={":now": int(time.time())},
+            )
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return False
+            raise

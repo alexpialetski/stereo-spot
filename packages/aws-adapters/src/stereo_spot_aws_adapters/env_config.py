@@ -10,6 +10,7 @@ Required env vars (match Terraform output names, uppercased with underscores):
 - OUTPUT_BUCKET_NAME
 - JOBS_TABLE_NAME
 - SEGMENT_COMPLETIONS_TABLE_NAME
+- REASSEMBLY_TRIGGERED_TABLE_NAME
 - CHUNKING_QUEUE_URL
 - VIDEO_WORKER_QUEUE_URL
 - REASSEMBLY_QUEUE_URL
@@ -21,7 +22,11 @@ Optional:
 
 import os
 
-from .dynamodb_stores import DynamoDBJobStore, DynamoSegmentCompletionStore
+from .dynamodb_stores import (
+    DynamoDBJobStore,
+    DynamoSegmentCompletionStore,
+    ReassemblyTriggeredLock,
+)
 from .s3_storage import S3ObjectStorage
 from .sqs_queues import SQSQueueReceiver, SQSQueueSender
 
@@ -89,6 +94,16 @@ def video_worker_queue_receiver_from_env() -> SQSQueueReceiver:
     url = os.environ["VIDEO_WORKER_QUEUE_URL"]
     return SQSQueueReceiver(
         url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+    )
+
+
+def reassembly_triggered_lock_from_env() -> ReassemblyTriggeredLock:
+    """Build ReassemblyTriggeredLock from REASSEMBLY_TRIGGERED_TABLE_NAME."""
+    table_name = os.environ["REASSEMBLY_TRIGGERED_TABLE_NAME"]
+    return ReassemblyTriggeredLock(
+        table_name,
         region_name=_get_region(),
         endpoint_url=_get_endpoint_url(),
     )

@@ -134,6 +134,13 @@ class MockObjectStorage:
     def upload(self, bucket: str, key: str, body: bytes) -> None:
         self._objects[(bucket, key)] = body
 
+    def upload_file(self, bucket: str, key: str, path: str) -> None:
+        with open(path, "rb") as f:
+            self._objects[(bucket, key)] = f.read()
+
+    def exists(self, bucket: str, key: str) -> bool:
+        return (bucket, key) in self._objects
+
     def download(self, bucket: str, key: str) -> bytes:
         return self._objects.get((bucket, key), b"")
 

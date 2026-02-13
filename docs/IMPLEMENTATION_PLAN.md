@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, and ObjectStorage (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. **Step 3.1** is done: **packages/chunking-worker** consumes the chunking queue (S3 event), parses input key via shared-types, fetches job and mode, runs ffmpeg chunking, uploads segments with canonical keys, updates Job to chunking_complete (unit tests, README, Dockerfile). **Step 3.2** is done: **packages/video-worker** consumes the video-worker queue (S3 event), parses segment key via shared-types, runs stub model (copy), uploads to output bucket, writes SegmentCompletion (unit tests, README). S3 event notifications (Step 4.2), reassembly-worker, Lambda, web-ui, and Helm are not yet implemented.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. **Step 3.1** is done: **packages/chunking-worker** consumes the chunking queue (S3 event), parses input key via shared-types, fetches job and mode, runs ffmpeg chunking, uploads segments with canonical keys, updates Job to chunking_complete (unit tests, README, Dockerfile). **Step 3.2** is done: **packages/video-worker** consumes the video-worker queue (S3 event), parses segment key via shared-types, runs stub model (copy), uploads to output bucket, writes SegmentCompletion (unit tests, README). **Step 3.3** is done: **packages/reassembly-worker** consumes the reassembly queue (job_id), acquires lock via ReassemblyTriggered (conditional update), queries SegmentCompletions, builds concat list, runs ffmpeg concat, uploads final.mp4 (multipart for large files), updates Job to completed (unit tests, README, Dockerfile). S3 event notifications (Step 4.2), reassembly-trigger Lambda, web-ui, and Helm are not yet implemented.
 
 **Principles:**
 - Implement in dependency order: shared-types → workers & Lambda → web-ui → Helm → full AWS (EKS, etc.).
@@ -214,8 +214,8 @@ nx run video-worker:test
 - README: flow, env vars, lock semantics.
 
 **A/C:**
-- [ ] Worker uses ReassemblyTriggered for single-run guarantee; uses SegmentCompletions only (no S3 list) for segment list.
-- [ ] Unit tests pass.
+- [x] Worker uses ReassemblyTriggered for single-run guarantee; uses SegmentCompletions only (no S3 list) for segment list.
+- [x] Unit tests pass.
 
 **Verification:**
 ```bash

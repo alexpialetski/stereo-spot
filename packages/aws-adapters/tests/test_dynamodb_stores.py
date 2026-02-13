@@ -1,8 +1,14 @@
-"""Tests for DynamoDB JobStore and SegmentCompletionStore."""
+"""Tests for DynamoDB JobStore, SegmentCompletionStore, and ReassemblyTriggeredLock."""
+
+import boto3
 
 from stereo_spot_shared import Job, JobListItem, JobStatus, SegmentCompletion, StereoMode
 
-from stereo_spot_aws_adapters import DynamoDBJobStore, DynamoSegmentCompletionStore
+from stereo_spot_aws_adapters import (
+    DynamoDBJobStore,
+    DynamoSegmentCompletionStore,
+    ReassemblyTriggeredLock,
+)
 
 
 class TestDynamoDBJobStore:
@@ -116,3 +122,38 @@ class TestDynamoSegmentCompletionStore:
             segment_completions_table, region_name="us-east-1"
         )
         assert store.query_by_job("no-job") == []
+
+
+class TestReassemblyTriggeredLock:
+    """Tests for ReassemblyTriggeredLock (conditional update for single-run guarantee)."""
+
+    def test_try_acquire_when_item_missing_returns_false(
+        self, reassembly_triggered_table
+    ):
+        lock = ReassemblyTriggeredLock(
+            reassembly_triggered_table, region_name="us-east-1"
+        )
+        assert lock.try_acquire("job-1") is False
+
+    def test_try_acquire_when_item_exists_succeeds(self, reassembly_triggered_table):
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table(
+            reassembly_triggered_table
+        )
+        table.put_item(Item={"job_id": "job-1", "triggered_at": 12345})
+        lock = ReassemblyTriggeredLock(
+            reassembly_triggered_table, region_name="us-east-1"
+        )
+        assert lock.try_acquire("job-1") is True
+        item = table.get_item(Key={"job_id": "job-1"})["Item"]
+        assert "reassembly_started_at" in item
+
+    def test_try_acquire_second_time_returns_false(self, reassembly_triggered_table):
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table(
+            reassembly_triggered_table
+        )
+        table.put_item(Item={"job_id": "job-2", "triggered_at": 12345})
+        lock = ReassemblyTriggeredLock(
+            reassembly_triggered_table, region_name="us-east-1"
+        )
+        assert lock.try_acquire("job-2") is True
+        assert lock.try_acquire("job-2") is False

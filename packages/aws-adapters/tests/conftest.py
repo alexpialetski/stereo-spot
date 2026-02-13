@@ -74,6 +74,21 @@ def segment_completions_table(moto_aws):
 
 
 @pytest.fixture
+def reassembly_triggered_table(moto_aws):
+    """Create ReassemblyTriggered DynamoDB table (PK job_id)."""
+    import boto3
+
+    client = boto3.client("dynamodb", region_name="us-east-1")
+    client.create_table(
+        TableName="test-reassembly-triggered",
+        BillingMode="PAY_PER_REQUEST",
+        KeySchema=[{"AttributeName": "job_id", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "job_id", "AttributeType": "S"}],
+    )
+    return "test-reassembly-triggered"
+
+
+@pytest.fixture
 def sqs_queue(moto_aws):
     """Create an SQS queue and return its URL."""
     import boto3

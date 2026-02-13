@@ -118,6 +118,14 @@ class ObjectStorage(Protocol):
         """Upload bytes to the given bucket and key."""
         ...
 
+    def upload_file(self, bucket: str, key: str, path: str) -> None:
+        """Upload a file from local path to bucket/key. May use multipart for large files."""
+        ...
+
+    def exists(self, bucket: str, key: str) -> bool:
+        """Return True if the object exists, False otherwise."""
+        ...
+
     def download(self, bucket: str, key: str) -> bytes:
         """Download object from bucket/key and return its body as bytes."""
         ...
