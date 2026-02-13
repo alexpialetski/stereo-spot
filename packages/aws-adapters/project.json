@@ -13,6 +13,14 @@
       },
       "configurations": {}
     },
+    "smoke-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install -e ../shared-types -q && pip install -e . -q && SMOKE_TEST_ENV_FILE=../aws-infra/terraform-outputs.env python scripts/smoke_test.py",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

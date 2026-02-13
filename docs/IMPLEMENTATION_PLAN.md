@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.2 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, and ObjectStorage (moto tests, env-based config). S3 event notifications (Step 4.2) and application packages (workers, web-ui, Helm) are not yet implemented.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, and ObjectStorage (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. S3 event notifications (Step 4.2) and application packages (workers, web-ui, Helm) are not yet implemented.
 
 **Principles:**
 - Implement in dependency order: shared-types → workers & Lambda → web-ui → Helm → full AWS (EKS, etc.).
@@ -145,12 +145,13 @@ nx run aws-adapters:test
 - Document in `docs/TESTING.md` (or README): how to run the smoke test (env vars or config file with queue URLs, bucket names, table names), and that Terraform must be applied (or LocalStack running) first.
 
 **A/C:**
-- [ ] Smoke test passes against LocalStack or a test AWS account.
-- [ ] Documentation explains prerequisites and how to run it.
+- [x] Smoke test passes against LocalStack or a test AWS account.
+- [x] Documentation explains prerequisites and how to run it.
 
 **Verification:**
 ```bash
-# After Terraform apply or LocalStack: e.g. nx run integration:smoke-test or nx run aws-adapters:smoke-test
+# After Terraform apply: ensure packages/aws-infra/terraform-outputs.env exists (e.g. nx run aws-infra:terraform-output)
+nx run aws-adapters:smoke-test
 ```
 
 ---

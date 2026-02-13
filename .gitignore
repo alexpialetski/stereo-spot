@@ -58,3 +58,5 @@ Thumbs.db
 *.tfstate.*
 tfplan
 .terraform/
+# Generated Terraform outputs (account-specific; regenerate with nx run aws-infra:terraform-output)
+**/terraform-outputs.env
