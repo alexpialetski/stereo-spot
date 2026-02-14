@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Completed jobs — Stereo-Spot{% endblock %}
+{% block content %}
+<h1>Completed jobs</h1>
+{% if jobs %}
+<table class="job-list">
+    <thead>
+        <tr>
+            <th>Job ID</th>
+            <th>Mode</th>
+            <th>Completed</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td><code>{{ job.job_id }}</code></td>
+            <td>{{ job.mode.value }}</td>
+            <td>{{ job.completed_at }}</td>
+            <td><a href="/jobs/{{ job.job_id }}/play">Play</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if next_token %}
+<p><a href="/jobs?limit={{ request.query_params.get('limit', 20) }}&next_token={{ next_token }}">Next page</a></p>
+{% endif %}
+{% else %}
+<p>No completed jobs yet.</p>
+{% endif %}
+<p><a href="/">Back to dashboard</a></p>
+{% endblock %}

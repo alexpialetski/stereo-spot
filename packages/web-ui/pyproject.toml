@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stereo-spot-web-ui"
+version = "0.1.0"
+description = "FastAPI server-rendered UI for stereo-spot (jobs, upload, playback)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "stereo-spot-shared",
+    "stereo-spot-aws-adapters",
+    "fastapi>=0.100",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.6",
+    "httpx>=0.24",
+    "uvicorn[standard]>=0.22",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

@@ -15,6 +15,18 @@ resource "aws_s3_bucket_versioning" "input" {
   }
 }
 
+# CORS: allow browser uploads from web UI (local dev and EKS) to presigned PUT URLs
+resource "aws_s3_bucket_cors_configuration" "input" {
+  bucket = aws_s3_bucket.input.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "HEAD"]
+    allowed_origins = ["*"]
+    max_age_seconds = 3600
+  }
+}
+
 # Output bucket: video-worker writes jobs/{job_id}/segments/{i}.mp4; reassembly-worker writes jobs/{job_id}/final.mp4
 resource "aws_s3_bucket" "output" {
   bucket = "${local.name}-output-${local.account_id}"

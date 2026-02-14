@@ -1,0 +1,42 @@
+{
+  "name": "web-ui",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "packages/web-ui",
+  "implicitDependencies": ["shared-types", "aws-adapters"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -f packages/web-ui/Dockerfile -t stereo-spot-web-ui:latest .",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "outputs": []
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && pytest -v",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ruff check src tests",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && uvicorn stereo_spot_web_ui.main:app --reload",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    }
+  }
+}

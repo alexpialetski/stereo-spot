@@ -32,10 +32,16 @@ class S3ObjectStorage:
         *,
         expires_in: int = 3600,
     ) -> str:
-        """Return a presigned PUT URL for the given bucket and key."""
+        """Return a presigned PUT URL for the given bucket and key.
+        ContentType is included so browser uploads can send Content-Type: video/mp4 and match the signature.
+        """
         return self._client.generate_presigned_url(
             "put_object",
-            Params={"Bucket": bucket, "Key": key},
+            Params={
+                "Bucket": bucket,
+                "Key": key,
+                "ContentType": "video/mp4",
+            },
             ExpiresIn=expires_in,
         )
 

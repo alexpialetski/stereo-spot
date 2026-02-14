@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.job_id }} — Stereo-Spot{% endblock %}
+{% block content %}
+<h1>Job {{ job.job_id }}</h1>
+<p><strong>Status:</strong> <span class="status">{{ job.status.value }}</span></p>
+<p><strong>Mode:</strong> {{ job.mode.value }}</p>
+
+{% if upload_url %}
+<h2>Upload your video</h2>
+<div id="upload-area" data-upload-url="{{ upload_url }}">
+  <p>
+    <label for="source-file">Choose an MP4 file:</label><br>
+    <input type="file" id="source-file" name="source" accept=".mp4,video/mp4">
+  </p>
+  <p>
+    <button type="button" id="upload-btn" disabled>Upload file</button>
+  </p>
+  <p id="upload-status" aria-live="polite"></p>
+</div>
+<p class="upload-url" style="font-size: 0.85em; color: #666;">Or upload via PUT to this URL (expires in 1 hour): {{ upload_url }}</p>
+<p>After uploading, the chunking worker will process the file automatically.</p>
+<p><a href="/jobs/{{ job.job_id }}">Refresh status</a></p>
+{% else %}
+{% if job.status.value == "completed" %}
+<p><a href="/jobs/{{ job.job_id }}/play">Play final video</a></p>
+{% endif %}
+<p><a href="/jobs/{{ job.job_id }}">Refresh status</a></p>
+{% endif %}
+
+<p><a href="/">Dashboard</a> · <a href="/jobs">Completed jobs</a></p>
+
+{% if upload_url %}
+<script>
+(function () {
+  var area = document.getElementById('upload-area');
+  var fileInput = document.getElementById('source-file');
+  var uploadBtn = document.getElementById('upload-btn');
+  var statusEl = document.getElementById('upload-status');
+  var uploadUrl = area.getAttribute('data-upload-url');
+
+  fileInput.addEventListener('change', function () {
+    uploadBtn.disabled = !fileInput.files.length;
+    statusEl.textContent = '';
+  });
+
+  uploadBtn.addEventListener('click', function () {
+    var file = fileInput.files[0];
+    if (!file) return;
+    uploadBtn.disabled = true;
+    statusEl.textContent = 'Uploading…';
+    statusEl.style.color = '';
+
+    fetch(uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'video/mp4' }
+    }).then(function (res) {
+      if (res.ok) {
+        statusEl.textContent = 'Upload complete. The chunking worker will process the file. Refresh the page to see status updates.';
+        statusEl.style.color = 'green';
+        fileInput.value = '';
+      } else {
+        statusEl.textContent = 'Upload failed: ' + res.status + ' ' + res.statusText;
+        statusEl.style.color = 'crimson';
+        uploadBtn.disabled = false;
+      }
+    }).catch(function (err) {
+      statusEl.textContent = 'Upload failed: ' + err.message;
+      statusEl.style.color = 'crimson';
+      uploadBtn.disabled = false;
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

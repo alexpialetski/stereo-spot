@@ -15,7 +15,7 @@
       }
     },
     "terraform-plan": {
-      "dependsOn": ["reassembly-trigger:build"]
+      "dependsOn": ["terraform-init", "reassembly-trigger:build"]
     }
   }
 }

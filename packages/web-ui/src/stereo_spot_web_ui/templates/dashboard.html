@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Stereo-Spot{% endblock %}
+{% block content %}
+<h1>Stereo-Spot</h1>
+<p>Convert 2D video to 3D (anaglyph or side-by-side).</p>
+
+<h2>Create a new job</h2>
+<form method="post" action="/jobs">
+    <label for="mode">Output format</label>
+    <select name="mode" id="mode" required>
+        <option value="anaglyph">Anaglyph</option>
+        <option value="sbs">Side-by-side (SBS)</option>
+    </select>
+    <button type="submit">Create job</button>
+</form>
+
+<p><a href="/jobs">View completed jobs</a></p>
+{% endblock %}

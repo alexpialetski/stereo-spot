@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Stereo-Spot{% endblock %}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 1rem auto; padding: 0 1rem; }
+        nav a { margin-right: 1rem; }
+        .job-list table { width: 100%; border-collapse: collapse; }
+        .job-list th, .job-list td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #eee; }
+        .status { font-weight: 500; }
+        .upload-url { word-break: break-all; font-family: monospace; font-size: 0.9em; }
+        form label { display: block; margin-top: 0.5rem; }
+        form select, form button { margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Dashboard</a>
+        <a href="/jobs">Completed jobs</a>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
