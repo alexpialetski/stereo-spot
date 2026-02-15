@@ -1,0 +1,29 @@
+{{- if and .Values.queues.chunking .Values.queues.reassembly }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: media-worker
+  labels:
+    {{- include "stereo-spot.labels" . | nindent 4 }}
+    app: media-worker
+spec:
+  scaleTargetRef:
+    name: media-worker
+  minReplicaCount: {{ .Values.mediaWorker.minReplicas }}
+  maxReplicaCount: {{ .Values.mediaWorker.maxReplicas }}
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: stereo-spot-aws-irsa
+      metadata:
+        queueURL: {{ .Values.queues.chunking }}
+        queueLength: {{ .Values.mediaWorker.chunkingQueueLength | quote }}
+        awsRegion: {{ .Values.global.awsRegion }}
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: stereo-spot-aws-irsa
+      metadata:
+        queueURL: {{ .Values.queues.reassembly }}
+        queueLength: {{ .Values.mediaWorker.reassemblyQueueLength | quote }}
+        awsRegion: {{ .Values.global.awsRegion }}
+{{- end }}

@@ -1,0 +1,11 @@
+# Shared TriggerAuthentication for IRSA (EKS). KEDA uses pod identity to read SQS.
+# Ensure the namespace's default SA (or the workers' SA) has an IAM role attached via IRSA.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: stereo-spot-aws-irsa
+  labels:
+    {{- include "stereo-spot.labels" . | nindent 4 }}
+spec:
+  podIdentity:
+    provider: aws

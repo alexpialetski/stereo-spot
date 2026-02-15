@@ -9,7 +9,7 @@ Consumes the **video-worker SQS queue** (raw S3 event notifications for segment 
 3. **Download** — Download segment bytes from the segment S3 URI (input bucket).
 4. **Inference** — Run the configured model. **Stub:** `process_segment(bytes) -> bytes` returns input unchanged (no GPU). Replace with a real model (e.g. StereoCrafter) by swapping the implementation (env-driven or plugin).
 5. **Upload** — Upload result to output bucket at **`jobs/{job_id}/segments/{segment_index}.mp4`**.
-6. **Record** — Put **SegmentCompletion** (job_id, segment_index, output_s3_uri, completed_at, total_segments) to SegmentCompletionStore (DynamoDB). Reassembly trigger and reassembly-worker use this.
+6. **Record** — Put **SegmentCompletion** (job_id, segment_index, output_s3_uri, completed_at, total_segments) to SegmentCompletionStore (DynamoDB). Reassembly trigger and media-worker use this.
 7. **Delete message** — Delete the SQS message on success.
 
 All segment key parsing uses **shared-types** only; no duplicate logic. Output key format is defined in this package (`build_output_segment_key`).

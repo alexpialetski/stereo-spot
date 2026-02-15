@@ -1,6 +1,6 @@
 # S3 event notifications: input bucket → SQS (no Lambda).
 # (1) input/ prefix, .mp4 suffix → chunking queue (user uploads source).
-# (2) segments/ prefix, .mp4 suffix → video-worker queue (chunking-worker uploads segments).
+# (2) segments/ prefix, .mp4 suffix → video-worker queue (media-worker uploads segments).
 
 resource "aws_s3_bucket_notification" "input" {
   bucket = aws_s3_bucket.input.id

@@ -1,6 +1,6 @@
 # shared-types
 
-Shared Python library for the **stereo-spot** pipeline. Single source of truth for job, segment, and message shapes used by the web-ui, chunking-worker, video-worker, reassembly-worker, and Lambda (e.g. reassembly trigger).
+Shared Python library for the **stereo-spot** pipeline. Single source of truth for job, segment, and message shapes used by the web-ui, media-worker, video-worker, and Lambda (e.g. reassembly trigger).
 
 - **Format:** Pydantic models for validation and serialization.
 - **Consumers:** All Python app and worker packages depend on this library.
@@ -79,7 +79,7 @@ Build artifacts appear in `dist/`. Other packages can depend on the built wheel 
 segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4
 ```
 
-Example: `segments/job-abc/00042_00100_anaglyph.mp4`. Zero-padding keeps lexicographic order. The **parser and builder live only in this package**; chunking-worker uses `build_segment_key()`, video-worker uses `parse_segment_key()`.
+Example: `segments/job-abc/00042_00100_anaglyph.mp4`. Zero-padding keeps lexicographic order. The **parser and builder live only in this package**; media-worker uses `build_segment_key()`, video-worker uses `parse_segment_key()`.
 
 - **`build_segment_key(job_id, segment_index, total_segments, mode)`** → key string.
 - **`parse_segment_key(bucket, key)`** → `VideoWorkerPayload` or `None` if the key is invalid. Invalid keys return `None` (no exception).

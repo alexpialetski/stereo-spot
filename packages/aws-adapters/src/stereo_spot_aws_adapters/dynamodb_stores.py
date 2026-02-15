@@ -166,7 +166,7 @@ class DynamoSegmentCompletionStore:
 class ReassemblyTriggeredLock:
     """
     ReassemblyTriggered table: used for idempotency (Lambda conditional create)
-    and reassembly-worker lock (conditional update: set reassembly_started_at
+    and media-worker lock (conditional update: set reassembly_started_at
     only if item exists and that attribute is absent).
     """
 

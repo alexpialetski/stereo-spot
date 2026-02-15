@@ -1,7 +1,7 @@
 """
 Segment and input key format and parsers.
 
-Single source of truth: chunking-worker builds keys and video-worker parses them
+Single source of truth: media-worker builds keys and video-worker parses them
 using only these functions. No duplicate parsing logic elsewhere.
 
 Segment key format: segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4

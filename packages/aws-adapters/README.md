@@ -72,9 +72,8 @@ receiver = SQSQueueReceiver("https://sqs.us-east-1.amazonaws.com/123/chunking")
 Packages that use **aws-adapters** for AWS backends:
 
 - **web-ui** — JobStore, ObjectStorage (presign upload/playback, list completed jobs)
-- **chunking-worker** — JobStore, ObjectStorage, QueueReceiver (chunking queue)
+- **media-worker** — JobStore, ObjectStorage, QueueReceiver (chunking queue), QueueReceiver (reassembly queue), SegmentCompletionStore, ReassemblyTriggeredLock
 - **video-worker** — QueueReceiver (video-worker queue), ObjectStorage, SegmentCompletionStore
-- **reassembly-worker** — QueueReceiver (reassembly queue), JobStore, SegmentCompletionStore, ObjectStorage
 
 ## Installation and tests
 
@@ -101,4 +100,4 @@ nx run aws-adapters:lint
 
 ## No Docker image
 
-This package is a Python library only; it is not built into a Docker image. It is consumed by web-ui, chunking-worker, video-worker, and reassembly-worker, which are the components that get containerized and deployed.
+This package is a Python library only; it is not built into a Docker image. It is consumed by web-ui, media-worker, and video-worker, which are the components that get containerized and deployed.

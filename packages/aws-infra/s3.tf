@@ -1,4 +1,4 @@
-# Input bucket: user uploads source to input/{job_id}/source.mp4; chunking-worker writes segments to segments/{job_id}/...
+# Input bucket: user uploads source to input/{job_id}/source.mp4; media-worker writes segments to segments/{job_id}/...
 resource "aws_s3_bucket" "input" {
   bucket = "${local.name}-input-${local.account_id}"
 
@@ -27,7 +27,7 @@ resource "aws_s3_bucket_cors_configuration" "input" {
   }
 }
 
-# Output bucket: video-worker writes jobs/{job_id}/segments/{i}.mp4; reassembly-worker writes jobs/{job_id}/final.mp4
+# Output bucket: video-worker writes jobs/{job_id}/segments/{i}.mp4; media-worker writes jobs/{job_id}/final.mp4
 resource "aws_s3_bucket" "output" {
   bucket = "${local.name}-output-${local.account_id}"
 

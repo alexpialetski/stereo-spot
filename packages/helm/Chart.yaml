@@ -1,0 +1,7 @@
+apiVersion: v2
+name: stereo-spot
+description: Stereo-Spot video pipeline - web-ui, media-worker, video-worker
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.24"

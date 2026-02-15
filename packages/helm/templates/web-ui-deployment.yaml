@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ui
+  labels:
+    {{- include "stereo-spot.labels" . | nindent 4 }}
+    app: web-ui
+spec:
+  replicas: {{ .Values.webUi.replicas }}
+  selector:
+    matchLabels:
+      app: web-ui
+  template:
+    metadata:
+      labels:
+        app: web-ui
+        {{- include "stereo-spot.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: web-ui
+          image: "{{ .Values.images.webUi | default "stereo-spot-web-ui" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.webUi.port }}
+              name: http
+          env:
+            - name: INPUT_BUCKET_NAME
+              value: {{ .Values.aws.inputBucketName | quote }}
+            - name: OUTPUT_BUCKET_NAME
+              value: {{ .Values.aws.outputBucketName | quote }}
+            - name: JOBS_TABLE_NAME
+              value: {{ .Values.aws.jobsTableName | quote }}
+            - name: AWS_REGION
+              value: {{ .Values.global.awsRegion | quote }}
+          resources:
+            {{- toYaml .Values.webUi.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5

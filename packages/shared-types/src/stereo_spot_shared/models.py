@@ -80,7 +80,7 @@ class ChunkingPayload(BaseModel):
 # --- Reassembly queue ---
 
 class ReassemblyPayload(BaseModel):
-    """Payload for the Reassembly SQS queue (sent by Lambda, consumed by reassembly-worker)."""
+    """Payload for the Reassembly SQS queue (sent by Lambda, consumed by media-worker)."""
 
     job_id: str
 

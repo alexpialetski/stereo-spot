@@ -15,8 +15,8 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 **Consumers:**
 
 - **web-ui:** put (create job), get (job detail), list_completed (list page), update (not typically; workers update).
-- **chunking-worker:** get (fetch mode), update (chunking_in_progress → chunking_complete + total_segments).
-- **reassembly-worker:** get (total_segments, status), update (status=completed, completed_at).
+- **media-worker (chunking):** get (fetch mode), update (chunking_in_progress → chunking_complete + total_segments).
+- **media-worker (reassembly):** get (total_segments, status), update (status=completed, completed_at).
 - **reassembly-trigger (Lambda):** get (total_segments, status) to decide when to send to reassembly queue.
 
 ---
@@ -31,7 +31,7 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 
 - **video-worker:** put (after each segment is processed).
 - **reassembly-trigger (Lambda):** query_by_job + count vs total_segments to trigger reassembly when last segment completes.
-- **reassembly-worker:** query_by_job to build the concat list (no S3 list).
+- **media-worker (reassembly):** query_by_job to build the concat list (no S3 list).
 
 ---
 
@@ -45,9 +45,9 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 
 **Consumers:**
 
-- **chunking-worker:** QueueReceiver (chunking queue).
+- **media-worker:** QueueReceiver (chunking queue).
 - **video-worker:** QueueReceiver (video-worker queue).
-- **reassembly-worker:** QueueReceiver (reassembly queue).
+- **media-worker:** QueueReceiver (reassembly queue).
 - **reassembly-trigger (Lambda):** QueueSender (reassembly queue).
 
 ---
@@ -61,9 +61,9 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 **Consumers:**
 
 - **web-ui:** presign_upload (create job → upload URL), presign_download (playback URL).
-- **chunking-worker:** download (source), upload (segment files).
+- **media-worker (chunking):** download (source), upload (segment files).
 - **video-worker:** download (segment), upload (segment output).
-- **reassembly-worker:** download (segment outputs), upload (final.mp4).
+- **media-worker (reassembly):** download (segment outputs), upload (final.mp4).
 
 ---
 

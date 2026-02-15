@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. **Step 3.1** is done: **packages/chunking-worker** consumes the chunking queue (S3 event), parses input key via shared-types, fetches job and mode, runs ffmpeg chunking, uploads segments with canonical keys, updates Job to chunking_complete (unit tests, README, Dockerfile). **Step 3.2** is done: **packages/video-worker** consumes the video-worker queue (S3 event), parses segment key via shared-types, runs stub model (copy), uploads to output bucket, writes SegmentCompletion (unit tests, README). **Step 3.3** is done: **packages/reassembly-worker** consumes the reassembly queue (job_id), acquires lock via ReassemblyTriggered (conditional update), queries SegmentCompletions, builds concat list, runs ffmpeg concat, uploads final.mp4 (multipart for large files), updates Job to completed (unit tests, README, Dockerfile). **Step 3.4** is done: **packages/reassembly-trigger** Lambda (DynamoDB Streams on SegmentCompletions), conditional create on ReassemblyTriggered, send job_id to reassembly queue; build from shared-types wheel (Nx build + script), Terraform (Lambda, stream event source, IAM, env), unit tests, README. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2 (dashboard, list jobs, create job, job detail, play with presigned URLs); unit tests, README. **Step 4.2** is done: S3 event notifications on input bucket (prefix `input/` suffix `.mp4` → chunking queue; prefix `segments/` suffix `.mp4` → video-worker queue), queue policies for S3; README updated. Helm is not yet implemented.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image) consumes the chunking queue (S3 event) and reassembly queue (job_id) in one process (two threads); chunking: parse input key, ffmpeg split, upload segments, update Job to chunking_complete; reassembly: lock via ReassemblyTriggered, query SegmentCompletions, ffmpeg concat, upload final.mp4, update Job to completed (unit tests, README, Dockerfile). **Step 3.2** is done: **packages/video-worker** consumes the video-worker queue (S3 event), parses segment key via shared-types, runs stub model (copy), uploads to output bucket, writes SegmentCompletion (unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda (DynamoDB Streams on SegmentCompletions), conditional create on ReassemblyTriggered, send job_id to reassembly queue; build from shared-types wheel (Nx build + script), Terraform (Lambda, stream event source, IAM, env), unit tests, README. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2 (dashboard, list jobs, create job, job detail, play with presigned URLs); unit tests, README. **Step 4.2** is done: S3 event notifications on input bucket (prefix `input/` suffix `.mp4` → chunking queue; prefix `segments/` suffix `.mp4` → video-worker queue), queue policies for S3; README updated. **Step 4.3** is done: **packages/helm** umbrella chart (Deployments/Services for web-ui, media-worker, video-worker; Ingress; KEDA ScaledObjects: media-worker with two triggers (chunking + reassembly), video-worker; TriggerAuthentication for IRSA); Terraform generates values-from-terraform.yaml; Argo CD Application manifest; README.
 
 **Principles:**
 
@@ -41,7 +41,7 @@ nx run shared-types:test
 
 ### Step 1.2 — Add Pydantic models and segment key convention to shared-types
 
-**Goal:** Implement the single source of truth for Job, Segment, SegmentCompletion, queue payloads, and API DTOs. Implement the **segment key format and parser** only in this package (used later by chunking-worker and video-worker).
+**Goal:** Implement the single source of truth for Job, Segment, SegmentCompletion, queue payloads, and API DTOs. Implement the **segment key format and parser** only in this package (used later by media-worker and video-worker).
 
 **Tasks:**
 
@@ -75,7 +75,7 @@ nx run shared-types:test
 **Tasks:**
 
 - Define abstract interfaces (e.g. ABC or Protocol): `JobStore` (get, put, update by job_id; list completed with pagination), `SegmentCompletionStore` (put completion, query by job_id ordered by segment_index), `QueueSender` / `QueueReceiver` (send, receive, delete), `ObjectStorage` (presign upload/download, upload, download).
-- Add `docs/SHARED_TYPES.md` (or section in package README) describing each interface and intended usage (e.g. “JobStore is used by web-ui and chunking-worker”).
+- Add `docs/SHARED_TYPES.md` (or section in package README) describing each interface and intended usage (e.g. “JobStore is used by web-ui and media-worker”).
 - Unit tests: mock implementations of interfaces to satisfy type checkers and one test per interface (e.g. “mock JobStore returns job”).
 
 **A/C:**
@@ -136,7 +136,7 @@ nx run aws-infra:terraform-plan
 - Implement AWS backend for: JobStore (DynamoDB Jobs + GSI query), SegmentCompletionStore (DynamoDB SegmentCompletions), QueueSender/Receiver (SQS), ObjectStorage (S3 presign and upload/download).
 - Use Terraform outputs (or env vars) for resource names/URLs; no hardcoding.
 - Unit tests: use moto or similar to test DynamoDB/SQS/S3 behaviour; at least one test per store/queue/storage operation.
-- Document in `packages/aws-adapters/README.md` how to wire implementations (e.g. `STORAGE_ADAPTER=aws` and required env vars). List which packages consume aws-adapters (web-ui, chunking-worker, video-worker, reassembly-worker).
+- Document in `packages/aws-adapters/README.md` how to wire implementations (e.g. `STORAGE_ADAPTER=aws` and required env vars). List which packages consume aws-adapters (web-ui, media-worker, video-worker).
 
 **A/C:**
 
@@ -177,29 +177,31 @@ nx run aws-adapters:smoke-test
 
 ## Phase 3: Workers and Lambda
 
-### Step 3.1 — Chunking worker package
+### Step 3.1 — Media worker package (chunking + reassembly)
 
-**Goal:** New package `packages/chunking-worker`: consumes chunking queue (raw S3 event), parses job_id from key, fetches mode from JobStore, downloads source, runs ffmpeg chunking, uploads segments with canonical key, updates Job to chunking_complete with total_segments.
+**Goal:** New package `packages/media-worker`: single Docker image that consumes **chunking queue** (raw S3 event) and **reassembly queue** (job_id) in one process (two threads). Chunking: parse input key, ffmpeg split, upload segments, update Job to chunking_complete. Reassembly: lock via ReassemblyTriggered, query SegmentCompletions, ffmpeg concat, upload final.mp4, update Job to completed. Saves storage (one ~600MB image instead of two).
 
 **Tasks:**
 
-- Create `packages/chunking-worker` with pyproject.toml (depends on shared-types), Nx project.json (build, test, lint), and Dockerfile.
-- Implement: read S3 event from queue; parse input key via shared-types; get job from JobStore; update job to chunking*in_progress; download source to temp; ffmpeg segment (keyframe-aligned, ~50MB/~5min); upload each segment with `segments/{job_id}/{i:05d}*{total:05d}\_{mode}.mp4`; single UpdateItem for total_segments + status=chunking_complete.
-- Use abstractions (JobStore, ObjectStorage, QueueReceiver); inject AWS implementations via env/config.
-- Unit tests: (1) parsing S3 event and input key, (2) segment key generation for a given job_id/mode/total, (3) mock JobStore/ObjectStorage and run one chunking flow (small fixture file or no real ffmpeg).
-- Add `packages/chunking-worker/README.md`: purpose, env vars, local run, Docker build.
+- Create `packages/media-worker` with pyproject.toml (depends on shared-types, aws-adapters), Nx project.json (build, test, lint), and Dockerfile (ffmpeg + Python).
+- Implement chunking: read S3 event from chunking queue; parse input key via shared-types; get job from JobStore; update job to chunking_in_progress; download source to temp; ffmpeg segment (keyframe-aligned, ~50MB/~5min); upload each segment with canonical key; single UpdateItem for total_segments + status=chunking_complete.
+- Implement reassembly: read job_id from reassembly queue; conditional update on ReassemblyTriggered (lock); query SegmentCompletions by job_id; download segments; ffmpeg concat; upload to jobs/{job_id}/final.mp4 (multipart for large files); update Job to completed.
+- Run both loops in separate threads from main().
+- Unit tests: chunking (S3 event parsing, segment key, mock flow); reassembly (lock, idempotency, concat list, output key, mock flow).
+- Add README: purpose, env vars (both queues and all stores), local run, Docker build.
 
 **A/C:**
 
-- [x] Worker uses only shared-types for key parsing and key building.
-- [x] Unit tests pass; at least one test with mocked stores and optional small-file ffmpeg.
+- [x] Media-worker uses only shared-types for key parsing and key building.
+- [x] Unit tests pass for both chunking and reassembly flows (mocked).
 - [x] README documents behaviour and how to run.
+- [x] Docker image builds from repo root.
 
 **Verification:**
 
 ```bash
-nx run chunking-worker:test
-nx run chunking-worker:build   # if Docker build is the “build” target
+nx run media-worker:test
+nx run media-worker:build   # if Docker build is the “build” target
 ```
 
 ---
@@ -225,29 +227,6 @@ nx run chunking-worker:build   # if Docker build is the “build” target
 
 ```bash
 nx run video-worker:test
-```
-
----
-
-### Step 3.3 — Reassembly worker package
-
-**Goal:** New package `packages/reassembly-worker`: consumes reassembly queue (job_id), acquires lock via ReassemblyTriggered (conditional update), queries SegmentCompletions by job_id, builds concat list, runs ffmpeg concat, uploads final.mp4, updates Job to completed.
-
-**Tasks:**
-
-- Create package; depend on shared-types (and abstractions). Implement: receive job_id; conditional update on ReassemblyTriggered (reassembly_started_at); if failed, skip and delete message; query SegmentCompletions by job_id; build concat list (use deterministic path or output_s3_uri); download segments (or use S3 URI list); ffmpeg concat; upload to `jobs/{job_id}/final.mp4` (multipart for large files); update Job status=completed, completed_at; delete message.
-- Unit tests: (1) concat list building from SegmentCompletions, (2) conditional write behaviour (mock), (3) idempotency when final.mp4 exists.
-- README: flow, env vars, lock semantics.
-
-**A/C:**
-
-- [x] Worker uses ReassemblyTriggered for single-run guarantee; uses SegmentCompletions only (no S3 list) for segment list.
-- [x] Unit tests pass.
-
-**Verification:**
-
-```bash
-nx run reassembly-worker:test
 ```
 
 ---
@@ -338,21 +317,21 @@ nx run aws-infra:terraform-plan
 
 ### Step 4.3 — Helm chart and Argo CD Application
 
-**Goal:** One umbrella Helm chart in `packages/helm`: Deployments/Services for web-ui, chunking-worker, video-worker, reassembly-worker; Ingress for web-ui; KEDA ScaledObjects for the three worker queues; image pull from ECR. Argo CD Application manifest pointing at this repo path. Helm values must receive queue URLs, bucket names, and table names from Terraform.
+**Goal:** One umbrella Helm chart in `packages/helm`: Deployments/Services for web-ui, media-worker, video-worker; Ingress for web-ui; KEDA ScaledObjects (media-worker with two triggers: chunking and reassembly queues; video-worker with one trigger); image pull from ECR. Argo CD Application manifest pointing at this repo path. Helm values must receive queue URLs, bucket names, and table names from Terraform.
 
 **Tasks:**
 
 - Create `packages/helm` with Chart.yaml, values.yaml (placeholders or defaults for image tags, queue URLs, bucket names, table names). **Define how Terraform outputs feed Helm:** Terraform will generate a values file (e.g. `packages/helm/values-from-terraform.yaml`) after apply—e.g. via a `local_file` or null_resource that writes queue URLs, bucket names, table names, ECR repo URIs from Terraform outputs. Argo CD (or the Application) uses this file so the chart receives resource names without manual copy. Document this in `packages/helm/README.md`.
-- Templates: Deployment and Service per app; Ingress (e.g. ALB or Ingress controller); KEDA ScaledObject for chunking, video-worker, reassembly queues.
+- Templates: Deployment and Service per app; Ingress (e.g. ALB or Ingress controller); KEDA ScaledObject for media-worker (two triggers: chunking and reassembly queues) and video-worker.
 - Argo CD Application YAML (e.g. `argo-application.yaml` or `applications/stereo-spot.yaml`) in same package; Terraform will apply it after installing Argo CD.
 - Document in `packages/helm/README.md`: structure, how to set image tags, how Terraform-generated values are used, how Argo CD syncs.
 
 **A/C:**
 
-- [ ] `helm template` produces valid manifests for all four workloads and KEDA.
-- [ ] Terraform (or a documented CI step) produces a values file with queue URLs, bucket names, table names; Argo CD / Helm use it.
-- [ ] Argo CD Application manifest references this repo and path.
-- [ ] README explains chart, Terraform→values flow, and deployment flow.
+- [x] `helm template` produces valid manifests for all three workloads (web-ui, media-worker, video-worker) and KEDA.
+- [x] Terraform (or a documented CI step) produces a values file with queue URLs, bucket names, table names; Argo CD / Helm use it.
+- [x] Argo CD Application manifest references this repo and path.
+- [x] README explains chart, Terraform→values flow, and deployment flow.
 
 **Verification:**
 
@@ -365,11 +344,11 @@ helm template stereo-spot packages/helm -f packages/helm/values.yaml
 
 ### Step 4.4 — EKS, ECR, Argo CD, Karpenter, and full infra in Terraform
 
-**Goal:** Terraform provisions EKS cluster, ECR repos (web-ui, chunking-worker, video-worker, reassembly-worker), IRSA for each, installs Argo CD controller and applies Argo CD Application from packages/helm. **Karpenter** and at least one GPU node pool are included so video-worker pods can schedule. **Node Termination Handler** is required for graceful Spot reclaim (segment-level retry).
+**Goal:** Terraform provisions EKS cluster, ECR repos (web-ui, media-worker, video-worker), IRSA for each, installs Argo CD controller and applies Argo CD Application from packages/helm. **Karpenter** and at least one GPU node pool are included so video-worker pods can schedule. **Node Termination Handler** is required for graceful Spot reclaim (segment-level retry).
 
 **Tasks:**
 
-- In `packages/aws-infra`: EKS cluster (with OIDC for IRSA); ECR repositories; IAM roles and IRSA for web-ui and each worker.
+- In `packages/aws-infra`: EKS cluster (with OIDC for IRSA); ECR repositories (web-ui, media-worker, video-worker); IAM roles and IRSA for web-ui and each worker.
 - **Node Termination Handler:** Install the AWS Node Termination Handler (e.g. Helm chart or manifest) so nodes receive SIGTERM before Spot reclaim. Required for architecture’s error-handling goals.
 - **Karpenter:** Install Karpenter (Helm or manifest) and create at least one NodePool (or NodeClass) for GPU nodes (e.g. g4dn or g5), with Spot capacity type and a small on-demand fallback. Set max nodes (e.g. 4–8) as a variable. Without this, video-worker pods will remain Pending.
 - Helm release for Argo CD; kubectl/kubernetes provider to apply Argo CD Application manifest(s) from helm package. Ensure Helm/Argo CD receive queue URLs, bucket names, and table names from Terraform (see Step 4.3).
@@ -400,9 +379,9 @@ nx run aws-infra:terraform-plan
 
 **Tasks:**
 
-- Create **`packages/integration`** with Nx project depending on web-ui, chunking-worker, video-worker, reassembly-worker (and optionally reassembly-trigger for Lambda-in-loop). Add target `test` (and optionally `smoke-test` if Step 2.3 lives here).
-- Integration test suite: spin up LocalStack (or use test account); create job via API; put object to input; assert chunking queue message; run chunking worker once; assert segment objects and video-worker messages; run video-worker (stub) for all segments; assert Lambda sent reassembly message; run reassembly worker; assert final.mp4 and Job completed.
-- **Reassembly idempotency test:** For a job with all segments complete, send **two** reassembly messages (same job_id) and process both (e.g. run two reassembly workers or process messages twice). Assert: exactly one reassembly run produces final.mp4 and updates Job to completed; the other run skips (conditional update on ReassemblyTriggered fails) and deletes the message without overwriting. No duplicate or corrupted final file.
+- Create **`packages/integration`** with Nx project depending on web-ui, media-worker, video-worker (and optionally reassembly-trigger for Lambda-in-loop). Add target `test` (and optionally `smoke-test` if Step 2.3 lives here).
+- Integration test suite: spin up LocalStack (or use test account); create job via API; put object to input; assert chunking queue message; run media-worker (processes chunking message); assert segment objects and video-worker messages; run video-worker (stub) for all segments; assert Lambda sent reassembly message; run media-worker (processes reassembly message); assert final.mp4 and Job completed.
+- **Reassembly idempotency test:** For a job with all segments complete, send **two** reassembly messages (same job_id) and process both (e.g. run two media-worker instances or process messages twice). Assert: exactly one reassembly run produces final.mp4 and updates Job to completed; the other run skips (conditional update on ReassemblyTriggered fails) and deletes the message without overwriting. No duplicate or corrupted final file.
 - Document in `docs/TESTING.md`: unit vs integration, how to run `nx run integration:test`, prerequisites (LocalStack/aws-cli). Note in plan/CI that `nx run integration:test` can be run when integration is enabled (env or flag).
 
 **A/C:**
@@ -477,9 +456,8 @@ nx run video-worker:test
 | 2.1  | aws-infra                  | S3, SQS, DynamoDB, DLQ alarms (no EKS)                       | README                      |
 | 2.2  | aws-adapters               | AWS implementations of interfaces                            | Moto tests; README          |
 | 2.3  | integration / aws-adapters | Data plane smoke test                                        | TESTING.md or README        |
-| 3.1  | chunking-worker            | Chunking logic + Docker                                      | Unit tests; README          |
+| 3.1  | media-worker               | Chunking + reassembly (one image, two queues) + Docker       | Unit tests; README          |
 | 3.2  | video-worker               | Stub model + pipeline                                        | Unit tests; README          |
-| 3.3  | reassembly-worker          | Concat + lock + Job update                                   | Unit tests; README          |
 | 3.4  | reassembly-trigger         | Lambda Streams → SQS (shared-types from wheel)               | Unit tests; README          |
 | 4.1  | web-ui                     | FastAPI + Jinja2 routes                                      | Unit tests; README          |
 | 4.2  | aws-infra                  | S3 → SQS event notifications                                 | README                      |
@@ -497,9 +475,9 @@ After implementation, expected dependency structure:
 
 - **shared-types** — no package deps.
 - **aws-adapters** — depends on **shared-types**.
-- **chunking-worker**, **video-worker**, **reassembly-worker**, **web-ui** — depend on **shared-types** and **aws-adapters** (for AWS implementations at runtime).
+- **media-worker**, **video-worker**, **web-ui** — depend on **shared-types** and **aws-adapters** (for AWS implementations at runtime).
 - **reassembly-trigger** — depends on **shared-types** (build: install from shared-types wheel).
-- **integration** — depends on **web-ui**, **chunking-worker**, **video-worker**, **reassembly-worker** (and optionally **reassembly-trigger** for Lambda-in-loop tests). May also host the Step 2.3 smoke test (e.g. `integration:smoke-test`).
+- **integration** — depends on **web-ui**, **media-worker**, **video-worker** (and optionally **reassembly-trigger** for Lambda-in-loop tests). May also host the Step 2.3 smoke test (e.g. `integration:smoke-test`).
 - **helm** — no Nx dependency on other app packages (references images and config).
 - **aws-infra** — depends on **aws-infra-setup** (already).
 

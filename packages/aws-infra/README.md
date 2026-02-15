@@ -18,18 +18,18 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 
 ### S3
 
-- **Input bucket** (`stereo-spot-input-<account_id>`): User uploads to `input/{job_id}/source.mp4`; chunking-worker writes segments to `segments/{job_id}/...`. No lifecycle rule on this bucket.
-- **Output bucket** (`stereo-spot-output-<account_id>`): Video-worker writes `jobs/{job_id}/segments/{segment_index}.mp4`; reassembly-worker writes `jobs/{job_id}/final.mp4`. **Lifecycle rule**: objects under prefix `jobs/` that are **tagged** with `stereo-spot-lifecycle = expire-segments` expire after **1 day**. The video-worker must tag segment outputs with this tag; `final.mp4` is not tagged and is retained.
+- **Input bucket** (`stereo-spot-input-<account_id>`): User uploads to `input/{job_id}/source.mp4`; media-worker writes segments to `segments/{job_id}/...`. No lifecycle rule on this bucket.
+- **Output bucket** (`stereo-spot-output-<account_id>`): Video-worker writes `jobs/{job_id}/segments/{segment_index}.mp4`; media-worker writes `jobs/{job_id}/final.mp4`. **Lifecycle rule**: objects under prefix `jobs/` that are **tagged** with `stereo-spot-lifecycle = expire-segments` expire after **1 day**. The video-worker must tag segment outputs with this tag; `final.mp4` is not tagged and is retained.
 
 ### S3 event notifications (input bucket → SQS)
 
 Two event flows are configured on the **input bucket** (S3 → SQS direct, no Lambda):
 
 1. **Full-file upload → chunking queue**  
-   Prefix `input/`, suffix `.mp4` → **chunking queue**. When the user uploads to `input/{job_id}/source.mp4`, S3 sends the event (bucket, key) to the chunking queue; the chunking-worker consumes it and runs ffmpeg chunking.
+   Prefix `input/`, suffix `.mp4` → **chunking queue**. When the user uploads to `input/{job_id}/source.mp4`, S3 sends the event (bucket, key) to the chunking queue; the media-worker consumes it and runs ffmpeg chunking.
 
 2. **Segment upload → video-worker queue**  
-   Prefix `segments/`, suffix `.mp4` → **video-worker queue**. When the chunking-worker uploads segment files to `segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4`, S3 sends the event to the video-worker queue; the video-worker consumes it and runs inference.
+   Prefix `segments/`, suffix `.mp4` → **video-worker queue**. When the media-worker uploads segment files to `segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4`, S3 sends the event to the video-worker queue; the video-worker consumes it and runs inference.
 
 Queue policies allow the input bucket to send messages to the chunking and video-worker queues. Workers already consume raw S3 events; no code changes required.
 

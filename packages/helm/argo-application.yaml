@@ -1,0 +1,30 @@
+# Argo CD Application: syncs this repo at packages/helm.
+# Terraform (Step 4.4) installs the Argo CD controller and applies this manifest
+# so Argo CD tracks the stereo-spot Helm chart. Use the same repo URL as your Git remote.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: stereo-spot
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/alexpialetski/stereo-spot.git
+    targetRevision: HEAD
+    path: packages/helm
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-from-terraform.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

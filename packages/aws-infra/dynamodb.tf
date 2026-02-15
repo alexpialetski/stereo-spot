@@ -59,7 +59,7 @@ resource "aws_dynamodb_table" "segment_completions" {
   })
 }
 
-# ReassemblyTriggered: PK job_id; TTL on ttl attribute; idempotency and reassembly-worker lock
+# ReassemblyTriggered: PK job_id; TTL on ttl attribute; idempotency and media-worker lock
 resource "aws_dynamodb_table" "reassembly_triggered" {
   name         = "${local.name}-reassembly-triggered"
   billing_mode = "PAY_PER_REQUEST"

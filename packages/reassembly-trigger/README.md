@@ -6,7 +6,7 @@ Python Lambda invoked by **DynamoDB Streams** on the SegmentCompletions table. W
 2. **Counts** SegmentCompletions for that `job_id` (Query by PK).
 3. If `count == total_segments`, performs a **conditional create** on **ReassemblyTriggered** (`attribute_not_exists(job_id)`). Only if the put succeeds (idempotent: first writer wins), it sends `job_id` to the **reassembly SQS queue** (body: `{"job_id": "..."}`).
 
-This triggers the reassembly-worker to run once per job when the last segment completes.
+This triggers the media-worker (reassembly) to run once per job when the last segment completes.
 
 ## Event shape (DynamoDB Stream)
 

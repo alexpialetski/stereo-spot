@@ -8,7 +8,7 @@ This backend includes:
 
 - **S3 Bucket** for Terraform state storage with versioning and object lock
 - **Backend Configuration** file generation for cluster package initialization
-- **Bucket Existence Validation** to handle temporary AWS account scenarios
+- **State sync script** so the bucket is tracked correctly when state is absent or when the AWS account changes
 
 ## 🏗️ Resources Created
 
@@ -18,8 +18,8 @@ This backend includes:
 - **Features**:
   - Versioning enabled for state history
   - Object lock enabled for state protection
-  - Force destroy enabled for temporary accounts
-- **Naming**: `terraform-state-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.region}` (prefix + AWS account id + region)
+  - Force destroy disabled (set to `false`) for safety
+- **Naming**: `terraform-state-${account_id}-${region}` (AWS account id + region)
 
 ### Backend Configuration (`local_file.backend_config`)
 
@@ -27,11 +27,18 @@ This backend includes:
 - **Content**: S3 bucket name, key, and region configuration
 - **Usage**: Referenced by cluster package Terraform initialization
 
-### Bucket Existence Check (`data.external.check_bucket`)
+### State sync before plan (`scripts/sync_backend_state.sh`)
 
-- **Purpose**: Prevents resource conflicts in temporary AWS accounts
-- **Script**: `scripts/check_bucket.sh`
-- **Logic**: Only creates bucket if it doesn't already exist
+- **Purpose**: Keeps Terraform state aligned with the real backend bucket when state is missing or stale (e.g. lost state file or switched AWS account).
+- **When**: Run automatically as part of the **terraform-plan** target (before `terraform plan -out=tfplan`).
+- **Logic**:
+  1. Resolves bucket name (same as Terraform: `terraform-state-<account_id>-<region>`).
+  2. Checks if the bucket exists in AWS (`head-bucket`).
+  3. If the bucket exists but state does not track it → runs `terraform import` for the bucket, versioning, and object lock.
+  4. If the bucket exists and state tracks it but a dry plan would destroy it (stale state) → removes those resources from state, re-imports, then continues.
+  5. Runs `terraform plan -out=tfplan`.
+
+So: **terraform-init** is unchanged; **terraform-plan** runs the sync script then `terraform plan -out=tfplan`; **terraform-apply** is unchanged.
 
 ## 🔐 Security Considerations
 
@@ -67,4 +74,4 @@ After creation, other Terraform modules can reference the generated `backend.con
 
 ## 🧪 Validation
 
-The included script `scripts/check_bucket.sh` prevents duplicate bucket creation when working in ephemeral AWS accounts.
+Run **terraform-plan** (e.g. `nx run aws-infra-setup:terraform-plan`). The sync script ensures the bucket is imported when it already exists and state is absent or stale, then produces the plan. Use **terraform-apply** as usual to apply.

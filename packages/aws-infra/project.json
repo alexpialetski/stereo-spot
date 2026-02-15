@@ -16,6 +16,11 @@
     },
     "terraform-plan": {
       "dependsOn": ["terraform-init", "reassembly-trigger:build"]
+    },
+    "terraform-output": {
+      "metadata": {
+        "outputFormat": "env"
+      }
     }
   }
 }

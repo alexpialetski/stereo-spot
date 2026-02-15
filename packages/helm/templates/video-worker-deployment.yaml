@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-worker
+  labels:
+    {{- include "stereo-spot.labels" . | nindent 4 }}
+    app: video-worker
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: video-worker
+  template:
+    metadata:
+      labels:
+        app: video-worker
+        {{- include "stereo-spot.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: video-worker
+          image: "{{ .Values.images.videoWorker | default "stereo-spot-video-worker" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: INPUT_BUCKET_NAME
+              value: {{ .Values.aws.inputBucketName | quote }}
+            - name: OUTPUT_BUCKET_NAME
+              value: {{ .Values.aws.outputBucketName | quote }}
+            - name: SEGMENT_COMPLETIONS_TABLE_NAME
+              value: {{ .Values.aws.segmentCompletionsTableName | quote }}
+            - name: VIDEO_WORKER_QUEUE_URL
+              value: {{ .Values.queues.videoWorker | quote }}
+            - name: AWS_REGION
+              value: {{ .Values.global.awsRegion | quote }}
+          resources:
+            {{- toYaml .Values.videoWorker.resources | nindent 12 }}

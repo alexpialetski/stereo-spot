@@ -1,0 +1,6 @@
+Stereo-Spot has been deployed.
+
+  web-ui:        {{ .Values.webUi.replicas }} replica(s)
+  chunking-worker, video-worker, reassembly-worker: scaled by KEDA from SQS
+
+Ensure values-from-terraform.yaml (queue URLs, bucket names, table names, image URIs) is present so workers and web-ui receive AWS resource configuration. See packages/helm/README.md.
