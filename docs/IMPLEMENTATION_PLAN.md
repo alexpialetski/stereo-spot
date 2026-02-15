@@ -2,13 +2,14 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3 is done:** Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui and media-worker, EC2 service for video-worker (GPU), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3 is done:** Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui and media-worker, EC2 service for video-worker (GPU), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`. **Step 5.1** is done: **packages/integration** with E2E pipeline test (create job → upload → chunking → video-worker → reassembly → completed) and reassembly idempotency test (two reassembly messages, one winner); tests use moto; E2E and idempotency require ffmpeg (skipped if absent). docs/TESTING.md updated. **Step 5.2** is done: **scripts/chunking_recovery.py** (recovery script using shared-types segment key parser); **docs/RUNBOOKS.md** (chunking recovery, DLQ handling, ECS max capacity and SQS visibility timeout); ARCHITECTURE.md has Implementation section linking to IMPLEMENTATION_PLAN.md and RUNBOOKS.md; IMPLEMENTATION_PLAN.md Principles reference ARCHITECTURE.md.
 
 **Principles:**
 
 - Implement in dependency order: shared-types → workers & Lambda → web-ui → full AWS (ECS, data plane).
 - Add unit tests and markdown docs in the same step as the feature.
 - Verify with Nx tasks and automated tests where possible.
+- Design and data flow are described in [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ---
 
@@ -359,9 +360,9 @@ nx run aws-infra:terraform-plan
 
 **A/C:**
 
-- [ ] At least one automated flow covers job creation → completed.
-- [ ] Reassembly idempotency: two reassembly messages for same job_id result in exactly one reassembly run and one final.mp4.
-- [ ] docs/TESTING.md describes how to run all tests (including integration).
+- [x] At least one automated flow covers job creation → completed.
+- [x] Reassembly idempotency: two reassembly messages for same job_id result in exactly one reassembly run and one final.mp4.
+- [x] docs/TESTING.md describes how to run all tests (including integration).
 
 **Verification:**
 
@@ -384,9 +385,9 @@ nx run integration:test
 
 **A/C:**
 
-- [ ] Chunking failure recovery is repeatable via a script or a fully specified procedure in RUNBOOKS.md.
-- [ ] RUNBOOKS.md exists and covers chunking recovery, DLQ, and scaling.
-- [ ] ARCHITECTURE.md and IMPLEMENTATION_PLAN.md reference each other.
+- [x] Chunking failure recovery is repeatable via a script or a fully specified procedure in RUNBOOKS.md.
+- [x] RUNBOOKS.md exists and covers chunking recovery, DLQ, and scaling.
+- [x] ARCHITECTURE.md and IMPLEMENTATION_PLAN.md reference each other.
 
 **Verification:**
 

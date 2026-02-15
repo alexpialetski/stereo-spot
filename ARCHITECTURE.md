@@ -4,6 +4,11 @@ This architecture is designed for
 
 > **Implementation:** For an incremental build plan with steps, acceptance criteria, and verification, see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
+### Implementation
+
+- **Build plan:** [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — incremental steps, acceptance criteria, and verification for each phase.
+- **Runbooks:** [docs/RUNBOOKS.md](docs/RUNBOOKS.md) — chunking failure recovery, DLQ handling, and ECS/SQS scaling.
+
 It leverages **ECS (Elastic Container Service)** with **Fargate** for CPU workloads and **EC2 launch type** for GPU (video-worker), and **NX** for shared logic between your UI and Infrastructure-as-Code (IaC).
 
 🏗️ NX Monorepo Structure

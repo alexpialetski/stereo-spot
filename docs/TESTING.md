@@ -1,14 +1,37 @@
 # Testing
 
-This document describes how to run unit tests and the data-plane smoke test. For end-to-end and integration tests (Phase 5), see [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+This document describes how to run unit tests, the data-plane smoke test, and integration tests.
 
 ## Unit tests
 
 - **shared-types:** `nx run shared-types:test` (pytest)
 - **aws-adapters:** `nx run aws-adapters:test` (pytest with moto; no real AWS)
+- **web-ui, media-worker, video-worker, reassembly-trigger:** `nx run <project>:test`
 - Run all tests: `nx run-many -t test`
 
 Unit tests do not require AWS credentials. aws-adapters tests use **moto** to mock DynamoDB, SQS, and S3.
+
+## Integration tests (Step 5.1)
+
+The **`packages/integration`** package contains end-to-end and integration tests that run the full pipeline against **moto** (no real AWS or LocalStack).
+
+**What they cover:**
+
+1. **E2E pipeline:** Create job via API → upload source → chunking → video-worker (stub) → reassembly trigger (simulated) → reassembly → Job completed and `final.mp4` exists.
+2. **Reassembly idempotency:** Two reassembly messages for the same job_id → exactly one reassembly run produces `final.mp4`; the other skips (conditional update on ReassemblyTriggered fails) and deletes the message without overwriting.
+
+**Prerequisites:**
+
+- **ffmpeg** on `PATH` (E2E and idempotency tests are skipped if not found).
+- No AWS credentials (moto is used).
+
+**How to run:**
+
+```bash
+nx run integration:test
+```
+
+In CI, run `nx run integration:test` when integration is enabled (e.g. on every PR). Use `nx run-many -t test` to run unit tests for all projects; add `integration:test` to the same workflow or run it when integration is enabled (env or flag).
 
 ## Data plane smoke test (Step 2.3)
 
