@@ -106,7 +106,7 @@ resource "aws_iam_role_policy" "media_worker_task" {
   })
 }
 
-# Video worker: S3, DynamoDB SegmentCompletions, SQS video-worker
+# Video worker: S3, DynamoDB SegmentCompletions, SQS video-worker, SageMaker InvokeEndpoint
 resource "aws_iam_role" "video_worker_task" {
   name               = "${local.name}-video-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
@@ -133,6 +133,11 @@ resource "aws_iam_role_policy" "video_worker_task" {
         Effect   = "Allow"
         Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
         Resource = [aws_sqs_queue.video_worker.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sagemaker:InvokeEndpoint"]
+        Resource = [aws_sagemaker_endpoint.stereocrafter.arn]
       }
     ]
   })
@@ -265,7 +270,10 @@ locals {
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
-    { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url }
+    { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url },
+    { name = "INFERENCE_BACKEND", value = "sagemaker" },
+    { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.stereocrafter.name },
+    { name = "SAGEMAKER_REGION", value = local.region }
   ])
 }
 
@@ -327,10 +335,11 @@ resource "aws_ecs_task_definition" "media_worker" {
   tags = local.common_tags
 }
 
+# Video-worker runs on Fargate (thin client); inference is on SageMaker.
 resource "aws_ecs_task_definition" "video_worker" {
   family                   = "video-worker"
   network_mode             = "awsvpc"
-  requires_compatibilities = ["EC2"]
+  requires_compatibilities = ["FARGATE"]
   cpu                      = var.ecs_video_worker_cpu
   memory                   = var.ecs_video_worker_memory
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
@@ -341,9 +350,6 @@ resource "aws_ecs_task_definition" "video_worker" {
     image       = local.video_worker_image
     essential   = true
     environment = local.video_worker_env
-    resourceRequirements = [
-      { type = "GPU", value = "1" }
-    ]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -415,14 +421,13 @@ resource "aws_ecs_service" "media_worker" {
   tags = local.common_tags
 }
 
-# Video-worker: EC2 launch type. Requires EC2 capacity with GPU (see README for ASG/capacity provider setup).
-# For initial apply without GPU capacity, set desired_count = 0; add EC2 capacity and scale up later.
+# Video-worker: Fargate (thin client; inference on SageMaker).
 resource "aws_ecs_service" "video_worker" {
   name            = "video-worker"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.video_worker.arn
   desired_count   = 0
-  launch_type     = "EC2"
+  launch_type     = "FARGATE"
 
   network_configuration {
     subnets          = module.vpc.private_subnets

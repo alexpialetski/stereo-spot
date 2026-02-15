@@ -10,25 +10,21 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from stereo_spot_shared import JobStatus, build_segment_key
-
 from media_worker.chunking import process_one_chunking_message
 from media_worker.reassembly import process_one_reassembly_message
 from reassembly_trigger.handler import process_job_id
 from stereo_spot_aws_adapters.env_config import (
     chunking_queue_receiver_from_env,
     chunking_queue_sender_from_env,
-    input_bucket_name,
     job_store_from_env,
     object_storage_from_env,
-    output_bucket_name,
     reassembly_queue_receiver_from_env,
-    reassembly_queue_sender_from_env,
     reassembly_triggered_lock_from_env,
     segment_completion_store_from_env,
     video_worker_queue_receiver_from_env,
     video_worker_queue_sender_from_env,
 )
+from stereo_spot_shared import JobStatus, build_segment_key
 from stereo_spot_web_ui.main import app
 from video_worker.runner import process_one_message
 

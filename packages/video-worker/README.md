@@ -1,30 +1,19 @@
 # Video worker
 
-Consumes the **video-worker SQS queue** (raw S3 event notifications for segment uploads). Parses the segment key via **shared-types** `parse_segment_key`, downloads the segment from the input bucket, runs **inference** (stub: copy pass-through for now; StereoCrafter or other model later), uploads the result to the output bucket at `jobs/{job_id}/segments/{segment_index}.mp4`, and writes a **SegmentCompletion** to DynamoDB.
+Consumes the **video-worker SQS queue** (raw S3 event notifications for segment uploads). Parses the segment key via **shared-types** `parse_segment_key`. Inference is **backend-switchable**: **`INFERENCE_BACKEND=stub`** (default) downloads segment, runs stub, uploads result; **`INFERENCE_BACKEND=sagemaker`** invokes a SageMaker endpoint with S3 URIs (endpoint writes result to S3; no download/upload by the worker). Writes **SegmentCompletion** to DynamoDB.
 
 ## Behaviour
 
 1. **Receive message** — Long-poll the video-worker queue. Message body is the S3 event JSON (segment object created in input bucket).
 2. **Parse** — Use **`parse_segment_key(bucket, key)`** from shared-types to get `VideoWorkerPayload` (job_id, segment_index, total_segments, segment_s3_uri, mode). Invalid or non-segment keys are skipped.
-3. **Download** — Download segment bytes from the segment S3 URI (input bucket).
-4. **Inference** — Run the configured model. **Stub:** `process_segment(bytes) -> bytes` returns input unchanged (no GPU). Replace with a real model (e.g. StereoCrafter) by swapping the implementation (env-driven or plugin).
-5. **Upload** — Upload result to output bucket at **`jobs/{job_id}/segments/{segment_index}.mp4`**.
-6. **Record** — Put **SegmentCompletion** (job_id, segment_index, output_s3_uri, completed_at, total_segments) to SegmentCompletionStore (DynamoDB). Reassembly trigger and media-worker use this.
-7. **Delete message** — Delete the SQS message on success.
+3. **Inference** — **Stub:** download segment, run `process_segment(bytes) -> bytes`, upload to **`jobs/{job_id}/segments/{segment_index}.mp4`**. **SageMaker:** call `InvokeEndpoint` with S3 URIs; endpoint writes result to that key (no download/upload by worker).
+4. **Record** — Put **SegmentCompletion** (job_id, segment_index, output_s3_uri, completed_at, total_segments) to SegmentCompletionStore (DynamoDB).
+5. **Delete message** — Delete the SQS message on success.
 
 All segment key parsing uses **shared-types** only; no duplicate logic. Output key format is defined in this package (`build_output_segment_key`).
 
-## Model swapping (later)
-
-The stub allows the pipeline to run without GPU. To add StereoCrafter or another model:
-
-- Replace or wrap `process_segment` (e.g. in a small `model_` module) with an implementation that decodes video, runs inference, encodes output.
-- Use env (e.g. `MODEL=stereocrafter`) or a factory to choose the implementation at startup.
-- Keep the runner and queue logic unchanged; only the “process bytes → bytes” step is swappable.
 
 ## Environment variables
-
-Same as **aws-adapters** when using env-based wiring:
 
 | Env var | Description |
 |---------|-------------|
@@ -32,8 +21,13 @@ Same as **aws-adapters** when using env-based wiring:
 | `OUTPUT_BUCKET_NAME` | S3 output bucket (segment outputs, final.mp4) |
 | `SEGMENT_COMPLETIONS_TABLE_NAME` | DynamoDB SegmentCompletions table |
 | `VIDEO_WORKER_QUEUE_URL` | SQS video-worker queue URL |
+| `INFERENCE_BACKEND` | `stub` (default) or `sagemaker` |
+| `SAGEMAKER_ENDPOINT_NAME` | Required when `INFERENCE_BACKEND=sagemaker`; SageMaker endpoint name |
+| `SAGEMAKER_REGION` | (Optional) AWS region for the endpoint; defaults to task region |
 | `AWS_REGION` | (Optional) AWS region |
 | `AWS_ENDPOINT_URL` | (Optional) e.g. LocalStack |
+
+**Segment size and timeout:** When using SageMaker, segment processing time is dominated by the endpoint. Set the video-worker SQS **visibility timeout** to at least 2–3× the expected end-to-end time (e.g. 15–20 minutes for ~5 min segments).
 
 ## Local run
 

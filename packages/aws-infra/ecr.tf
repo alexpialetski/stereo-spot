@@ -40,3 +40,18 @@ resource "aws_ecr_repository" "video_worker" {
     Name = "${local.name}-video-worker"
   })
 }
+
+# SageMaker inference container (StereoCrafter). Push image here; SageMaker model references it.
+resource "aws_ecr_repository" "stereocrafter_sagemaker" {
+  name                 = "${local.name}-stereocrafter-sagemaker"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-stereocrafter-sagemaker"
+  })
+}

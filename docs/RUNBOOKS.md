@@ -126,4 +126,31 @@ Visibility timeout is set per queue in Terraform (`packages/aws-infra/sqs.tf`):
 - **Video-worker:** 1800 seconds (30 min) — GPU segment processing.
 - **Reassembly:** 600 seconds (10 min).
 
-If a worker regularly needs more time than the visibility timeout, increase the value in `sqs.tf` and run `terraform apply`. Visibility timeout should be at least as long as the maximum time a single message might be processed (otherwise the message can become visible again and be processed twice).
+If a worker regularly needs more time than the visibility timeout, increase the value in `sqs.tf` and run `terraform apply`. Visibility timeout should be at least as long as the maximum time a single message might be processed (otherwise the message can become visible again and be processed twice). For **video-worker** with SageMaker, the end-to-end time is dominated by the endpoint; use at least 2–3× the expected segment processing time (e.g. 15–20 min for ~5 min segments).
+
+---
+
+## 4. SageMaker endpoint update and HF token rotation
+
+### Updating the SageMaker inference image
+
+After building and pushing a new StereoCrafter inference image to ECR:
+
+1. **Create a new endpoint configuration** (or update in Terraform with the same image tag) so SageMaker uses the new image. If you use Terraform with `ecs_image_tag` (e.g. `latest`), re-pushing the same tag and running **update-endpoint** is enough.
+2. **Update the endpoint** to use the new configuration:
+   ```bash
+   aws sagemaker update-endpoint --endpoint-name <SAGEMAKER_ENDPOINT_NAME> --endpoint-config-name <new_config_name>
+   ```
+   Or with Terraform: change the endpoint config (e.g. new image tag), apply, then update the endpoint in the console or via CLI to point to the new config.
+
+The endpoint will roll to the new config; in-flight invocations may complete on the old instance.
+
+### Rotating the Hugging Face token
+
+The SageMaker container reads the HF token from **Secrets Manager** (secret ARN in env `HF_TOKEN_ARN`). To rotate the token:
+
+1. **Put a new secret value:**
+   ```bash
+   aws secretsmanager put-secret-value --secret-id <hf_token_secret_arn> --secret-string '{"token":"hf_NEW_TOKEN"}'
+   ```
+2. **Redeploy the SageMaker endpoint** so new instances pull the updated secret (e.g. update-endpoint with the same config, or scale to 0 then back to 1). Existing instances keep the old value until replaced.

@@ -9,7 +9,7 @@ This architecture is designed for
 - **Build plan:** [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — incremental steps, acceptance criteria, and verification for each phase.
 - **Runbooks:** [docs/RUNBOOKS.md](docs/RUNBOOKS.md) — chunking failure recovery, DLQ handling, and ECS/SQS scaling.
 
-It leverages **ECS (Elastic Container Service)** with **Fargate** for CPU workloads and **EC2 launch type** for GPU (video-worker), and **NX** for shared logic between your UI and Infrastructure-as-Code (IaC).
+It leverages **ECS (Elastic Container Service)** with **Fargate** for all app workloads (web-ui, media-worker, video-worker) and **SageMaker** for GPU inference (StereoCrafter); **NX** provides shared logic between your UI and Infrastructure-as-Code (IaC).
 
 🏗️ NX Monorepo Structure
 
@@ -17,15 +17,16 @@ Using NX, you unify your frontend, cloud infrastructure, and worker logic. All p
 
 - `packages/web-ui`: **FastAPI** app (Python) **deployed on ECS Fargate**; **server-rendered UI** (Jinja2 templates). Serves HTML pages for the dashboard, job list, and playback; form POST for job creation (redirect to page with upload URL). Talks to AWS (S3, DynamoDB) via **IAM task role** for presigned URLs, uploads, and listing. See Web UI below.
 - `packages/media-worker`: **Single package and Docker image** for all CPU/ffmpeg work: **chunking** (split source with ffmpeg, upload segments to S3) and **reassembly** (ffmpeg concat to produce final 3D file). Consumes both the chunking and reassembly SQS queues in one process (two threads). Runs on **ECS Fargate**; scaled by **Application Auto Scaling** on SQS queue depth (chunking + reassembly). Saves storage (~600MB one image instead of two). See Chunking and Reassembly below.
-- `packages/video-worker`: Python/PyTorch container. Default model is **StereoCrafter**; the worker is designed so the inference model can be swapped (e.g. different stereo/depth models) without changing the pipeline. Runs on **ECS EC2** (GPU instances, Spot + on-demand).
+- `packages/video-worker`: **Thin client** (Python container). Pulls messages from the video-worker queue, passes segment S3 URI and canonical output S3 URI to a **SageMaker** real-time endpoint; the endpoint runs **StereoCrafter** (or swappable model) and writes the stereo segment directly to that output key. The video-worker then writes the SegmentCompletion record. Runs on **ECS Fargate** (no GPU). See The Video Worker below.
+- `packages/stereocrafter-sagemaker` (or equivalent): Custom **SageMaker inference container** (CUDA, StereoCrafter two-stage pipeline). Model weights are downloaded from Hugging Face at endpoint startup; **Secrets Manager** holds the HF token. The handler receives `s3_input_uri` and `s3_output_uri`, runs inference, and writes the result to the given S3 key. Deployed as a SageMaker model and endpoint via Terraform; image pushed to ECR.
 - `packages/shared-types`: **Python library** (no Docker image). Single source of truth for job, segment, and message shapes used across the pipeline. Defines **Pydantic** models for Jobs, queue payloads, DynamoDB record shapes, and API DTOs. Consumed by `web-ui`, `media-worker`, `video-worker`, and by Lambda (e.g. reassembly trigger, S3 enrichment) when implemented in Python. See Shared types and library below.
 - `packages/aws-infra-setup`: Terraform backend project that provisions the state file (S3 bucket, DynamoDB for locking). Uses the **nx-terraform** plugin (automatic project discovery and inferred tasks for init, plan, apply, destroy, validate, fmt, output). Linked to `aws-infra`. See [nx-terraform](https://alexpialetski.github.io/nx-terraform/) for documentation.
-- `packages/aws-infra`: Terraform project containing the actual AWS infrastructure: S3, SQS, DynamoDB, Lambda, **ECS cluster**, **ECR**, **task definitions and services** (Fargate for web-ui and media-worker, EC2 for video-worker), **ALB**. Uses **nx-terraform** with a backend dependency on `aws-infra-setup`; Nx ensures correct execution order and dependency graph.
+- `packages/aws-infra`: Terraform project containing the actual AWS infrastructure: S3, SQS, DynamoDB, Lambda, **ECS cluster**, **ECR**, **task definitions and services** (Fargate for web-ui, media-worker, and video-worker), **SageMaker** (model, endpoint config, endpoint for StereoCrafter), **ALB**, **Secrets Manager** (e.g. HF token for SageMaker). Uses **nx-terraform** with a backend dependency on `aws-infra-setup`; Nx ensures correct execution order and dependency graph.
 - `packages/reassembly-trigger`: **Python Lambda** (no separate Nx app folder required if small; can live under `packages/reassembly-trigger`). Consumes DynamoDB Streams from SegmentCompletions and sends `job_id` to the Reassembly SQS queue when the last segment is done. Depends on `shared-types`; CI bundles shared-types into the Lambda deployment package (e.g. `pip install -t . ../shared-types` then zip). Deployed via Terraform.
 
 To add Google Cloud later, add separate packages: `packages/google-infra-setup` (state) and `packages/google-infra` (GCP resources), following the same nx-terraform pattern.
 
-**Portability and cloud abstractions:** To avoid vendor lock-in and simplify a future GCP (or other cloud) deployment, use **abstractions from the beginning**. Pipeline logic uses **shared-types** and thin interfaces (e.g. in `packages/shared-types`) for: **job store** (get/put/update job), **segment-completion store** (put completion, query by job ordered by segment_index), **queues** (send/receive messages), and **object storage** (presign upload/download, upload/download). **AWS** implementations live in **packages/aws-adapters** (DynamoDB, SQS, S3). **Compute** is cloud-specific: on AWS we use ECS (Fargate + EC2); on GCP you would use Cloud Run and/or GKE with the same container images and env-based config. Add **GCP** implementations later (e.g. Firestore, Pub/Sub, GCS) behind the same interfaces. App and workers depend on the abstractions and get the implementation by config (e.g. `STORAGE_ADAPTER=aws`). Terraform remains per-cloud; application and worker code stay the same.
+**Portability and cloud abstractions:** To avoid vendor lock-in and simplify a future GCP (or other cloud) deployment, use **abstractions from the beginning**. Pipeline logic uses **shared-types** and thin interfaces (e.g. in `packages/shared-types`) for: **job store** (get/put/update job), **segment-completion store** (put completion, query by job ordered by segment_index), **queues** (send/receive messages), and **object storage** (presign upload/download, upload/download). **AWS** implementations live in **packages/aws-adapters** (DynamoDB, SQS, S3). **Compute** is cloud-specific: on AWS we use ECS Fargate for all workloads and **SageMaker** for GPU inference; on GCP you would use Cloud Run and/or GKE with the same container images, plus a GCP equivalent for the inference endpoint (e.g. Vertex AI), and env-based config. Add **GCP** implementations later (e.g. Firestore, Pub/Sub, GCS) behind the same interfaces. App and workers depend on the abstractions and get the implementation by config (e.g. `STORAGE_ADAPTER=aws`). Terraform remains per-cloud; application and worker code stay the same.
 
 ---
 
@@ -97,9 +98,12 @@ flowchart TB
             subgraph ECS["ECS Cluster"]
                 WebUI[web-ui Fargate]
                 MediaW[media-worker Fargate]
-                VideoW[video-worker EC2 GPU]
+                VideoW[video-worker Fargate]
             end
         end
+
+        SageMaker[SageMaker\nStereoCrafter endpoint]
+        ECR[(ECR)]
 
         subgraph Storage["S3"]
             InputBucket[(input bucket)]
@@ -119,7 +123,6 @@ flowchart TB
         end
 
         Lambda[Lambda\nreassembly trigger]
-        ECR[(ECR)]
     end
 
     User -->|HTTPS| ALB
@@ -133,7 +136,8 @@ flowchart TB
     MediaW -->|upload segments| InputBucket
     InputBucket -->|S3 event| VideoQ
     VideoW -->|pull| VideoQ
-    VideoW -->|read/write| OutputBucket
+    VideoW -->|InvokeEndpoint| SageMaker
+    SageMaker -->|read segment, write result| OutputBucket
     VideoW -->|write| SegCompl
     SegCompl -->|DynamoDB Stream| Lambda
     Lambda -->|send job_id| ReassQ
@@ -157,15 +161,15 @@ flowchart TB
 
 1.  **Storage (S3) and key layout:**
     - **Input bucket** (`s3://input-bucket/`): User uploads full MP4 to `input/{job_id}/source.mp4`. **S3 event notifications** are configured for **`s3:ObjectCreated:*`** (e.g. Put, CompleteMultipartUpload). Use **two S3 event notifications** (or prefix/suffix filters) so routing is explicit: (1) **prefix `input/`**, suffix `.mp4` → **chunking SQS queue**; (2) **prefix `segments/`**, suffix `.mp4` → **video-worker SQS queue**. No Lambda. Duplicate S3 events are possible and are handled by idempotent processing (deterministic keys and overwrites). The **media-worker** uploads segment files to the **same bucket** under the **canonical segment key** `segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4` (e.g. `segments/job-abc/00042_00100_anaglyph.mp4`); those uploads trigger (2) and go to the video-worker queue (see S3 → video-worker path below).
-    - **Output bucket** (`s3://output-bucket/`): Video workers write segment outputs to `jobs/{job_id}/segments/{segment_index}.mp4`; the **media-worker** (reassembly) writes the final file to `jobs/{job_id}/final.mp4`. An **S3 lifecycle rule** on this bucket expires objects under the `jobs/*/segments/` prefix after **1 day**; `jobs/{job_id}/final.mp4` is not affected.
+    - **Output bucket** (`s3://output-bucket/`): The **SageMaker** endpoint writes segment outputs to `jobs/{job_id}/segments/{segment_index}.mp4` (at the video-worker's request, passing the canonical output URI); the **video-worker** writes only the SegmentCompletion record to DynamoDB. The **media-worker** (reassembly) writes the final file to `jobs/{job_id}/final.mp4`. An **S3 lifecycle rule** on this bucket expires objects under the `jobs/*/segments/` prefix after **1 day**; `jobs/{job_id}/final.mp4` is not affected.
     - **Summary:** One input bucket (prefixes `input/`, `segments/`); one output bucket (prefix `jobs/`). All keys are deterministic so idempotency and routing are straightforward.
-2.  **Orchestration (SQS + EKS):**
+2.  **Orchestration (SQS + ECS):**
     - **Two S3 event flows (both S3 → SQS direct, no Lambda):** (1) **Full-file upload** → S3 event notification → **chunking queue** → media-worker (parses `job_id` from key and fetches `mode` from DynamoDB). (2) **Segment-file upload** (by media-worker) → S3 event notification → **video-worker queue** (see S3 → video-worker path below).
-    - **KEDA** scales the **media-worker** Deployment based on both chunking and reassembly queue depths (two triggers) and the **video-worker** Deployment on its queue; **Karpenter** provisions **GPU Spot Instances** (e.g., `g4dn` or `g5`) when video-worker pods are pending.
-    - **Capacity (single region):** Primary capacity is **GPU Spot** (Karpenter). Configure an **on-demand fallback** (e.g. same node class with on-demand or a second NodePool) so jobs can progress when Spot is unavailable. Set **max scale** (e.g. max GPU nodes) appropriately. **Video-worker SQS visibility timeout** must be at least **2–3×** the expected segment processing time (e.g. 15–20 minutes for ~5 min segments) so messages do not become visible before the worker finishes; align KEDA scale-down delay with this so pods are not removed while messages are in flight. **Multi-region** is not in scope for now (single-user / personal use); add only if needed for availability or Spot diversity.
+    - **Application Auto Scaling** scales the **media-worker** ECS service on chunking + reassembly queue depth and the **video-worker** ECS service on the video-worker queue depth. GPU inference runs on a **SageMaker** real-time endpoint (e.g. `ml.g4dn.xlarge` or `ml.g5.xlarge`); scale the endpoint or use SageMaker Serverless as needed.
+    - **Capacity (single region):** **Video-worker SQS visibility timeout** must be at least **2–3×** the expected end-to-end segment processing time (video-worker → SageMaker invoke → SageMaker writes to S3), e.g. 15–20 minutes for ~5 min segments, so messages do not become visible before the pipeline finishes. **Multi-region** is not in scope for now (single-user / personal use); add only if needed for availability.
 3.  **S3 event → video-worker path:**
     - **S3 → SQS direct only** (no Lambda). Segment objects uploaded by the media-worker trigger S3 event notifications to the **video-worker SQS queue**; the message is the raw S3 event (bucket, key). The **segment key parser is implemented only in `shared-types`**; the video-worker (and media-worker when building keys) calls that library. No duplicate parsing logic in workers. The parser takes bucket + key and returns the canonical payload (`job_id`, `segment_index`, `total_segments`, `mode`, `segment_s3_uri`).
-    - **Duplicate S3 events:** Processing is **idempotent**. The video-worker writes output to a deterministic path (`jobs/{job_id}/segments/{segment_index}.mp4`) and SegmentCompletions is updated once per segment; duplicate events may cause duplicate messages but reprocessing overwrites the same segment output and does not corrupt state.
+    - **Duplicate S3 events:** Processing is **idempotent**. The SageMaker endpoint writes output to the deterministic path (`jobs/{job_id}/segments/{segment_index}.mp4`) and the video-worker writes SegmentCompletions once per segment; duplicate events may cause duplicate messages but reprocessing overwrites the same segment output and does not corrupt state.
 
 ```mermaid
 flowchart LR
@@ -189,17 +193,17 @@ flowchart LR
     - **Media-worker** handles chunking in one thread: **chunk** (ffmpeg, keyframe-aligned, e.g. ~50MB / ~5 min) and **upload** segment files to S3. Does **not** publish segment messages to SQS; it only writes segment objects. Segment keys and/or object metadata carry job_id, segment_index, total_segments, mode for the S3 → video-worker path.
     - **Chunking message (input source):** The chunking queue receives the **raw S3 event** (bucket, key). The **media-worker** (chunking thread) extracts the **input S3 URI** from the event, **parses `job_id`** from the key (`input/{job_id}/source.mp4`), **fetches `mode`** from the DynamoDB Jobs table, then **updates the Job to `status: chunking_in_progress`** (so recovery tools can find stuck jobs), downloads the source, runs ffmpeg to split, and uploads segments to S3 using the **canonical segment key** `segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4`. After chunking completes, the worker performs a **single atomic DynamoDB UpdateItem** that sets **`total_segments`** and **`status: chunking_complete`** (and optionally `chunking_completed_at`) on the Job record in one operation. Use a condition (e.g. `status = chunking_in_progress` or `created`) so the final update only applies when the job is in the expected state.
     - **Failure and retries:** Chunking is **idempotent**: segment keys are deterministic (the canonical format above). On failure, the message returns to the queue after visibility timeout and is retried; the worker may re-upload and overwrite the same segment objects. Downstream (video-worker) handles duplicate segment events via idempotent segment processing. No explicit cleanup of partial segments is required for correctness; optional enhancement is a "chunking started" marker and cleanup on retry.
-5.  **The Video Worker (Custom Docker Image):**
-    - The pod pulls a message, identifies the `mode` (Anaglyph vs. SBS), and downloads the video segment to **local NVMe instance store** (e.g. on g4dn) for fast read. The default inference model is **StereoCrafter**; the worker is designed so the model can be swapped (e.g. different stereo/depth models) without changing the pipeline. **Sizing:** Assume roughly a few minutes wall-clock per ~5 min segment on a typical GPU (e.g. g4dn.xlarge); use this to tune segment length and Karpenter max GPU nodes (see StereoCrafter or model docs for benchmarks).
+5.  **The Video Worker (Thin client + SageMaker):**
+    - The video-worker (Fargate) pulls a message, parses the segment payload via shared-types, and builds the canonical output URI `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4`. It calls **SageMaker InvokeEndpoint** with JSON `{"s3_input_uri": "<segment_uri>", "s3_output_uri": "<canonical_output_uri>"}`. The **SageMaker endpoint** (custom container running StereoCrafter) reads the segment from S3, runs the two-stage pipeline (depth splatting → inpainting), and **writes the stereo segment directly to the given s3_output_uri**. The video-worker does not upload segment bytes; after a successful response it writes the **SegmentCompletion** record to DynamoDB. **Sizing:** Segment processing time is dominated by SageMaker (e.g. a few minutes wall-clock per ~5 min segment on a typical GPU instance); set SQS visibility timeout and endpoint capacity accordingly (see IMPLEMENTATION_PLAN and StereoCrafter docs).
 6.  **Job and segment model:**
     - **Job** = one movie conversion (one input file → one output 3D file). Has `job_id`, `mode` (anaglyph | sbs), etc.
     - **Segment** = one chunk of that movie (e.g. 50MB / ~5 min), produced by the media-worker as a **segment file** in S3. S3 events (or Lambda) produce one message per segment for the video-worker queue; message or object key/metadata carries `job_id`, `segment_index`, `total_segments`, segment S3 URI, `mode`.
     - **Standard SQS** (not FIFO) for higher throughput. Ordering enforced at reassembly by `segment_index`; workers process segments in any order.
 7.  **Reassembly (DynamoDB Streams):**
-    - Video workers write segment outputs to `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4` and write a record to the **SegmentCompletions** DynamoDB table (`job_id`, `segment_index`, `output_s3_uri`, `completed_at`). The table uses **`job_id` as partition key** and **`segment_index` as sort key**, so a Query by `job_id` returns segments in order and the media-worker can build the concat list without application-side sorting. **`total_segments`** and **`status: chunking_complete`** for a job are set by the **media-worker** (chunking) when it finishes (written to the Job record in DynamoDB). The reassembly Lambda uses both: it triggers only when the Job has **chunking_complete** (and thus `total_segments` set) and the count of SegmentCompletions for that `job_id` equals `total_segments`.
+    - The **SageMaker** endpoint writes segment outputs to `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4` (at the video-worker's request); the **video-worker** writes a record to the **SegmentCompletions** DynamoDB table (`job_id`, `segment_index`, `output_s3_uri`, `completed_at`). The table uses **`job_id` as partition key** and **`segment_index` as sort key**, so a Query by `job_id` returns segments in order and the media-worker can build the concat list without application-side sorting. **`total_segments`** and **`status: chunking_complete`** for a job are set by the **media-worker** (chunking) when it finishes (written to the Job record in DynamoDB). The reassembly Lambda uses both: it triggers only when the Job has **chunking_complete** (and thus `total_segments` set) and the count of SegmentCompletions for that `job_id` equals `total_segments`.
     - **Reassembly trigger:** A **DynamoDB Stream** is attached to the SegmentCompletions table. A **Lambda** function is invoked on batches of new records. It processes each batch fully: for each distinct `job_id` in the batch, it fetches the Job record (`total_segments`, `status`) and counts SegmentCompletions for that `job_id`. It **only considers triggering when** the Job has `status: chunking_complete` and the count equals `total_segments`. When that condition holds, the Lambda performs a **conditional write** to the **ReassemblyTriggered** table (see DynamoDB tables below) only if the item does not exist; if the write succeeds, it sends `job_id` to the Reassembly SQS queue; if the condition fails (already triggered), it skips sending. **Idempotency:** DynamoDB Streams can deliver the same change more than once; the conditional write ensures at most one reassembly message per job. Set Lambda **timeout** (e.g. ≥ 30 s) and **reserved concurrency** (e.g. low) to handle batches and avoid thundering herd when many segments complete at once. **Future improvement:** Consider replacing the Lambda with an in-cluster consumer (e.g. a Deployment that reads DynamoDB Streams or polls) to reduce Lambda invocation volume and to simplify a future GCP port (e.g. Firestore change listeners or a poller).
     - **Chunking failure recovery:** If the media-worker crashes after uploading segments but before writing `total_segments` / `chunking_complete`, reassembly would never trigger. **V1 — manual recovery:** Document the procedure: list S3 prefix `segments/{job_id}/`, derive `total_segments` from the max `segment_index` in the key pattern (or key parser in shared-types), then perform a single DynamoDB UpdateItem on the Job to set `total_segments` and `status: chunking_complete` so the existing Stream logic can trigger reassembly. **Future enhancement:** A small periodic "janitor" (e.g. Lambda on schedule or in-cluster CronJob) that finds Jobs stuck in `chunking_in_progress` (or similar) older than a threshold, lists `segments/{job_id}/` in S3, infers `total_segments` consistently, and updates the Job as above.
-    - The **media-worker** (reassembly thread, same EKS cluster, CPU-only Deployment scaled by KEDA on chunking and reassembly queues) pulls the message, **builds the segment list from DynamoDB**: it queries **SegmentCompletions** by `job_id` ordered by `segment_index`, and uses `output_s3_uri` (or the deterministic path `jobs/{job_id}/segments/{segment_index}.mp4`) to build the ffmpeg concat list. It does **not** discover segments by listing S3 (to avoid races). Optionally it verifies each segment object exists in S3 before concat. Output: `s3://output-bucket/jobs/{job_id}/final.mp4`. After success, the worker **updates the Job record to `status: completed`** (and optionally `final_s3_uri`, `completed_at`) so "list available movies" uses DynamoDB as source of truth. **Segment object retention:** Segment objects in the output bucket (`jobs/{job_id}/segments/`) are retained for **1 day** via an **S3 lifecycle rule** (expire after 1 day); `jobs/{job_id}/final.mp4` is not affected. **Idempotency:** Standard SQS can deliver duplicate or out-of-order messages. The reassembly worker uses the **ReassemblyTriggered** table as a lock: the Lambda has already created the item (conditional create). The worker does a **conditional update** (e.g. set `reassembly_started_at` only if the item exists and that attribute is absent) so only one worker proceeds; if the update fails (another worker started), it skips and deletes the message. On success it builds the concat list, writes `final.mp4`, updates the Job to `status: completed`, then deletes the message. It also checks if `final.mp4` already exists and skips concat if so (updating Job status if needed). Lambda is not used for the concat itself because the final file can be large—a CPU worker is simpler and more predictable.
+    - The **media-worker** (reassembly thread, same ECS cluster, CPU-only Fargate service scaled by Application Auto Scaling on chunking and reassembly queues) pulls the message, **builds the segment list from DynamoDB**: it queries **SegmentCompletions** by `job_id` ordered by `segment_index`, and uses `output_s3_uri` (or the deterministic path `jobs/{job_id}/segments/{segment_index}.mp4`) to build the ffmpeg concat list. It does **not** discover segments by listing S3 (to avoid races). Optionally it verifies each segment object exists in S3 before concat. Output: `s3://output-bucket/jobs/{job_id}/final.mp4`. After success, the worker **updates the Job record to `status: completed`** (and optionally `final_s3_uri`, `completed_at`) so "list available movies" uses DynamoDB as source of truth. **Segment object retention:** Segment objects in the output bucket (`jobs/{job_id}/segments/`) are retained for **1 day** via an **S3 lifecycle rule** (expire after 1 day); `jobs/{job_id}/final.mp4` is not affected. **Idempotency:** Standard SQS can deliver duplicate or out-of-order messages. The reassembly worker uses the **ReassemblyTriggered** table as a lock: the Lambda has already created the item (conditional create). The worker does a **conditional update** (e.g. set `reassembly_started_at` only if the item exists and that attribute is absent) so only one worker proceeds; if the update fails (another worker started), it skips and deletes the message. On success it builds the concat list, writes `final.mp4`, updates the Job to `status: completed`, then deletes the message. It also checks if `final.mp4` already exists and skips concat if so (updating Job status if needed). Lambda is not used for the concat itself because the final file can be large—a CPU worker is simpler and more predictable.
 
 ```mermaid
 flowchart LR
@@ -218,7 +222,7 @@ flowchart LR
         RW[media-worker]
     end
 
-    VW -->|write segment + record| SC
+    VW -->|write record| SC
     SC --> DS
     DS --> Lambda
     Lambda -->|last segment?| RQ
@@ -240,7 +244,8 @@ flowchart LR
     subgraph Video["3. 3D processing"]
         E -->|S3 event| F[video-worker queue]
         F --> G[video-workers]
-        G -->|segment outputs| H[(output bucket)]
+        G -->|InvokeEndpoint| SM[SageMaker]
+        SM -->|segment outputs| H[(output bucket)]
         G -->|record| I[(SegmentCompletions)]
     end
     subgraph Reass["4. Reassembly"]
@@ -277,7 +282,7 @@ flowchart TB
         end
         subgraph Workers["Workers"]
             MediaW[media-worker Fargate\nscale on SQS]
-            VideoW[video-worker EC2 GPU\nscale on SQS]
+            VideoW[video-worker Fargate\nscale on SQS]
         end
         ALB --> WebUI
     end
@@ -292,12 +297,13 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Infra["Infra"]
-        Tf[Terraform apply\nS3, SQS, DDB, ECR, Lambda\nECS cluster, tasks, services, ALB]
+        Tf[Terraform apply\nS3, SQS, DDB, ECR, Lambda\nECS cluster, tasks, services\nSageMaker, ALB]
     end
     subgraph Build["Build"]
         B1[build web-ui image]
         B2[build media-worker image]
         B3[build video-worker image]
+        B4[build SageMaker inference image]
     end
     subgraph Push["Push"]
         ECR[(ECR\nsame tag)]
@@ -311,9 +317,9 @@ flowchart LR
     Push --> Update
 ```
 
-1.  **Registry (ECR):** Terraform creates **AWS ECR** repositories (one per image: `web-ui`, `media-worker`, `video-worker`). All images are pushed to ECR so ECS in the same account/region can pull them without extra configuration.
-2.  **Build and push:** Each package (web-ui, media-worker, video-worker) is packaged into a **Docker image** and pushed to its ECR repo. Builds can run **in parallel** (e.g. one CI job per package). Use a **single image identifier per release** (e.g. **git SHA** or pipeline run ID): every image is tagged with the same value (e.g. `abc123`) so the deploy step only needs one tag. When using CI, the deploy step should run only after **all** image build/push jobs succeed.
-3.  **Deploy ECS:** Task definitions reference ECR image URIs and a tag (e.g. from a Terraform variable). After building and pushing new images, run **force new deployment** on each ECS service (e.g. `aws ecs update-service --cluster stereo-spot --service web-ui --force-new-deployment`) so tasks pull the new image. Alternatively, update the task definition revision in Terraform with the new image tag and apply. Full pipeline: **Terraform apply** (data plane + ECS cluster, task definitions, services, ALB) → **build + push images in parallel (same tag)** → **force new deployment** (or update task def and apply). Single, auditable deployment path.
+1.  **Registry (ECR):** Terraform creates **AWS ECR** repositories (one per image: `web-ui`, `media-worker`, `video-worker`, and the **SageMaker inference image** e.g. `stereocrafter-sagemaker`). All images are pushed to ECR so ECS (and SageMaker) in the same account/region can pull them without extra configuration.
+2.  **Build and push:** Each package (web-ui, media-worker, video-worker) is packaged into a **Docker image** and pushed to its ECR repo. The **SageMaker inference container** (StereoCrafter) is built and pushed to its ECR repo; Terraform creates/updates the SageMaker model and endpoint. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for order of operations (e.g. create Secrets Manager secret for HF token → Terraform apply → build/push inference image → create/update endpoint → deploy video-worker). Builds can run **in parallel** (e.g. one CI job per package). Use a **single image identifier per release** (e.g. **git SHA** or pipeline run ID): every image is tagged with the same value (e.g. `abc123`) so the deploy step only needs one tag. When using CI, the deploy step should run only after **all** image build/push jobs succeed.
+3.  **Deploy ECS and SageMaker:** Task definitions reference ECR image URIs and a tag (e.g. from a Terraform variable). After building and pushing new images (including the SageMaker inference image when updated), create or update the **SageMaker** endpoint as needed, then run **force new deployment** on each ECS service so tasks pull the new image. Full pipeline: **Terraform apply** (data plane + ECS cluster, task definitions, services, SageMaker model/endpoint config/endpoint, ALB) → **build + push images** (web-ui, media-worker, video-worker, and SageMaker inference image) → **create/update SageMaker endpoint** (if inference image changed) → **force new deployment** on ECS services. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for details.
 
 ---
 
@@ -322,7 +328,7 @@ flowchart LR
 To ensure **"Very Good Error Handling"** for large video files:
 
 - **Chunking strategy:** Initial chunking is done by the **media-worker** (see above): ffmpeg splits the source into keyframe-aligned segments (~50MB / ~5 min) and uploads them to S3; S3 events on segment uploads drive video-worker processing. Segment size limits the "blast radius" of a Spot interruption to roughly one segment (e.g. 5 minutes of work).
-- **Spot on ECS:** ECS handles Spot interruption: tasks are stopped and messages return to SQS (segment-level retry). Use a **Capacity Provider** with Spot for the video-worker (EC2 launch type) so GPU capacity can use Spot instances; ECS will replace stopped tasks as needed.
+- **Spot on ECS:** ECS handles Spot interruption: tasks are stopped and messages return to SQS (segment-level retry). The video-worker runs on Fargate (no Spot at the task level). GPU capacity is on **SageMaker**; you can configure the endpoint for Spot or on-demand instances as needed.
 - **Atomic Uploads:** Use S3 Multipart Uploads for the final 3D file (media-worker → output bucket) to handle network flakiness during the upload of large assets.
 - **Large user uploads:** **V1:** Support only **single presigned PUT** for the source file. **Max file size for V1: ~500 MB** (S3 allows up to 5 GB single PUT, but browser and timeouts suggest this practical limit). **Later enhancement:** For larger files, the API can support **S3 multipart upload** (initiate multipart upload → presigned URLs per part → complete multipart upload); the object key remains `input/{job_id}/source.mp4`, so the same S3 event notification triggers chunking.
 - **Checkpointing and resumability (V1 — simple):** **Segment-level retry only.** If a worker is interrupted mid-segment (e.g. Spot reclaim), the message returns to the queue after visibility timeout and is **reprocessed from the start**; no frame-level checkpoint. At ~5 min per segment, losing one segment's work is acceptable and keeps the design simple. Optionally add a **metric** (e.g. segment retry or reprocess count) for visibility. Frame-level resume (checkpoint on SIGTERM, resume from `start_frame`) is **out of scope for V1**; consider as a future enhancement if needed.
@@ -332,8 +338,8 @@ To ensure **"Very Good Error Handling"** for large video files:
 
 💰 Cost
 
-- **Main levers:** GPU Spot (vs on-demand), S3 storage and egress, DynamoDB read/write, Lambda invocations. Spot and segment sizing (~50MB / ~5 min) keep cost predictable for batch video work.
-- **Guardrails:** Set **ECS service max capacity** (e.g. max GPU tasks or ASG max size for video-worker) to cap scale. **SQS:** Each main queue (chunking, video-worker, reassembly) has a **Dead-Letter Queue (DLQ)** and a **max receive count** (e.g. 3–5); after that, messages move to the DLQ. Add a **CloudWatch alarm** on "number of messages in each DLQ" (e.g. > 0) so failed messages are visible and do not spin forever. Tag resources (e.g. `project=stereo-spot`) for billing visibility; optionally set **AWS Budgets** alerts.
+- **Main levers:** **SageMaker** endpoint instance cost (GPU, e.g. ml.g4dn/ml.g5), S3 storage and egress, DynamoDB read/write, Lambda invocations, Fargate. Segment sizing (~50MB / ~5 min) keeps cost predictable for batch video work.
+- **Guardrails:** Set **ECS service max capacity** (e.g. max tasks for video-worker) and **SageMaker** endpoint instance count (or use Serverless) to cap scale. **SQS:** Each main queue (chunking, video-worker, reassembly) has a **Dead-Letter Queue (DLQ)** and a **max receive count** (e.g. 3–5); after that, messages move to the DLQ. Add a **CloudWatch alarm** on "number of messages in each DLQ" (e.g. > 0) so failed messages are visible and do not spin forever. Tag resources (e.g. `project=stereo-spot`) for billing visibility; optionally set **AWS Budgets** alerts.
 
 ---
 
@@ -341,7 +347,7 @@ To ensure **"Very Good Error Handling"** for large video files:
 
 - **IAM:** ECS tasks use **task roles** (not IRSA) for S3, SQS, and DynamoDB; no long-lived access keys.
 - **Network:** Fargate tasks run in **private subnets**; ALB in **public subnets**. Use an **S3 VPC endpoint** (gateway) to avoid NAT and improve throughput and cost.
-- **Secrets:** Store model weights or API keys in **AWS Secrets Manager** or S3 with restricted access; mount or pull at runtime.
+- **Secrets:** The **Hugging Face token** for the SageMaker inference container (gated model downloads at startup) is stored in **AWS Secrets Manager** and injected into the endpoint via Terraform. Store other API keys or model artifacts in Secrets Manager or S3 with restricted access; mount or pull at runtime.
 - **Observability:** Use **CloudWatch** for worker logs and metrics; optional **X-Ray** for tracing.
   - **V1 observability:** Expose or derive a metric for "segments completed / total_segments" per job (e.g. from SegmentCompletions and Job metadata). Add a **CloudWatch alarm** (or equivalent) when no new segment has completed for a job for a configured threshold (e.g. N minutes) to detect stuck jobs.
   - **Job-level visibility:** SegmentCompletions (and job metadata) are the source of truth for progress.
@@ -359,7 +365,7 @@ To ensure **"Very Good Error Handling"** for large video files:
 
 The pipeline uses **shared-types** and **cloud abstractions** (JobStore, QueueSender/Receiver, ObjectStorage); application and worker code stay the same. Moving to GCP is feasible with new Terraform and adapters:
 
-- **ECS → Cloud Run and/or GKE:** Same container images; GCP Terraform (e.g. `packages/google-infra`) would provision **Cloud Run** services or **GKE** with similar env vars. No change to app code.
+- **ECS → Cloud Run and/or GKE:** Same container images; GCP Terraform (e.g. `packages/google-infra`) would provision **Cloud Run** services or **GKE** with similar env vars. **SageMaker → Vertex AI** (or similar) for the StereoCrafter inference endpoint; video-worker would call the GCP endpoint instead of InvokeEndpoint. No change to app logic beyond config.
 - **SQS → Pub/Sub:** Queue semantics and IAM differ; implement a GCP adapter behind the same queue interface; reassembly trigger would use Pub/Sub or equivalent.
 - **S3 → GCS:** Implement GCP object-storage adapter; both use similar SDK patterns.
 - **DynamoDB → Firestore:** Implement GCP job and segment-completion stores behind existing interfaces.

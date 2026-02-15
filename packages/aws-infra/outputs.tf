@@ -74,3 +74,20 @@ output "ecr_video_worker_url" {
   description = "ECR repository URL for video-worker image"
   value       = aws_ecr_repository.video_worker.repository_url
 }
+
+output "ecr_stereocrafter_sagemaker_url" {
+  description = "ECR repository URL for SageMaker inference (StereoCrafter) image"
+  value       = aws_ecr_repository.stereocrafter_sagemaker.repository_url
+}
+
+# --- SageMaker ---
+
+output "sagemaker_endpoint_name" {
+  description = "SageMaker endpoint name (for video-worker SAGEMAKER_ENDPOINT_NAME)"
+  value       = aws_sagemaker_endpoint.stereocrafter.name
+}
+
+output "hf_token_secret_arn" {
+  description = "ARN of the Secrets Manager secret for Hugging Face token (set value manually)"
+  value       = aws_secretsmanager_secret.hf_token.arn
+}

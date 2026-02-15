@@ -1,6 +1,6 @@
 # Terraform Module: aws-infra
 
-This module provisions the **data plane** and **compute plane** for stereo-spot: S3 buckets, SQS queues (with DLQs), DynamoDB tables, CloudWatch alarms, **S3 event notifications** (S3 → SQS), **ECS cluster**, **ECR** repositories, **task definitions** and **ECS services** (Fargate for web-ui and media-worker, EC2 for video-worker with GPU), **ALB** for web-ui, and **IAM task roles**. It uses the AWS S3 backend from the `aws-infra-setup` project.
+This module provisions the **data plane** and **compute plane** for stereo-spot: S3 buckets, SQS queues (with DLQs), DynamoDB tables, CloudWatch alarms, **S3 event notifications** (S3 → SQS), **ECS cluster**, **ECR** repositories, **task definitions** and **ECS services** (Fargate for web-ui, media-worker, and video-worker), **SageMaker** (model, endpoint config, endpoint for StereoCrafter), **Secrets Manager** (Hugging Face token for SageMaker), **ALB** for web-ui, and **IAM task roles**. It uses the AWS S3 backend from the `aws-infra-setup` project.
 
 ## Backend Configuration
 
@@ -18,10 +18,12 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 | `ecs_web_ui_memory` | Memory (MiB) for web-ui Fargate task | `512` |
 | `ecs_media_worker_cpu` | CPU units for media-worker Fargate task | `512` |
 | `ecs_media_worker_memory` | Memory (MiB) for media-worker Fargate task | `1024` |
-| `ecs_video_worker_cpu` | CPU units for video-worker EC2 task | `4096` |
-| `ecs_video_worker_memory` | Memory (MiB) for video-worker EC2 task | `16384` |
+| `ecs_video_worker_cpu` | CPU units for video-worker Fargate task (thin client) | `512` |
+| `ecs_video_worker_memory` | Memory (MiB) for video-worker Fargate task | `1024` |
 | `ecs_video_worker_min_capacity` | Minimum video-worker tasks | `0` |
-| `ecs_video_worker_max_capacity` | Maximum video-worker tasks (GPU capacity) | `8` |
+| `ecs_video_worker_max_capacity` | Maximum video-worker tasks | `8` |
+| `sagemaker_instance_type` | SageMaker endpoint instance type (e.g. ml.g4dn.xlarge) | `ml.g4dn.xlarge` |
+| `sagemaker_instance_count` | Number of instances for the SageMaker endpoint | `1` |
 
 ## Resources
 
@@ -71,32 +73,32 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 - **VPC**: Private and public subnets; Fargate tasks run in private subnets, ALB in public subnets.
 - **ECS cluster**: Single cluster (`stereo-spot`) with Fargate and EC2 capacity.
-- **ECR**: One repository per image: `stereo-spot-web-ui`, `stereo-spot-media-worker`, `stereo-spot-video-worker`.
-- **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables (bucket names, table names, queue URLs, `AWS_REGION`) from Terraform, and IAM **task role** for AWS API access. Web-ui exposes port 8000; video-worker has GPU requirement (`resourceRequirements`).
-- **Task roles**: One IAM role per workload (web-ui: S3 + DynamoDB Jobs; media-worker: S3 + DynamoDB + SQS chunking/reassembly; video-worker: S3 + DynamoDB SegmentCompletions + SQS video-worker). ECS tasks assume these via `task_role_arn`. A shared **execution role** is used for image pull and CloudWatch Logs.
-- **Services**:
-  - **web-ui**: Fargate, desired count 1, ALB in front (HTTP 80 → target group port 8000).
-  - **media-worker**: Fargate, desired count 0 (scaled by Application Auto Scaling on chunking queue depth).
-  - **video-worker**: EC2 launch type, desired count 0 (scaled by Application Auto Scaling on video-worker queue depth). Requires EC2 capacity with GPU (see below).
+- **ECR**: One repository per image: `stereo-spot-web-ui`, `stereo-spot-media-worker`, `stereo-spot-video-worker`, `stereo-spot-stereocrafter-sagemaker`.
+- **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, and `SAGEMAKER_REGION` set by Terraform.
+- **Task roles**: One IAM role per workload. Video-worker role includes **sagemaker:InvokeEndpoint** on the StereoCrafter endpoint. A shared **execution role** is used for image pull and CloudWatch Logs.
+- **Services**: **web-ui** (Fargate, 1 task, ALB); **media-worker** (Fargate, scale on chunking queue); **video-worker** (Fargate, scale on video-worker queue).
+- **SageMaker**: Model (custom container from ECR stereocrafter-sagemaker image), endpoint configuration (GPU instance type), endpoint. The container receives `HF_TOKEN_ARN` (Secrets Manager) and downloads weights from Hugging Face at startup.
+- **Secrets Manager**: Secret `stereo-spot/hf-token` for the Hugging Face token; set the value manually after first apply.
 - **ALB**: Application Load Balancer in public subnets; listener HTTP 80 forwards to web-ui target group.
 
 ## Order of operations (deploy pipeline)
 
-1. **Terraform apply** — Provisions data plane (S3, SQS, DynamoDB, Lambda, S3 events) and compute (VPC, ECS cluster, task definitions, services, ALB, ECR, task roles).
-2. **Build and push images** — Build web-ui, media-worker, video-worker Docker images; push to ECR with the tag you use for `ecs_image_tag` (e.g. `latest` or git SHA).
-3. **Deploy** — Update ECS services to use the new image: `aws ecs update-service --cluster <ecs_cluster_name> --service web-ui --force-new-deployment` (and similarly for media-worker, video-worker). Alternatively, set variable `ecs_image_tag` and re-run Terraform to create a new task definition revision; then force new deployment so services pick it up.
+1. **Create Hugging Face token secret (one-time)** — Terraform creates a Secrets Manager secret `stereo-spot/hf-token` with a placeholder. Set your real Hugging Face token: `aws secretsmanager put-secret-value --secret-id <secret_id_from_output> --secret-string '{"token":"hf_xxx"}'`. See output `hf_token_secret_arn`.
+2. **Terraform apply** — Provisions data plane (S3, SQS, DynamoDB, Lambda, S3 events), compute (VPC, ECS cluster, task definitions, services, ALB, ECR, task roles), **SageMaker** (model, endpoint config, endpoint), and **Secrets Manager** secret. Video-worker runs on **Fargate** and uses the SageMaker endpoint for inference.
+3. **Build and push images** — Build web-ui, media-worker, video-worker, and **stereocrafter-sagemaker** Docker images; push to ECR with the tag you use for `ecs_image_tag` (e.g. `latest`). The SageMaker endpoint will pull the inference image from the `stereocrafter-sagemaker` ECR repo. If the inference image does not exist yet, the endpoint may show Failed until you push it: `nx run stereocrafter-sagemaker:build` then `nx run stereocrafter-sagemaker:deploy` (after `nx run aws-infra:ecr-login`).
+4. **Deploy ECS** — `nx run aws-infra:ecr-login` (if needed), then `nx run-many -t deploy` to build, push, and force new deployment for web-ui, media-worker, video-worker.
 
-**Verification:** After apply: `aws ecs list-services --cluster <ecs_cluster_name>`, `aws ecs describe-services --cluster <ecs_cluster_name> --services web-ui media-worker video-worker`. Access web-ui via the ALB DNS name (output `web_ui_url` or `web_ui_alb_dns_name`).
+**Verification:** After apply: `aws ecs list-services --cluster <ecs_cluster_name>`, `aws ecs describe-services --cluster <ecs_cluster_name> --services web-ui media-worker video-worker`. Access web-ui via the ALB DNS name (output `web_ui_url` or `web_ui_alb_dns_name`). SageMaker endpoint name is in output `sagemaker_endpoint_name` (video-worker task env is set by Terraform).
 
-## Scaling and GPU (video-worker EC2)
+## Scaling
 
-- **Media-worker** scales on chunking queue depth (Application Auto Scaling with custom metric `AWS/SQS` `ApproximateNumberOfMessagesVisible`). Min 0, max 10.
-- **Video-worker** scales on video-worker queue depth (same pattern). Min/max set by `ecs_video_worker_min_capacity` and `ecs_video_worker_max_capacity`.
-- **Video-worker** runs on **EC2** with GPU. To enable it you must add **EC2 capacity** to the ECS cluster: create an **Auto Scaling group** with GPU instance types (e.g. g4dn.xlarge, g5.xlarge), ECS-optimized AMI (with GPU support), and IAM instance profile that allows ECS (e.g. `AmazonEC2ContainerServiceforEC2Role`). Register the ASG as an ECS **capacity provider** and associate it with the cluster; then set the video-worker service to use that capacity provider. Alternatively use a single capacity provider strategy (e.g. FARGATE for CPU workloads and a custom GPU capacity provider for video-worker). Without EC2 GPU capacity, video-worker desired count remains 0 and scaling will only add tasks once capacity is available.
+- **Media-worker** scales on chunking queue depth (Application Auto Scaling). Min 0, max 10.
+- **Video-worker** scales on video-worker queue depth (same pattern). Min/max set by `ecs_video_worker_min_capacity` and `ecs_video_worker_max_capacity`. Video-worker runs on **Fargate** (thin client); GPU inference runs on the **SageMaker** endpoint. Set the video-worker SQS **visibility timeout** to at least 2–3× the expected segment processing time (e.g. 15–20 minutes).
+- **SageMaker** endpoint uses the instance type and count from variables (`sagemaker_instance_type`, `sagemaker_instance_count`). Scale the endpoint or use SageMaker Serverless if needed.
 
 ## Outputs
 
-See `outputs.tf`. Outputs expose: data plane (`input_bucket_name`, `output_bucket_name`, queue URLs, table names) and ECS/ECR (`ecs_cluster_name`, `ecs_cluster_arn`, `web_ui_alb_dns_name`, `web_ui_url`, `ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`). Use `nx run aws-infra:terraform-output` to write them to `terraform-outputs.env` (or consume via Terraform output in CI).
+See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **SageMaker** (`sagemaker_endpoint_name`), and **Secrets Manager** (`hf_token_secret_arn`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
 
 ## Running Terraform
 

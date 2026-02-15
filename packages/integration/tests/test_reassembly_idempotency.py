@@ -9,8 +9,6 @@ import time
 from pathlib import Path
 
 import pytest
-from stereo_spot_shared import Job, JobStatus, ReassemblyPayload, SegmentCompletion, StereoMode
-
 from media_worker.reassembly import process_one_reassembly_message
 from stereo_spot_aws_adapters.env_config import (
     job_store_from_env,
@@ -21,6 +19,7 @@ from stereo_spot_aws_adapters.env_config import (
     reassembly_triggered_lock_from_env,
     segment_completion_store_from_env,
 )
+from stereo_spot_shared import Job, JobStatus, ReassemblyPayload, SegmentCompletion, StereoMode
 
 
 @pytest.mark.skipif(
@@ -71,7 +70,7 @@ def test_reassembly_idempotency_two_messages_one_winner(
         )
     )
 
-    # 3. Create ReassemblyTriggered item (as Lambda would) so try_acquire can succeed for first worker
+    # 3. Create ReassemblyTriggered item (as Lambda would) so try_acquire succeeds for first worker
     reassembly_triggered_table = integration_env["REASSEMBLY_TRIGGERED_TABLE_NAME"]
     now = int(time.time())
     ttl = now + (90 * 86400)

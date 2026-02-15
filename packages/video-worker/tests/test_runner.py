@@ -1,7 +1,7 @@
 """Tests for video worker pipeline with mocked storage and segment store."""
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from stereo_spot_shared import SegmentCompletion
 
@@ -61,3 +61,36 @@ def test_process_one_message_invalid_body_returns_false() -> None:
     assert result is False
     storage.download.assert_not_called()
     segment_store.put.assert_not_called()
+
+
+def test_process_one_message_sagemaker_backend_no_download_upload() -> None:
+    """Sagemaker backend: invokes endpoint and puts completion only (no download/upload)."""
+    storage = MagicMock()
+    segment_store = MagicMock()
+    body = _make_s3_event_body(
+        "input-bucket",
+        "segments/job-xyz/00001_00005_sbs.mp4",
+    )
+    env = {"INFERENCE_BACKEND": "sagemaker", "SAGEMAKER_ENDPOINT_NAME": "my-ep"}
+    with patch.dict("os.environ", env):
+        with patch("video_worker.runner.invoke_sagemaker_endpoint") as mock_invoke:
+            result = process_one_message(
+                body,
+                storage,
+                segment_store,
+                "output-bucket",
+            )
+    assert result is True
+    storage.download.assert_not_called()
+    storage.upload.assert_not_called()
+    mock_invoke.assert_called_once_with(
+        "s3://input-bucket/segments/job-xyz/00001_00005_sbs.mp4",
+        "s3://output-bucket/jobs/job-xyz/segments/1.mp4",
+        "my-ep",
+        region_name=None,
+    )
+    segment_store.put.assert_called_once()
+    completion: SegmentCompletion = segment_store.put.call_args[0][0]
+    assert completion.job_id == "job-xyz"
+    assert completion.segment_index == 1
+    assert completion.output_s3_uri == "s3://output-bucket/jobs/job-xyz/segments/1.mp4"

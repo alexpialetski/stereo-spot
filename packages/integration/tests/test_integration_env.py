@@ -4,11 +4,9 @@ Basic integration test: env and web-ui API work against moto-backed resources.
 Does not require ffmpeg. Ensures the integration fixture and create-job flow are wired.
 """
 
-import pytest
 from fastapi.testclient import TestClient
-from stereo_spot_shared import JobStatus
-
 from stereo_spot_aws_adapters.env_config import job_store_from_env
+from stereo_spot_shared import JobStatus
 from stereo_spot_web_ui.main import app
 
 

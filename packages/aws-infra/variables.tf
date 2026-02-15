@@ -49,15 +49,15 @@ variable "ecs_media_worker_memory" {
 }
 
 variable "ecs_video_worker_cpu" {
-  description = "CPU units for video-worker EC2 task (GPU workload)"
+  description = "CPU units for video-worker Fargate task (thin client; inference on SageMaker)"
   type        = number
-  default     = 4096
+  default     = 512
 }
 
 variable "ecs_video_worker_memory" {
-  description = "Memory (MiB) for video-worker EC2 task"
+  description = "Memory (MiB) for video-worker Fargate task"
   type        = number
-  default     = 16384
+  default     = 1024
 }
 
 variable "ecs_video_worker_min_capacity" {
@@ -67,7 +67,21 @@ variable "ecs_video_worker_min_capacity" {
 }
 
 variable "ecs_video_worker_max_capacity" {
-  description = "Maximum number of video-worker tasks (GPU capacity)"
+  description = "Maximum number of video-worker tasks"
   type        = number
   default     = 8
+}
+
+# --- SageMaker (StereoCrafter endpoint) ---
+
+variable "sagemaker_instance_type" {
+  description = "SageMaker endpoint instance type (GPU, e.g. ml.g4dn.xlarge)"
+  type        = string
+  default     = "ml.g4dn.xlarge"
+}
+
+variable "sagemaker_instance_count" {
+  description = "Number of instances for the SageMaker endpoint"
+  type        = number
+  default     = 1
 }
