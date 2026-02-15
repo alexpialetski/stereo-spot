@@ -5,7 +5,7 @@
   "scripts": {},
   "private": true,
   "dependencies": {
-    "nx-terraform": "0.10.0"
+    "nx-terraform": "0.11.0"
   },
   "devDependencies": {
     "@cdktf/hcl2json": "^0.21.0",

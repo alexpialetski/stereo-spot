@@ -31,7 +31,7 @@ The app uses the **JobStore** and **ObjectStorage** abstractions; implementation
 
 ## Environment variables
 
-When not using mocks (e.g. in EKS or local against AWS), set the same variables as for other packages that use aws-adapters:
+When not using mocks (e.g. on ECS or local against AWS), set the same variables as for other packages that use aws-adapters:
 
 - `INPUT_BUCKET_NAME` — input S3 bucket
 - `OUTPUT_BUCKET_NAME` — output S3 bucket
@@ -39,7 +39,7 @@ When not using mocks (e.g. in EKS or local against AWS), set the same variables 
 - `AWS_REGION` (optional)
 - `AWS_ENDPOINT_URL` (optional, e.g. LocalStack)
 
-See [packages/aws-adapters/README.md](../aws-adapters/README.md) for the full list. On **EKS**, pods use **IRSA** (IAM Roles for Service Accounts); no long-lived credentials are required.
+See [packages/aws-adapters/README.md](../aws-adapters/README.md) for the full list. On **ECS**, tasks use an **IAM task role**; no long-lived credentials are required.
 
 ## Local run
 

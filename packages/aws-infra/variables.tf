@@ -15,3 +15,59 @@ variable "dlq_max_receive_count" {
   type        = number
   default     = 5
 }
+
+# --- ECS compute ---
+
+variable "ecs_image_tag" {
+  description = "Docker image tag for ECS task definitions (web-ui, media-worker, video-worker)"
+  type        = string
+  default     = "latest"
+}
+
+variable "ecs_web_ui_cpu" {
+  description = "CPU units for web-ui Fargate task (1024 = 1 vCPU)"
+  type        = number
+  default     = 256
+}
+
+variable "ecs_web_ui_memory" {
+  description = "Memory (MiB) for web-ui Fargate task"
+  type        = number
+  default     = 512
+}
+
+variable "ecs_media_worker_cpu" {
+  description = "CPU units for media-worker Fargate task"
+  type        = number
+  default     = 512
+}
+
+variable "ecs_media_worker_memory" {
+  description = "Memory (MiB) for media-worker Fargate task"
+  type        = number
+  default     = 1024
+}
+
+variable "ecs_video_worker_cpu" {
+  description = "CPU units for video-worker EC2 task (GPU workload)"
+  type        = number
+  default     = 4096
+}
+
+variable "ecs_video_worker_memory" {
+  description = "Memory (MiB) for video-worker EC2 task"
+  type        = number
+  default     = 16384
+}
+
+variable "ecs_video_worker_min_capacity" {
+  description = "Minimum number of video-worker tasks"
+  type        = number
+  default     = 0
+}
+
+variable "ecs_video_worker_max_capacity" {
+  description = "Maximum number of video-worker tasks (GPU capacity)"
+  type        = number
+  default     = 8
+}

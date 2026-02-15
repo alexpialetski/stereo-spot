@@ -14,6 +14,16 @@
       "configurations": {},
       "outputs": []
     },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": ". packages/aws-infra/.env && docker tag stereo-spot-media-worker:latest \"${ECR_MEDIA_WORKER_URL}:latest\" && docker push \"${ECR_MEDIA_WORKER_URL}:latest\" && aws ecs update-service --cluster \"$ECS_CLUSTER_NAME\" --service media-worker --force-new-deployment --region us-east-1",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["aws-infra:terraform-output", "media-worker:build"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
+    },
     "test": {
       "executor": "nx:run-commands",
       "options": {

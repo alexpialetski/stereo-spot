@@ -2,11 +2,11 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `terraform-outputs.env`. **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image) consumes the chunking queue (S3 event) and reassembly queue (job_id) in one process (two threads); chunking: parse input key, ffmpeg split, upload segments, update Job to chunking_complete; reassembly: lock via ReassemblyTriggered, query SegmentCompletions, ffmpeg concat, upload final.mp4, update Job to completed (unit tests, README, Dockerfile). **Step 3.2** is done: **packages/video-worker** consumes the video-worker queue (S3 event), parses segment key via shared-types, runs stub model (copy), uploads to output bucket, writes SegmentCompletion (unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda (DynamoDB Streams on SegmentCompletions), conditional create on ReassemblyTriggered, send job_id to reassembly queue; build from shared-types wheel (Nx build + script), Terraform (Lambda, stream event source, IAM, env), unit tests, README. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2 (dashboard, list jobs, create job, job detail, play with presigned URLs); unit tests, README. **Step 4.2** is done: S3 event notifications on input bucket (prefix `input/` suffix `.mp4` → chunking queue; prefix `segments/` suffix `.mp4` → video-worker queue), queue policies for S3; README updated. **Step 4.3** is done: **packages/helm** umbrella chart (Deployments/Services for web-ui, media-worker, video-worker; Ingress; KEDA ScaledObjects: media-worker with two triggers (chunking + reassembly), video-worker; TriggerAuthentication for IRSA); Terraform generates values-from-terraform.yaml; Argo CD Application manifest; README.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3 is done:** Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui and media-worker, EC2 service for video-worker (GPU), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`.
 
 **Principles:**
 
-- Implement in dependency order: shared-types → workers & Lambda → web-ui → Helm → full AWS (EKS, etc.).
+- Implement in dependency order: shared-types → workers & Lambda → web-ui → full AWS (ECS, data plane).
 - Add unit tests and markdown docs in the same step as the feature.
 - Verify with Nx tasks and automated tests where possible.
 
@@ -272,7 +272,7 @@ nx run reassembly-trigger:build
 - Routes: GET `/`, GET `/jobs`, POST `/jobs` (form: mode), GET `/jobs/{job_id}`, GET `/jobs/{job_id}/play`. Create job: put Job (status=created), generate presigned PUT for `input/{job_id}/source.mp4`, redirect to page showing upload URL and instructions.
 - List jobs: query GSI status=completed, descending completed_at, pagination; render HTML. Play: presigned GET for `jobs/{job_id}/final.mp4` (redirect or link).
 - Unit tests: (1) create job returns job_id and upload URL with correct key, (2) list endpoint returns only completed, (3) play URL uses correct key.
-- Add `packages/web-ui/README.md`: routes, env vars, IRSA note for EKS.
+- Add `packages/web-ui/README.md`: routes, env vars, ECS task role note.
 
 **A/C:**
 
@@ -315,58 +315,31 @@ nx run aws-infra:terraform-plan
 
 ---
 
-### Step 4.3 — Helm chart and Argo CD Application
+### Step 4.3 — ECS compute (task definitions, services, ALB, scaling)
 
-**Goal:** One umbrella Helm chart in `packages/helm`: Deployments/Services for web-ui, media-worker, video-worker; Ingress for web-ui; KEDA ScaledObjects (media-worker with two triggers: chunking and reassembly queues; video-worker with one trigger); image pull from ECR. Argo CD Application manifest pointing at this repo path. Helm values must receive queue URLs, bucket names, and table names from Terraform.
-
-**Tasks:**
-
-- Create `packages/helm` with Chart.yaml, values.yaml (placeholders or defaults for image tags, queue URLs, bucket names, table names). **Define how Terraform outputs feed Helm:** Terraform will generate a values file (e.g. `packages/helm/values-from-terraform.yaml`) after apply—e.g. via a `local_file` or null_resource that writes queue URLs, bucket names, table names, ECR repo URIs from Terraform outputs. Argo CD (or the Application) uses this file so the chart receives resource names without manual copy. Document this in `packages/helm/README.md`.
-- Templates: Deployment and Service per app; Ingress (e.g. ALB or Ingress controller); KEDA ScaledObject for media-worker (two triggers: chunking and reassembly queues) and video-worker.
-- Argo CD Application YAML (e.g. `argo-application.yaml` or `applications/stereo-spot.yaml`) in same package; Terraform will apply it after installing Argo CD.
-- Document in `packages/helm/README.md`: structure, how to set image tags, how Terraform-generated values are used, how Argo CD syncs.
-
-**A/C:**
-
-- [x] `helm template` produces valid manifests for all three workloads (web-ui, media-worker, video-worker) and KEDA.
-- [x] Terraform (or a documented CI step) produces a values file with queue URLs, bucket names, table names; Argo CD / Helm use it.
-- [x] Argo CD Application manifest references this repo and path.
-- [x] README explains chart, Terraform→values flow, and deployment flow.
-
-**Verification:**
-
-```bash
-helm dependency update packages/helm  # if any
-helm template stereo-spot packages/helm -f packages/helm/values.yaml
-```
-
----
-
-### Step 4.4 — EKS, ECR, Argo CD, Karpenter, and full infra in Terraform
-
-**Goal:** Terraform provisions EKS cluster, ECR repos (web-ui, media-worker, video-worker), IRSA for each, installs Argo CD controller and applies Argo CD Application from packages/helm. **Karpenter** and at least one GPU node pool are included so video-worker pods can schedule. **Node Termination Handler** is required for graceful Spot reclaim (segment-level retry).
+**Goal:** Terraform provisions ECS cluster, ECR (already exist), **task definitions** (env vars from Terraform: bucket names, table names, queue URLs, region), **IAM task roles** (one per workload, same permissions as prior IRSA). **Web-ui**: ECS Fargate service, 1 task, ALB in front. **Media-worker**: ECS Fargate service; scaling via Application Auto Scaling on a custom metric (e.g. sum of chunking + reassembly queue depths) or on one queue. **Video-worker**: ECS **EC2** launch type; capacity provider or ASG with GPU instance types (g4dn/g5), Spot + on-demand; scaling on video-worker queue depth. **Deploy flow:** Terraform apply → build/push images → force new deployment (or update task def with new image tag).
 
 **Tasks:**
 
-- In `packages/aws-infra`: EKS cluster (with OIDC for IRSA); ECR repositories (web-ui, media-worker, video-worker); IAM roles and IRSA for web-ui and each worker.
-- **Node Termination Handler:** Install the AWS Node Termination Handler (e.g. Helm chart or manifest) so nodes receive SIGTERM before Spot reclaim. Required for architecture’s error-handling goals.
-- **Karpenter:** Install Karpenter (Helm or manifest) and create at least one NodePool (or NodeClass) for GPU nodes (e.g. g4dn or g5), with Spot capacity type and a small on-demand fallback. Set max nodes (e.g. 4–8) as a variable. Without this, video-worker pods will remain Pending.
-- Helm release for Argo CD; kubectl/kubernetes provider to apply Argo CD Application manifest(s) from helm package. Ensure Helm/Argo CD receive queue URLs, bucket names, and table names from Terraform (see Step 4.3).
-- Document in `packages/aws-infra/README.md`: order of operations (terraform apply → build/push images → update tag in values → Argo CD sync), scaling/GPU section (where NodePool is defined, how to change max GPU nodes), and any manual steps.
+- In `packages/aws-infra`: ECS cluster; task definitions for web-ui, media-worker, video-worker (container defs with image from ECR + tag variable, env from Terraform outputs); IAM task roles (web-ui: S3 + DynamoDB Jobs; media-worker: S3 + DynamoDB + SQS chunking/reassembly; video-worker: S3 + DynamoDB SegmentCompletions + SQS video-worker); Fargate execution role for image pull and logs.
+- **Web-ui:** Fargate service, desired 1, ALB + target group (HTTP 80 → 8000).
+- **Media-worker:** Fargate service, desired 0 or 1; Application Auto Scaling on custom metric (chunking + reassembly queue depth sum) or single-queue metric.
+- **Video-worker:** EC2 launch type, GPU in task definition; capacity provider or ASG with Spot + on-demand (g4dn/g5); scaling on video-worker queue depth.
+- Document in `packages/aws-infra/README.md`: order of operations (terraform apply → build/push images → force new deployment), scaling and GPU capacity.
+- **Nx deploy targets:** `deploy` on web-ui, media-worker, video-worker (source `packages/aws-infra/.env`, tag/push to ECR, `aws ecs update-service --force-new-deployment`). `aws-infra:ecr-login` logs Docker into ECR using the same .env. Terraform output target writes to `packages/aws-infra/.env`.
 
 **A/C:**
 
-- [ ] Terraform apply creates EKS, ECR repos, IRSA; Argo CD is installed and Application points at repo.
-- [ ] Node Termination Handler is running in the cluster (e.g. DaemonSet or Helm release present).
-- [ ] Karpenter and at least one GPU node pool exist; video-worker pods can schedule after 4.4.
-- [ ] Helm/Argo CD receive queue URLs, bucket names, and table names from Terraform (documented mechanism).
-- [ ] After image push and tag update, Argo CD can sync and deploy workloads.
+- [x] ECS cluster exists; three task definitions and three services (web-ui Fargate + ALB, media-worker Fargate with scaling, video-worker EC2 GPU with scaling).
+- [x] Web-ui is reachable via ALB; workers scale on queue depth.
+- [x] No EKS, Helm, or Argo CD in the main deployment path.
 
 **Verification:**
 
 ```bash
 nx run aws-infra:terraform-plan
-# After apply: kubectl get nodes; kubectl get applications -n argocd
+# After apply: aws ecs list-services --cluster stereo-spot; curl ALB DNS
+# Deploy: nx run aws-infra:ecr-login && nx run-many -t deploy
 ```
 
 ---
@@ -405,7 +378,7 @@ nx run integration:test
 **Tasks:**
 
 - **Chunking failure recovery:** Provide a **recovery script or CLI** (e.g. under `packages/tools` or `scripts/`) that: takes `job_id`; lists S3 prefix `segments/{job_id}/`; derives `total_segments` using the segment key parser from shared-types; performs a single DynamoDB UpdateItem to set `total_segments` and `status=chunking_complete` on the Job (with a safety check or confirmation). Alternatively, document in RUNBOOKS.md the **exact AWS CLI or boto3 steps** and the formula for total_segments (e.g. max segment_index + 1 or key parser) so the procedure is repeatable without a script.
-- Add `docs/RUNBOOKS.md`: (1) Chunking failure recovery (reference script or step-by-step procedure above), (2) DLQ handling (inspect, replay or discard), (3) adjusting Karpenter/max nodes and SQS visibility timeout.
+- Add `docs/RUNBOOKS.md`: (1) Chunking failure recovery (reference script or step-by-step procedure above), (2) DLQ handling (inspect, replay or discard), (3) adjusting ECS service max capacity and SQS visibility timeout.
 - In ARCHITECTURE.md add a short “Implementation” section linking to `docs/IMPLEMENTATION_PLAN.md`.
 - In IMPLEMENTATION_PLAN.md ensure “Current state” and “Principles” reference ARCHITECTURE.md.
 
@@ -429,7 +402,7 @@ nx run integration:test
 
 - Implement model loading and inference in video-worker; keep interface swappable (e.g. plugin or env-driven class).
 - Dockerfile: base image with CUDA, Python, PyTorch; copy or download model weights (Secrets Manager or S3).
-- Update README: GPU sizing, segment length vs wall-clock, Karpenter node class (e.g. g4dn).
+- Update README: GPU sizing, segment length vs wall-clock, ECS EC2 / GPU capacity (e.g. g4dn).
 - Unit test: keep stub path for CI; optional integration test with small segment on GPU.
 
 **A/C:**
@@ -448,24 +421,23 @@ nx run video-worker:test
 
 ## Summary table
 
-| Step | Package / Area             | Main deliverable                                             | Tests / Docs                |
-| ---- | -------------------------- | ------------------------------------------------------------ | --------------------------- |
-| 1.1  | shared-types               | Python package skeleton, Nx, pytest                          | 1 test; README              |
-| 1.2  | shared-types               | Pydantic models, segment + input key parser                  | Unit tests; README          |
-| 1.3  | shared-types               | Cloud abstraction interfaces                                 | Mock tests; SHARED_TYPES.md |
-| 2.1  | aws-infra                  | S3, SQS, DynamoDB, DLQ alarms (no EKS)                       | README                      |
-| 2.2  | aws-adapters               | AWS implementations of interfaces                            | Moto tests; README          |
-| 2.3  | integration / aws-adapters | Data plane smoke test                                        | TESTING.md or README        |
-| 3.1  | media-worker               | Chunking + reassembly (one image, two queues) + Docker       | Unit tests; README          |
-| 3.2  | video-worker               | Stub model + pipeline                                        | Unit tests; README          |
-| 3.4  | reassembly-trigger         | Lambda Streams → SQS (shared-types from wheel)               | Unit tests; README          |
-| 4.1  | web-ui                     | FastAPI + Jinja2 routes                                      | Unit tests; README          |
-| 4.2  | aws-infra                  | S3 → SQS event notifications                                 | README                      |
-| 4.3  | helm                       | Chart + Argo CD Application, Terraform→values                | README; helm template       |
-| 4.4  | aws-infra                  | EKS, ECR, Argo CD, IRSA, Karpenter, Node Termination Handler | README                      |
-| 5.1  | integration                | E2E test + reassembly idempotency                            | TESTING.md                  |
-| 5.2  | docs / tools               | Runbooks, chunking recovery script/procedure, cross-links    | RUNBOOKS.md                 |
-| 5.3  | video-worker               | Real StereoCrafter model                                     | README; optional GPU test   |
+| Step | Package / Area             | Main deliverable                                                                      | Tests / Docs                |
+| ---- | -------------------------- | ------------------------------------------------------------------------------------- | --------------------------- |
+| 1.1  | shared-types               | Python package skeleton, Nx, pytest                                                   | 1 test; README              |
+| 1.2  | shared-types               | Pydantic models, segment + input key parser                                           | Unit tests; README          |
+| 1.3  | shared-types               | Cloud abstraction interfaces                                                          | Mock tests; SHARED_TYPES.md |
+| 2.1  | aws-infra                  | S3, SQS, DynamoDB, DLQ alarms (no EKS)                                                | README                      |
+| 2.2  | aws-adapters               | AWS implementations of interfaces                                                     | Moto tests; README          |
+| 2.3  | integration / aws-adapters | Data plane smoke test                                                                 | TESTING.md or README        |
+| 3.1  | media-worker               | Chunking + reassembly (one image, two queues) + Docker                                | Unit tests; README          |
+| 3.2  | video-worker               | Stub model + pipeline                                                                 | Unit tests; README          |
+| 3.4  | reassembly-trigger         | Lambda Streams → SQS (shared-types from wheel)                                        | Unit tests; README          |
+| 4.1  | web-ui                     | FastAPI + Jinja2 routes                                                               | Unit tests; README          |
+| 4.2  | aws-infra                  | S3 → SQS event notifications                                                          | README                      |
+| 4.3  | aws-infra                  | ECS cluster, task definitions, services (Fargate + EC2 GPU), ALB, task roles, scaling | README                      |
+| 5.1  | integration                | E2E test + reassembly idempotency                                                     | TESTING.md                  |
+| 5.2  | docs / tools               | Runbooks, chunking recovery script/procedure, cross-links                             | RUNBOOKS.md                 |
+| 5.3  | video-worker               | Real StereoCrafter model                                                              | README; optional GPU test   |
 
 ---
 
@@ -478,7 +450,6 @@ After implementation, expected dependency structure:
 - **media-worker**, **video-worker**, **web-ui** — depend on **shared-types** and **aws-adapters** (for AWS implementations at runtime).
 - **reassembly-trigger** — depends on **shared-types** (build: install from shared-types wheel).
 - **integration** — depends on **web-ui**, **media-worker**, **video-worker** (and optionally **reassembly-trigger** for Lambda-in-loop tests). May also host the Step 2.3 smoke test (e.g. `integration:smoke-test`).
-- **helm** — no Nx dependency on other app packages (references images and config).
-- **aws-infra** — depends on **aws-infra-setup** (already).
+- **aws-infra** — depends on **aws-infra-setup** (already). Provisions ECS cluster, task definitions, services, ALB.
 
 Use `nx run-many -t test` to run tests for all projects; use `nx run-many -t build` for buildable packages. Ensure CI runs tests and, when enabled, `nx run integration:test` on every PR.

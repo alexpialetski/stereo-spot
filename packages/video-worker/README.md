@@ -63,7 +63,7 @@ Or via Nx:
 nx run video-worker:build
 ```
 
-The image has no system deps (unlike chunking-worker’s ffmpeg); set the same env vars at runtime (e.g. via EKS or `docker run -e ...`).
+The image has no system deps (unlike chunking-worker’s ffmpeg); set the same env vars at runtime (e.g. via ECS or `docker run -e ...`).
 
 ## Tests and lint
 

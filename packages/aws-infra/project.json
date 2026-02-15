@@ -19,8 +19,19 @@
     },
     "terraform-output": {
       "metadata": {
-        "outputFormat": "env"
+        "outputFormat": "env",
+        "outputFile": ".env"
       }
+    },
+    "ecr-login": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": ". packages/aws-infra/.env && REGISTRY=$(echo \"$ECR_WEB_UI_URL\" | cut -d/ -f1) && aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \"$REGISTRY\"",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["aws-infra:terraform-output"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     }
   }
 }

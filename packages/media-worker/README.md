@@ -83,7 +83,7 @@ Or via Nx:
 nx run media-worker:build
 ```
 
-The image includes **ffmpeg** and the Python runtime. Set the same env vars at runtime (e.g. via EKS deployment).
+The image includes **ffmpeg** and the Python runtime. Set the same env vars at runtime (e.g. via ECS task definition).
 
 ## Tests and lint
 

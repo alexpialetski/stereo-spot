@@ -4,24 +4,23 @@ This architecture is designed for
 
 > **Implementation:** For an incremental build plan with steps, acceptance criteria, and verification, see [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
-It leverages **EKS (Elastic Kubernetes Service)** with **Karpenter** for aggressive Spot instance management and **NX** for shared logic between your UI and Infrastructure-as-Code (IaC). 
+It leverages **ECS (Elastic Container Service)** with **Fargate** for CPU workloads and **EC2 launch type** for GPU (video-worker), and **NX** for shared logic between your UI and Infrastructure-as-Code (IaC).
 
 🏗️ NX Monorepo Structure
 
 Using NX, you unify your frontend, cloud infrastructure, and worker logic. All projects live under **`packages/`** (no `apps/` or `libs/` folders).
 
-- `packages/web-ui`: **FastAPI** app (Python) **deployed on EKS**; **server-rendered UI** (Jinja2 templates). Serves HTML pages for the dashboard, job list, and playback; form POST for job creation (redirect to page with upload URL). Talks to AWS (S3, DynamoDB) via **IRSA** for presigned URLs, uploads, and listing. See Web UI below.
-- `packages/media-worker`: **Single package and Docker image** for all CPU/ffmpeg work: **chunking** (split source with ffmpeg, upload segments to S3) and **reassembly** (ffmpeg concat to produce final 3D file). Consumes both the chunking and reassembly SQS queues in one process (two threads). Scaled by KEDA on both queues (two triggers). Saves storage (~600MB one image instead of two). See Chunking and Reassembly below.
-- `packages/video-worker`: Python/PyTorch container. Default model is **StereoCrafter**; the worker is designed so the inference model can be swapped (e.g. different stereo/depth models) without changing the pipeline.
+- `packages/web-ui`: **FastAPI** app (Python) **deployed on ECS Fargate**; **server-rendered UI** (Jinja2 templates). Serves HTML pages for the dashboard, job list, and playback; form POST for job creation (redirect to page with upload URL). Talks to AWS (S3, DynamoDB) via **IAM task role** for presigned URLs, uploads, and listing. See Web UI below.
+- `packages/media-worker`: **Single package and Docker image** for all CPU/ffmpeg work: **chunking** (split source with ffmpeg, upload segments to S3) and **reassembly** (ffmpeg concat to produce final 3D file). Consumes both the chunking and reassembly SQS queues in one process (two threads). Runs on **ECS Fargate**; scaled by **Application Auto Scaling** on SQS queue depth (chunking + reassembly). Saves storage (~600MB one image instead of two). See Chunking and Reassembly below.
+- `packages/video-worker`: Python/PyTorch container. Default model is **StereoCrafter**; the worker is designed so the inference model can be swapped (e.g. different stereo/depth models) without changing the pipeline. Runs on **ECS EC2** (GPU instances, Spot + on-demand).
 - `packages/shared-types`: **Python library** (no Docker image). Single source of truth for job, segment, and message shapes used across the pipeline. Defines **Pydantic** models for Jobs, queue payloads, DynamoDB record shapes, and API DTOs. Consumed by `web-ui`, `media-worker`, `video-worker`, and by Lambda (e.g. reassembly trigger, S3 enrichment) when implemented in Python. See Shared types and library below.
 - `packages/aws-infra-setup`: Terraform backend project that provisions the state file (S3 bucket, DynamoDB for locking). Uses the **nx-terraform** plugin (automatic project discovery and inferred tasks for init, plan, apply, destroy, validate, fmt, output). Linked to `aws-infra`. See [nx-terraform](https://alexpialetski.github.io/nx-terraform/) for documentation.
-- `packages/aws-infra`: Terraform project containing the actual AWS infrastructure (EKS, S3, SQS, ECR, Lambda, etc.). **Installs the Argo CD controller** (e.g. via `helm_release` for the argo-cd chart) so the cluster can sync workloads from Git. Uses **nx-terraform** with a backend dependency on `aws-infra-setup`; Nx ensures correct execution order and dependency graph.
-- `packages/helm`: **One Helm chart** for all services (web-ui, media-worker, video-worker). Defines Deployments, Services, Ingress, KEDA ScaledObjects (media-worker has two triggers: chunking and reassembly queues), etc. Also holds the **Argo CD Application manifest(s)** (plain YAML, e.g. `argo-application.yaml` or `applications/stereo-spot.yaml`) that point at this chart; Terraform applies these manifests after installing the Argo CD controller so Argo CD syncs this repo. Versioned with the repo; deployment is a separate stage from Terraform (see Build and Deployment below).
+- `packages/aws-infra`: Terraform project containing the actual AWS infrastructure: S3, SQS, DynamoDB, Lambda, **ECS cluster**, **ECR**, **task definitions and services** (Fargate for web-ui and media-worker, EC2 for video-worker), **ALB**. Uses **nx-terraform** with a backend dependency on `aws-infra-setup`; Nx ensures correct execution order and dependency graph.
 - `packages/reassembly-trigger`: **Python Lambda** (no separate Nx app folder required if small; can live under `packages/reassembly-trigger`). Consumes DynamoDB Streams from SegmentCompletions and sends `job_id` to the Reassembly SQS queue when the last segment is done. Depends on `shared-types`; CI bundles shared-types into the Lambda deployment package (e.g. `pip install -t . ../shared-types` then zip). Deployed via Terraform.
 
 To add Google Cloud later, add separate packages: `packages/google-infra-setup` (state) and `packages/google-infra` (GCP resources), following the same nx-terraform pattern.
 
-**Portability and cloud abstractions:** To avoid vendor lock-in and simplify a future GCP (or other cloud) deployment, use **abstractions from the beginning**. EKS keeps **compute** portable: the same Kubernetes manifests (Helm) can target EKS or GKE with minimal changes. For **data and events**, define thin interfaces (e.g. in `packages/shared-types`) for: **job store** (get/put/update job), **segment-completion store** (put completion, query by job ordered by segment_index), **queues** (send/receive messages), and **object storage** (presign upload/download, upload/download). Implement the **AWS** backend first (DynamoDB, SQS, S3); add **GCP** implementations later (e.g. Firestore, Pub/Sub, GCS) behind the same interfaces. App and workers depend on the abstractions and get the implementation by config (e.g. `STORAGE_ADAPTER=aws`). Terraform remains per-cloud; pipeline logic stays cloud-agnostic.
+**Portability and cloud abstractions:** To avoid vendor lock-in and simplify a future GCP (or other cloud) deployment, use **abstractions from the beginning**. Pipeline logic uses **shared-types** and thin interfaces (e.g. in `packages/shared-types`) for: **job store** (get/put/update job), **segment-completion store** (put completion, query by job ordered by segment_index), **queues** (send/receive messages), and **object storage** (presign upload/download, upload/download). **AWS** implementations live in **packages/aws-adapters** (DynamoDB, SQS, S3). **Compute** is cloud-specific: on AWS we use ECS (Fargate + EC2); on GCP you would use Cloud Run and/or GKE with the same container images and env-based config. Add **GCP** implementations later (e.g. Firestore, Pub/Sub, GCS) behind the same interfaces. App and workers depend on the abstractions and get the implementation by config (e.g. `STORAGE_ADAPTER=aws`). Terraform remains per-cloud; application and worker code stay the same.
 
 ---
 
@@ -49,7 +48,7 @@ With an all-Python app layer (FastAPI, Python workers, Python Lambda), a **singl
 
 🖥️ Web UI (packages/web-ui)
 
-**FastAPI** is **deployed on EKS** (same cluster as the video workers). The UI is **server-rendered** (Jinja2): **GET requests for pages return HTML** (dashboard, job list, job detail). Job creation is **form POST** (e.g. select mode, submit) → server creates the job and **redirects** to a page that shows the upload URL and instructions. List of available movies and playback are **HTML pages** (list rendered from DynamoDB; playback can be a link or redirect to the presigned S3 URL). The app talks to **AWS services** (S3, DynamoDB) using **IRSA**—no long-lived credentials; the browser never sees AWS credentials. Optional: a small **JSON API** under `/api/` (e.g. for future "copy playback link" or automation); for V1, HTML and redirects are sufficient.
+**FastAPI** is **deployed on ECS Fargate**. The UI is **server-rendered** (Jinja2): **GET requests for pages return HTML** (dashboard, job list, job detail). Job creation is **form POST** (e.g. select mode, submit) → server creates the job and **redirects** to a page that shows the upload URL and instructions. List of available movies and playback are **HTML pages** (list rendered from DynamoDB; playback can be a link or redirect to the presigned S3 URL). The app talks to **AWS services** (S3, DynamoDB) using **IAM task role**—no long-lived credentials; the browser never sees AWS credentials. Optional: a small **JSON API** under `/api/` (e.g. for future "copy playback link" or automation); for V1, HTML and redirects are sufficient.
 
 - **Job creation and upload:** The user selects **mode** (anaglyph | sbs) in the UI. The FastAPI API **creates a job** (e.g. writes to a DynamoDB Jobs table: `job_id`, `mode`, `status: created`) and returns `job_id` plus a **presigned upload URL** for a deterministic key, e.g. `input/{job_id}/source.mp4`. The browser uploads directly to that URL. When the upload completes, an **S3 event notification** is sent **directly to the chunking SQS queue** (no Lambda). The message payload is the S3 event (bucket, key). The **chunking worker** parses `job_id` from the key (`input/{job_id}/source.mp4`), fetches `mode` from the DynamoDB Jobs table, and proceeds with chunking (see Orchestration).
 - **List available movies:** The UI displays **available (completed) movies**. The FastAPI API **queries DynamoDB** using the **GSI** on `(status, completed_at)`: query with `status = 'completed'`, descending by `completed_at`, with pagination (`Limit`, `ExclusiveStartKey`). Returns job_id, mode, completed_at, etc.; the UI shows titles, job id, mode (anaglyph/SBS), and status. Presigned playback URLs are generated from the known path `jobs/{job_id}/final.mp4`. Do not rely on S3 list for "available" — DynamoDB is authoritative.
@@ -89,10 +88,11 @@ flowchart TB
 
     subgraph AWS["AWS Account"]
         subgraph VPC["VPC"]
-            subgraph EKS["EKS Cluster (IRSA)"]
-                WebUI[web-ui]
-                MediaW[media-worker]
-                VideoW[video-worker]
+            ALB[ALB]
+            subgraph ECS["ECS Cluster"]
+                WebUI[web-ui Fargate]
+                MediaW[media-worker Fargate]
+                VideoW[video-worker EC2 GPU]
             end
         end
 
@@ -117,11 +117,12 @@ flowchart TB
         ECR[(ECR)]
     end
 
-    User -->|HTTPS / presigned| WebUI
+    User -->|HTTPS| ALB
+    ALB --> WebUI
     User -->|presigned PUT| InputBucket
-    WebUI -->|boto3 / IRSA| InputBucket
-    WebUI -->|boto3 / IRSA| OutputBucket
-    WebUI -->|boto3 / IRSA| Jobs
+    WebUI -->|task role| InputBucket
+    WebUI -->|task role| OutputBucket
+    WebUI -->|task role| Jobs
     InputBucket -->|S3 event notification| ChunkQ
     MediaW -->|pull| ChunkQ
     MediaW -->|upload segments| InputBucket
@@ -134,7 +135,7 @@ flowchart TB
     MediaW -->|pull| ReassQ
     MediaW -->|read/write| OutputBucket
     MediaW -->|read| SegCompl
-    EKS -.->|pull images| ECR
+    ECS -.->|pull images| ECR
 ```
 
 **DynamoDB tables and access patterns:**
@@ -252,40 +253,33 @@ flowchart LR
     Upload --> Chunk --> Video --> Reass --> Consume
 ```
 
-8.  **Web UI (EKS):** The **FastAPI app** runs as a Deployment on the same EKS cluster. It serves the dashboard and an API (FastAPI routes) that uses the **AWS SDK** (boto3) with **IRSA** to list S3/DynamoDB and generate presigned upload and playback URLs. Exposed via the cluster ingress (e.g. ALB or Ingress controller). **Authentication:** No auth for now (single-user / personal use). No VPN; access is as configured (e.g. ingress or load balancer). Add auth (e.g. Cognito OIDC) when opening to more users. **Multi-user:** Supporting multiple users would require introducing a **`user_id`** (or similar) in the job and segment data model and in IAM so presigned URLs and API access are scoped per user.
+8.  **Web UI (ECS):** The **FastAPI app** runs as an ECS Fargate service. It serves the dashboard and an API (FastAPI routes) that uses the **AWS SDK** (boto3) with **IAM task role** to list S3/DynamoDB and generate presigned upload and playback URLs. Exposed via an **ALB** in front of the service. **Authentication:** No auth for now (single-user / personal use). No VPN; access is as configured (e.g. ALB). Add auth (e.g. Cognito OIDC) when opening to more users. **Multi-user:** Supporting multiple users would require introducing a **`user_id`** (or similar) in the job and segment data model and in IAM so presigned URLs and API access are scoped per user.
 
 ---
 
 📦 Build, Registry, and Deployment
 
-**Stages are split:** Terraform provisions AWS infra (EKS, S3, SQS, DynamoDB, ECR, Lambda) and **installs the Argo CD controller** on the cluster (e.g. `helm_release` for the argo-cd chart). Terraform then **applies the Argo CD Application manifest(s)** that live in `packages/helm` (e.g. `argo-application.yaml`), so Argo CD is configured to sync from this repo at path `packages/helm`. Kubernetes workload updates (Helm chart) are deployed via **Argo CD sync** in a separate stage—Terraform does not manage the Helm release itself, only the controller and the Application CR(s).
+**Stages are split:** Terraform provisions AWS infra (S3, SQS, DynamoDB, ECR, Lambda, **ECS cluster**, **task definitions**, **services**, **ALB**). Workload updates are deployed by **building and pushing** images to ECR, then **updating ECS services** (e.g. `aws ecs update-service --force-new-deployment` or Terraform with an image tag variable).
 
-**EKS workloads (Helm chart):**
+**ECS workloads:**
 
 ```mermaid
 flowchart TB
-    subgraph EKS["EKS Cluster"]
-        Ingress[Ingress / ALB]
-
+    subgraph ECS["ECS Cluster"]
+        ALB[ALB]
         subgraph Web["Web"]
-            WebUI[web-ui Deployment]
+            WebUI[web-ui Fargate]
         end
-
-        subgraph Workers["Workers (KEDA)"]
-            K1[KEDA ScaledObject\nmedia-worker]
-            K2[KEDA ScaledObject\nvideo-worker]
-            MediaW[media-worker Deployment]
-            VideoW[video-worker Deployment\nKarpenter GPU nodes]
+        subgraph Workers["Workers"]
+            MediaW[media-worker Fargate\nscale on SQS]
+            VideoW[video-worker EC2 GPU\nscale on SQS]
         end
-
-        Ingress --> WebUI
-        K1 --> MediaW
-        K2 --> VideoW
+        ALB --> WebUI
     end
 
-    ChunkQ[chunking queue] -.->|scale| K1
-    ReassQ[reassembly queue] -.->|scale| K1
-    VideoQ[video-worker queue] -.->|scale| K2
+    ChunkQ[chunking queue] -.->|scale| MediaW
+    ReassQ[reassembly queue] -.->|scale| MediaW
+    VideoQ[video-worker queue] -.->|scale| VideoW
 ```
 
 **Build and deploy pipeline:**
@@ -293,7 +287,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Infra["Infra"]
-        Tf[Terraform apply\nEKS, S3, SQS, DDB, ECR, Lambda\nArgo CD controller + Application]
+        Tf[Terraform apply\nS3, SQS, DDB, ECR, Lambda\nECS cluster, tasks, services, ALB]
     end
     subgraph Build["Build"]
         B1[build web-ui image]
@@ -304,19 +298,17 @@ flowchart LR
         ECR[(ECR\nsame tag)]
     end
     subgraph Deploy["Deploy"]
-        Tag[update image tag]
-        Argo[Argo CD sync]
+        Update[ECS force-new-deployment\nor update task def tag]
     end
 
     Tf --> Build
     Build --> Push
-    Push --> Tag
-    Tag --> Argo
+    Push --> Update
 ```
 
-1.  **Registry (ECR):** Terraform creates **AWS ECR** repositories (one per image: `web-ui`, `media-worker`, `video-worker`). All images are pushed to ECR so EKS in the same account/region can pull them without extra configuration.
+1.  **Registry (ECR):** Terraform creates **AWS ECR** repositories (one per image: `web-ui`, `media-worker`, `video-worker`). All images are pushed to ECR so ECS in the same account/region can pull them without extra configuration.
 2.  **Build and push:** Each package (web-ui, media-worker, video-worker) is packaged into a **Docker image** and pushed to its ECR repo. Builds can run **in parallel** (e.g. one CI job per package). Use a **single image identifier per release** (e.g. **git SHA** or pipeline run ID): every image is tagged with the same value (e.g. `abc123`) so the deploy step only needs one tag. When using CI, the deploy step should run only after **all** image build/push jobs succeed.
-3.  **Deploy Kubernetes manifests (Helm + Argo CD):** A single **umbrella Helm chart** in `packages/helm` describes all services (web-ui, media-worker, video-worker), plus Services, Ingress, KEDA ScaledObjects (media-worker has two triggers: chunking and reassembly queues), etc. The **Argo CD Application** manifest (plain YAML, e.g. `packages/helm/argo-application.yaml`) lives in the same package and points at this repo and path `packages/helm`; Terraform applies this Application after installing the Argo CD controller, so there is no separate "k8s-platform" package. **How Argo CD works:** Argo CD syncs **Kubernetes manifests from Git**. Manifests specify the image repository (ECR) and **tag**; the **kubelet** pulls images from ECR when running the pod. A **values file** (e.g. `values-production.yaml` or `image-tags.yaml`) in `packages/helm` holds the image tags. **CI pipeline:** Build all images → push to ECR with a single tag (e.g. git SHA) → **update that values file in the repo** → commit and push. Argo CD (already configured by Terraform) syncs from this repo (path `packages/helm`), so the cluster gets the new manifests and pulls the new images. Full pipeline: **Terraform apply** (EKS, ECR, SQS, DynamoDB, Lambda, **Argo CD controller**, and **Application manifest** from `packages/helm`) → **build + push images in parallel (same tag)** → **update image tag in values file and push** → **Argo CD sync** (or auto-sync). Single, auditable deployment path.
+3.  **Deploy ECS:** Task definitions reference ECR image URIs and a tag (e.g. from a Terraform variable). After building and pushing new images, run **force new deployment** on each ECS service (e.g. `aws ecs update-service --cluster stereo-spot --service web-ui --force-new-deployment`) so tasks pull the new image. Alternatively, update the task definition revision in Terraform with the new image tag and apply. Full pipeline: **Terraform apply** (data plane + ECS cluster, task definitions, services, ALB) → **build + push images in parallel (same tag)** → **force new deployment** (or update task def and apply). Single, auditable deployment path.
 
 ---
 
@@ -325,7 +317,7 @@ flowchart LR
 To ensure **"Very Good Error Handling"** for large video files:
 
 - **Chunking strategy:** Initial chunking is done by the **media-worker** (see above): ffmpeg splits the source into keyframe-aligned segments (~50MB / ~5 min) and uploads them to S3; S3 events on segment uploads drive video-worker processing. Segment size limits the "blast radius" of a Spot interruption to roughly one segment (e.g. 5 minutes of work).
-- **Termination Handler:** Run the AWS Node Termination Handler on EKS. It catches the 2-minute interruption notice and sends a `SIGTERM` to your Python worker so it can exit gracefully; the segment message will return to the queue after visibility timeout and be reprocessed (segment-level retry, see above).
+- **Spot on ECS:** ECS handles Spot interruption: tasks are stopped and messages return to SQS (segment-level retry). Use a **Capacity Provider** with Spot for the video-worker (EC2 launch type) so GPU capacity can use Spot instances; ECS will replace stopped tasks as needed.
 - **Atomic Uploads:** Use S3 Multipart Uploads for the final 3D file (media-worker → output bucket) to handle network flakiness during the upload of large assets.
 - **Large user uploads:** **V1:** Support only **single presigned PUT** for the source file. **Max file size for V1: ~500 MB** (S3 allows up to 5 GB single PUT, but browser and timeouts suggest this practical limit). **Later enhancement:** For larger files, the API can support **S3 multipart upload** (initiate multipart upload → presigned URLs per part → complete multipart upload); the object key remains `input/{job_id}/source.mp4`, so the same S3 event notification triggers chunking.
 - **Checkpointing and resumability (V1 — simple):** **Segment-level retry only.** If a worker is interrupted mid-segment (e.g. Spot reclaim), the message returns to the queue after visibility timeout and is **reprocessed from the start**; no frame-level checkpoint. At ~5 min per segment, losing one segment's work is acceptable and keeps the design simple. Optionally add a **metric** (e.g. segment retry or reprocess count) for visibility. Frame-level resume (checkpoint on SIGTERM, resume from `start_frame`) is **out of scope for V1**; consider as a future enhancement if needed.
@@ -336,14 +328,14 @@ To ensure **"Very Good Error Handling"** for large video files:
 💰 Cost
 
 - **Main levers:** GPU Spot (vs on-demand), S3 storage and egress, DynamoDB read/write, Lambda invocations. Spot and segment sizing (~50MB / ~5 min) keep cost predictable for batch video work.
-- **Guardrails:** Set **Karpenter max nodes** (e.g. max GPU nodes) to cap scale. **SQS:** Each main queue (chunking, video-worker, reassembly) has a **Dead-Letter Queue (DLQ)** and a **max receive count** (e.g. 3–5); after that, messages move to the DLQ. Add a **CloudWatch alarm** on "number of messages in each DLQ" (e.g. > 0) so failed messages are visible and do not spin forever. Tag resources (e.g. `project=stereo-spot`) for billing visibility; optionally set **AWS Budgets** alerts.
+- **Guardrails:** Set **ECS service max capacity** (e.g. max GPU tasks or ASG max size for video-worker) to cap scale. **SQS:** Each main queue (chunking, video-worker, reassembly) has a **Dead-Letter Queue (DLQ)** and a **max receive count** (e.g. 3–5); after that, messages move to the DLQ. Add a **CloudWatch alarm** on "number of messages in each DLQ" (e.g. > 0) so failed messages are visible and do not spin forever. Tag resources (e.g. `project=stereo-spot`) for billing visibility; optionally set **AWS Budgets** alerts.
 
 ---
 
 🔒 Security and Operations
 
-- **IAM:** EKS pods use **IRSA (IAM Roles for Service Accounts)** for S3, SQS, and DynamoDB; no long-lived access keys.
-- **Network:** Workers run in **private subnets**; use an **S3 VPC endpoint** (gateway) to avoid NAT and improve throughput and cost.
+- **IAM:** ECS tasks use **task roles** (not IRSA) for S3, SQS, and DynamoDB; no long-lived access keys.
+- **Network:** Fargate tasks run in **private subnets**; ALB in **public subnets**. Use an **S3 VPC endpoint** (gateway) to avoid NAT and improve throughput and cost.
 - **Secrets:** Store model weights or API keys in **AWS Secrets Manager** or S3 with restricted access; mount or pull at runtime.
 - **Observability:** Use **CloudWatch** for worker logs and metrics; optional **X-Ray** for tracing.
   - **V1 observability:** Expose or derive a metric for "segments completed / total_segments" per job (e.g. from SegmentCompletions and Job metadata). Add a **CloudWatch alarm** (or equivalent) when no new segment has completed for a job for a configured threshold (e.g. N minutes) to detect stuck jobs.
@@ -358,11 +350,12 @@ To ensure **"Very Good Error Handling"** for large video files:
 
 ---
 
-🔄 Migration Path to Google Cloud (GCP) 
+🔄 Migration Path to Google Cloud (GCP) 
 
-Since you are using EKS and S3, moving to GCP is feasible with some adapter work:
+The pipeline uses **shared-types** and **cloud abstractions** (JobStore, QueueSender/Receiver, ObjectStorage); application and worker code stay the same. Moving to GCP is feasible with new Terraform and adapters:
 
-- **EKS → GKE:** Use **GKE's node autoscaling and Spot** (no Karpenter on GKE); equivalent scaling is achieved via GKE's native autoscaler and Spot node pools. GKE Spot provisioning can be faster than AWS in some regions.
-- **SQS → Pub/Sub:** Queue semantics and IAM differ; expect **moderate** adapter work in the `video-worker` and possibly a small adapter for the reassembly trigger (e.g. Pub/Sub → reassembly queue).
-- **S3 → GCS:** Both use similar SDK patterns.
-- **Terraform:** Keep `packages/aws-infra-setup` and `packages/aws-infra` for AWS. Add `packages/google-infra-setup` and `packages/google-infra` using the Google provider and the same nx-terraform pattern.
+- **ECS → Cloud Run and/or GKE:** Same container images; GCP Terraform (e.g. `packages/google-infra`) would provision **Cloud Run** services or **GKE** with similar env vars. No change to app code.
+- **SQS → Pub/Sub:** Queue semantics and IAM differ; implement a GCP adapter behind the same queue interface; reassembly trigger would use Pub/Sub or equivalent.
+- **S3 → GCS:** Implement GCP object-storage adapter; both use similar SDK patterns.
+- **DynamoDB → Firestore:** Implement GCP job and segment-completion stores behind existing interfaces.
+- **Terraform:** Keep `packages/aws-infra-setup` and `packages/aws-infra` for AWS. Add `packages/google-infra-setup` and `packages/google-infra` using the Google provider and the same nx-terraform pattern when migrating.

@@ -37,3 +37,40 @@ output "reassembly_triggered_table_name" {
   description = "Name of the DynamoDB ReassemblyTriggered table"
   value       = aws_dynamodb_table.reassembly_triggered.name
 }
+
+# --- ECS / ECR ---
+
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_cluster_arn" {
+  description = "ARN of the ECS cluster"
+  value       = aws_ecs_cluster.main.arn
+}
+
+output "web_ui_alb_dns_name" {
+  description = "ALB DNS name for web-ui (HTTP)"
+  value       = aws_lb.web_ui.dns_name
+}
+
+output "web_ui_url" {
+  description = "Web UI URL (http://ALB DNS)"
+  value       = "http://${aws_lb.web_ui.dns_name}"
+}
+
+output "ecr_web_ui_url" {
+  description = "ECR repository URL for web-ui image"
+  value       = aws_ecr_repository.web_ui.repository_url
+}
+
+output "ecr_media_worker_url" {
+  description = "ECR repository URL for media-worker image"
+  value       = aws_ecr_repository.media_worker.repository_url
+}
+
+output "ecr_video_worker_url" {
+  description = "ECR repository URL for video-worker image"
+  value       = aws_ecr_repository.video_worker.repository_url
+}

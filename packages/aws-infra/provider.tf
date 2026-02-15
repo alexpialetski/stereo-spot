@@ -1,22 +1,15 @@
 # nx-terraform-metadata-start
-# providers: aws
+# providers: aws, modules: terraform-aws-modules/vpc/aws@~> 5.0
 # nx-terraform-metadata-end
 
-
 terraform {
-  required_providers {
-    # Add your required providers here
-    # Example:
-    # aws = {
-    #   source  = "hashicorp/aws"
-    #   version = "~> 6.0"
-    # }
+  required_version = ">= 1.5.0"
 
+  required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "6.32.1"
     }
-
   }
 }
 

@@ -31,7 +31,7 @@ When running against AWS (or LocalStack), set the following. Names align with Te
 
 ### Wiring implementations
 
-**Option 1 — From env (recommended for EKS/Lambda):** Use the helpers in `stereo_spot_aws_adapters.env_config` so Terraform outputs (injected as env vars) drive configuration:
+**Option 1 — From env (recommended for ECS tasks and Lambda):** Use the helpers in `stereo_spot_aws_adapters.env_config` so Terraform outputs (injected as env vars) drive configuration:
 
 ```python
 from stereo_spot_aws_adapters.env_config import (

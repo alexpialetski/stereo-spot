@@ -106,10 +106,10 @@ resource "aws_iam_role_policy" "reassembly_trigger_lambda" {
 resource "aws_lambda_function" "reassembly_trigger" {
   count = fileexists(local.reassembly_trigger_zip) ? 1 : 0
 
-  function_name = "${local.name}-reassembly-trigger"
-  role          = aws_iam_role.reassembly_trigger_lambda.arn
-  handler       = "reassembly_trigger.handler.lambda_handler"
-  runtime       = "python3.12"
+  function_name    = "${local.name}-reassembly-trigger"
+  role             = aws_iam_role.reassembly_trigger_lambda.arn
+  handler          = "reassembly_trigger.handler.lambda_handler"
+  runtime          = "python3.12"
   filename         = local.reassembly_trigger_zip
   source_code_hash = fileexists(local.reassembly_trigger_zip) ? filebase64sha256(local.reassembly_trigger_zip) : null
 
@@ -118,10 +118,10 @@ resource "aws_lambda_function" "reassembly_trigger" {
 
   environment {
     variables = {
-      JOBS_TABLE_NAME                  = aws_dynamodb_table.jobs.name
-      SEGMENT_COMPLETIONS_TABLE_NAME   = aws_dynamodb_table.segment_completions.name
-      REASSEMBLY_TRIGGERED_TABLE_NAME  = aws_dynamodb_table.reassembly_triggered.name
-      REASSEMBLY_QUEUE_URL             = aws_sqs_queue.reassembly.url
+      JOBS_TABLE_NAME                 = aws_dynamodb_table.jobs.name
+      SEGMENT_COMPLETIONS_TABLE_NAME  = aws_dynamodb_table.segment_completions.name
+      REASSEMBLY_TRIGGERED_TABLE_NAME = aws_dynamodb_table.reassembly_triggered.name
+      REASSEMBLY_QUEUE_URL            = aws_sqs_queue.reassembly.url
     }
   }
 
