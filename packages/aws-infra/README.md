@@ -1,6 +1,6 @@
 # Terraform Module: aws-infra
 
-This module provisions the **data plane** and **compute plane** for stereo-spot: S3 buckets, SQS queues (with DLQs), DynamoDB tables, CloudWatch alarms, **S3 event notifications** (S3 → SQS), **ECS cluster**, **ECR** repositories, **task definitions** and **ECS services** (Fargate for web-ui, media-worker, and video-worker), **SageMaker** (model, endpoint config, endpoint for StereoCrafter), **Secrets Manager** (Hugging Face token for SageMaker), **ALB** for web-ui, and **IAM task roles**. It uses the AWS S3 backend from the `aws-infra-setup` project.
+This module provisions the **data plane** and **compute plane** for stereo-spot: S3 buckets, SQS queues (with DLQs), DynamoDB tables, CloudWatch alarms, **S3 event notifications** (S3 → SQS), **ECS cluster**, **ECR** repositories, **task definitions** and **ECS services** (Fargate for web-ui, media-worker, and video-worker), **CodeBuild** (stereocrafter-sagemaker image build), **SageMaker** (model, endpoint config, endpoint for StereoCrafter), **Secrets Manager** (Hugging Face token for SageMaker), **ALB** for web-ui, and **IAM task roles**. It uses the AWS S3 backend from the `aws-infra-setup` project.
 
 ## Backend Configuration
 
@@ -24,6 +24,7 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 | `ecs_video_worker_max_capacity` | Maximum video-worker tasks | `8` |
 | `sagemaker_instance_type` | SageMaker endpoint instance type (e.g. ml.g4dn.xlarge) | `ml.g4dn.xlarge` |
 | `sagemaker_instance_count` | Number of instances for the SageMaker endpoint | `1` |
+| `codebuild_stereocrafter_repo_url` | Git repo URL for CodeBuild to clone (stereocrafter-sagemaker) | `https://github.com/alexpialetski/stereo-spot.git` |
 
 ## Resources
 
@@ -78,6 +79,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 - **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, and `SAGEMAKER_REGION` set by Terraform.
 - **Task roles**: One IAM role per workload. Video-worker role includes **sagemaker:InvokeEndpoint** on the StereoCrafter endpoint. A shared **execution role** is used for image pull and CloudWatch Logs.
 - **Services**: **web-ui** (Fargate, 1 task, ALB); **media-worker** (Fargate, scale on chunking queue); **video-worker** (Fargate, scale on video-worker queue).
+- **CodeBuild**: Project `stereo-spot-stereocrafter-build` clones the public repo, builds the stereocrafter-sagemaker Docker image, and pushes to ECR. Trigger via `nx run stereocrafter-sagemaker:deploy`.
 - **SageMaker**: Model (custom container from ECR stereocrafter-sagemaker image), endpoint configuration (GPU instance type), endpoint. The container receives `HF_TOKEN_ARN` (Secrets Manager) and downloads weights from Hugging Face at startup.
 - **Secrets Manager**: Secret `stereo-spot/hf-token` for the Hugging Face token; set the value manually after first apply.
 - **ALB**: Application Load Balancer in public subnets; listener HTTP 80 forwards to web-ui target group.
@@ -86,7 +88,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 1. **Create Hugging Face token secret (one-time)** — Terraform creates a Secrets Manager secret `stereo-spot/hf-token` with a placeholder. Set your real Hugging Face token: `aws secretsmanager put-secret-value --secret-id <secret_id_from_output> --secret-string '{"token":"hf_xxx"}'`. See output `hf_token_secret_arn`.
 2. **Terraform apply** — Provisions data plane (S3, SQS, DynamoDB, Lambda, S3 events), compute (VPC, ECS cluster, task definitions, services, ALB, ECR, task roles), **SageMaker** (model, endpoint config, endpoint), and **Secrets Manager** secret. Video-worker runs on **Fargate** and uses the SageMaker endpoint for inference.
-3. **Build and push images** — Build web-ui, media-worker, video-worker, and **stereocrafter-sagemaker** Docker images; push to ECR with the tag you use for `ecs_image_tag` (e.g. `latest`). The SageMaker endpoint will pull the inference image from the `stereocrafter-sagemaker` ECR repo. If the inference image does not exist yet, the endpoint may show Failed until you push it: `nx run stereocrafter-sagemaker:build` then `nx run stereocrafter-sagemaker:deploy` (after `nx run aws-infra:ecr-login`).
+3. **Build and push images** — Build web-ui, media-worker, video-worker, and push to ECR. For **stereocrafter-sagemaker**: `nx run stereocrafter-sagemaker:deploy` triggers AWS CodeBuild to clone the repo, build the image, and push to ECR (no local Docker build needed). For web-ui, media-worker, video-worker: `nx run-many -t deploy` (requires `nx run aws-infra:ecr-login` first). The SageMaker endpoint will pull the inference image from the `stereocrafter-sagemaker` ECR repo. If the inference image does not exist yet, the endpoint may show Failed until CodeBuild pushes it.
 4. **Deploy ECS** — `nx run aws-infra:ecr-login` (if needed), then `nx run-many -t deploy` to build, push, and force new deployment for web-ui, media-worker, video-worker.
 
 **Verification:** After apply: `aws ecs list-services --cluster <ecs_cluster_name>`, `aws ecs describe-services --cluster <ecs_cluster_name> --services web-ui media-worker video-worker`. Access web-ui via the ALB DNS name (output `web_ui_url` or `web_ui_alb_dns_name`). SageMaker endpoint name is in output `sagemaker_endpoint_name` (video-worker task env is set by Terraform).
@@ -99,7 +101,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 ## Outputs
 
-See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **SageMaker** (`sagemaker_endpoint_name`), and **Secrets Manager** (`hf_token_secret_arn`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
+See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
 
 ## Running Terraform
 

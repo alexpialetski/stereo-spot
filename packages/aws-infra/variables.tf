@@ -85,3 +85,11 @@ variable "sagemaker_instance_count" {
   type        = number
   default     = 1
 }
+
+# --- CodeBuild (stereocrafter-sagemaker image) ---
+
+variable "codebuild_stereocrafter_repo_url" {
+  description = "Git repository URL to clone for stereocrafter-sagemaker build (e.g. https://github.com/user/stereo-spot.git)"
+  type        = string
+  default     = "https://github.com/alexpialetski/stereo-spot.git"
+}

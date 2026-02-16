@@ -1,0 +1,104 @@
+# CodeBuild: Build and push stereocrafter-sagemaker Docker image to ECR.
+# Source: clone from public repo (no CodeStar connection). Trigger manually via deploy target.
+
+# --- IAM: CodeBuild service role ---
+data "aws_iam_policy_document" "codebuild_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "codebuild_stereocrafter" {
+  name               = "${local.name}-codebuild-stereocrafter"
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
+  tags               = merge(local.common_tags, { Name = "${local.name}-codebuild-stereocrafter" })
+}
+
+resource "aws_iam_role_policy" "codebuild_stereocrafter" {
+  name = "codebuild-stereocrafter"
+  role = aws_iam_role.codebuild_stereocrafter.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws/codebuild/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload"
+        ]
+        Resource = aws_ecr_repository.stereocrafter_sagemaker.arn
+      }
+    ]
+  })
+}
+
+# --- CodeBuild project ---
+resource "aws_codebuild_project" "stereocrafter" {
+  name          = "${local.name}-stereocrafter-build"
+  description   = "Build and push stereocrafter-sagemaker Docker image to ECR"
+  service_role  = aws_iam_role.codebuild_stereocrafter.arn
+  build_timeout = 60 # minutes for large Docker build
+
+  source {
+    type      = "NO_SOURCE"
+    buildspec = <<-BUILDSPEC
+      version: 0.2
+      env:
+        variables:
+          ECR_URI: "${aws_ecr_repository.stereocrafter_sagemaker.repository_url}:${var.ecs_image_tag}"
+          REPO_URL: "${var.codebuild_stereocrafter_repo_url}"
+      phases:
+        build:
+          commands:
+            - echo "Cloning repository..."
+            - git clone --depth 1 $REPO_URL src && cd src
+            - echo "Logging in to ECR..."
+            - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${local.account_id}.dkr.ecr.${local.region}.amazonaws.com
+            - echo "Building Docker image..."
+            - docker build -f packages/stereocrafter-sagemaker/Dockerfile -t $ECR_URI .
+            - echo "Pushing to ECR..."
+            - docker push $ECR_URI
+      BUILDSPEC
+  }
+
+  environment {
+    type                = "LINUX_CONTAINER"
+    image               = "aws/codebuild/standard:7.0"
+    compute_type        = "BUILD_GENERAL1_LARGE"
+    image_pull_credentials_type = "CODEBUILD"
+    privileged_mode     = true # Required for Docker build
+  }
+
+  artifacts {
+    type = "NO_ARTIFACTS"
+  }
+
+  logs_config {
+    cloudwatch_logs {
+      group_name  = "/aws/codebuild/${local.name}-stereocrafter-build"
+      stream_name = "build"
+    }
+  }
+
+  tags = merge(local.common_tags, { Name = "${local.name}-stereocrafter-build" })
+}

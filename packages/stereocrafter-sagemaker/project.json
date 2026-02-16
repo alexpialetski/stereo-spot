@@ -16,11 +16,11 @@
     "deploy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": ". packages/aws-infra/.env && docker tag stereo-spot-stereocrafter-sagemaker:latest \"${ECR_STEREOCRAFTER_SAGEMAKER_URL}:latest\" && docker push \"${ECR_STEREOCRAFTER_SAGEMAKER_URL}:latest\"",
+        "command": ". packages/aws-infra/.env && aws codebuild start-build --project-name \"${CODEBUILD_PROJECT_NAME}\" --region \"${REGION}\"",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
-      "dependsOn": ["aws-infra:terraform-output", "stereocrafter-sagemaker:build"],
+      "dependsOn": ["aws-infra:terraform-output"],
       "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     }
   }

@@ -1,3 +1,8 @@
+output "region" {
+  description = "AWS region"
+  value       = local.region
+}
+
 output "input_bucket_name" {
   description = "Name of the S3 input bucket (source uploads, segment files)"
   value       = aws_s3_bucket.input.id
@@ -90,4 +95,11 @@ output "sagemaker_endpoint_name" {
 output "hf_token_secret_arn" {
   description = "ARN of the Secrets Manager secret for Hugging Face token (set value manually)"
   value       = aws_secretsmanager_secret.hf_token.arn
+}
+
+# --- CodeBuild ---
+
+output "codebuild_project_name" {
+  description = "Name of the CodeBuild project for stereocrafter-sagemaker (for nx run stereocrafter-sagemaker:deploy)"
+  value       = aws_codebuild_project.stereocrafter.name
 }
