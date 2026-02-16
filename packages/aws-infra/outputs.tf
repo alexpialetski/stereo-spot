@@ -124,6 +124,11 @@ output "inference_ec2_instance_id" {
   value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? aws_instance.inference[0].id : null
 }
 
+output "inference_ec2_log_group" {
+  description = "CloudWatch log group for inference EC2 container logs"
+  value       = var.inference_backend == "http" && length(aws_cloudwatch_log_group.inference_ec2) > 0 ? aws_cloudwatch_log_group.inference_ec2[0].name : null
+}
+
 output "hf_token_secret_arn" {
   description = "ARN of the Secrets Manager secret for Hugging Face token (set value manually)"
   value       = aws_secretsmanager_secret.hf_token.arn

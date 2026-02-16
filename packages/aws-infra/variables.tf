@@ -97,6 +97,12 @@ variable "inference_ec2_ami_id" {
   default     = ""
 }
 
+variable "inference_ec2_instance_type" {
+  description = "Instance type for the inference EC2. Use g4dn.xlarge (or similar GPU) for real inference; use t3.medium when your org SCP denies GPU instances (pipeline works but inference is CPU-only/slow)."
+  type        = string
+  default     = "t3.medium"
+}
+
 # --- SageMaker (StereoCrafter endpoint; only when inference_backend=sagemaker) ---
 
 variable "sagemaker_instance_type" {

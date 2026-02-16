@@ -30,6 +30,26 @@ REPOS = [
 ]
 
 
+def _secrets_manager_region() -> str | None:
+    """Region for Secrets Manager: from AWS_REGION env or parsed from HF_TOKEN_ARN."""
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if region:
+        return region
+    arn = os.environ.get("HF_TOKEN_ARN")
+    if arn and arn.startswith("arn:aws:secretsmanager:"):
+        parts = arn.split(":")
+        if len(parts) >= 4:
+            return parts[3]  # e.g. us-east-1
+    return None
+
+
+def _region_from_secret_arn(arn: str) -> str | None:
+    """Parse region from Secrets Manager ARN (arn:aws:secretsmanager:REGION:account:...)."""
+    if arn and arn.startswith("arn:aws:secretsmanager:") and arn.count(":") >= 3:
+        return arn.split(":")[3]
+    return None
+
+
 def get_hf_token() -> str | None:
     """Retrieve Hugging Face token from AWS Secrets Manager using HF_TOKEN_ARN."""
     arn = os.environ.get("HF_TOKEN_ARN")
@@ -39,7 +59,11 @@ def get_hf_token() -> str | None:
         import boto3
         import json
 
-        client = boto3.client("secretsmanager")
+        region = _secrets_manager_region() or _region_from_secret_arn(arn)
+        if not region:
+            logger.error("Cannot determine region for Secrets Manager (set AWS_REGION or use a full secret ARN)")
+            return None
+        client = boto3.client("secretsmanager", region_name=region)
         response = client.get_secret_value(SecretId=arn)
         secret = response.get("SecretString")
         if not secret:

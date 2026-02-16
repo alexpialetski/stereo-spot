@@ -53,6 +53,8 @@ When Terraform is set to `inference_backend=http`, the video-worker calls an HTT
 
 - **stereocrafter-ec2-deploy**: Updates the inference EC2 with the latest image from ECR via SSM (no SageMaker endpoint update). Requires `inference_backend=http` and `inference_http_url` empty (so Terraform creates the EC2). Run after `sagemaker-build` to roll the EC2 to the new image.
 
+**Getting your latest code onto EC2:** `sagemaker-build` runs **AWS CodeBuild**, which **clones the Git repo** (e.g. `codebuild_stereocrafter_repo_url` in Terraform). So the image that gets built contains whatever is on that **remote** repo (e.g. `origin/main`). **Push your commits** (e.g. `git push`) before running `sagemaker-build`, then wait for the build to finish, then run **stereocrafter-ec2-deploy** so the EC2 pulls the new image and restarts the container. **terraform-apply** only updates infrastructure (volumes, IAM, etc.); it does not build the image or update the running container.
+
 ## Environment variables (injected by SageMaker/Terraform)
 
 | Variable      | Description |

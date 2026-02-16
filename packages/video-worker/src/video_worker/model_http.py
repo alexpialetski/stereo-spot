@@ -8,8 +8,8 @@ The server at base_url must expose POST /invocations with JSON body
 from __future__ import annotations
 
 import json
-import urllib.request
 import urllib.error
+import urllib.request
 
 
 def invoke_http_endpoint(

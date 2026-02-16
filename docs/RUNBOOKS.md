@@ -259,7 +259,7 @@ All services log **job_id** (and where relevant **segment_index**) so you can tr
 - Video-worker: `/ecs/stereo-spot-video-worker`
 - Reassembly-trigger Lambda: `/aws/lambda/<reassembly-trigger-function-name>`
 - SageMaker endpoint: `/aws/sagemaker/Endpoints/<endpoint-name>` (when `inference_backend=sagemaker` and endpoint logging is enabled)
-- Inference EC2 (when `inference_backend=http`): container logs depend on how the EC2 is configured (e.g. CloudWatch agent or Docker logging driver)
+- Inference EC2 (when `inference_backend=http`): `/ecs/<name>/inference-ec2` (Docker awslogs driver)
 
 **CloudWatch Logs Insights – one job across all services:**
 

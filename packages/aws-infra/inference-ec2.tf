@@ -6,7 +6,7 @@ locals {
   create_inference_ec2 = var.inference_backend == "http" && var.inference_http_url == ""
 }
 
-# Default AMI when inference_ec2_ami_id is empty (Deep Learning OSS Nvidia Driver GPU — same family as SageMaker)
+# Default GPU AMI when inference_ec2_ami_id is empty and instance type is GPU (g4dn, g5, p3)
 data "aws_ami" "inference_ec2_default" {
   count       = local.create_inference_ec2 ? 1 : 0
   most_recent = true
@@ -19,6 +19,26 @@ data "aws_ami" "inference_ec2_default" {
     name   = "state"
     values = ["available"]
   }
+}
+
+# Default CPU AMI when instance type is not GPU (e.g. t3.medium when SCP denies GPU)
+data "aws_ami" "inference_ec2_amazon_linux" {
+  count       = local.create_inference_ec2 ? 1 : 0
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-kernel-*-x86_64"]
+  }
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
+
+locals {
+  inference_ec2_use_gpu_ami = length(regexall("^(g4dn|g5|p3)", var.inference_ec2_instance_type)) > 0
+  inference_ec2_ami_id      = local.create_inference_ec2 ? (var.inference_ec2_ami_id != "" ? var.inference_ec2_ami_id : (local.inference_ec2_use_gpu_ami ? data.aws_ami.inference_ec2_default[0].id : data.aws_ami.inference_ec2_amazon_linux[0].id)) : ""
 }
 
 # IAM role for the inference EC2 (ECR pull, S3, Secrets Manager)
@@ -80,6 +100,11 @@ resource "aws_iam_role_policy" "inference_ec2" {
         Effect   = "Allow"
         Action   = ["s3:GetEncryptionConfiguration"]
         Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+        Resource = "${aws_cloudwatch_log_group.inference_ec2[0].arn}:*"
       }
     ]
   })
@@ -90,6 +115,14 @@ resource "aws_iam_instance_profile" "inference_ec2" {
 
   name = "${local.name}-inference-ec2"
   role = aws_iam_role.inference_ec2[0].name
+}
+
+# CloudWatch log group for inference container logs (critical for testing/debugging)
+resource "aws_cloudwatch_log_group" "inference_ec2" {
+  count             = local.create_inference_ec2 ? 1 : 0
+  name              = "/ecs/${local.name}/inference-ec2"
+  retention_in_days = 7
+  tags              = merge(local.common_tags, { Name = "${local.name}-inference-ec2-logs" })
 }
 
 # Security group: allow 8080 from VPC (so ECS tasks can call the container)
@@ -118,27 +151,35 @@ resource "aws_security_group" "inference_ec2" {
   tags = merge(local.common_tags, { Name = "${local.name}-inference-ec2" })
 }
 
-# User-data: ECR login, pull image, run container (AMI has Docker + NVIDIA driver).
+# User-data: ECR login, pull image, run container with CloudWatch Logs (AMI has Docker + NVIDIA driver).
 locals {
   inference_ec2_user_data = local.create_inference_ec2 ? templatefile("${path.module}/templates/inference-ec2-userdata.sh", {
-    account_id   = data.aws_caller_identity.current.account_id
-    ecr_url      = aws_ecr_repository.stereocrafter_sagemaker.repository_url
-    image_tag    = var.ecs_image_tag
-    region       = local.region
-    hf_token_arn = aws_secretsmanager_secret.hf_token.arn
+    account_id    = data.aws_caller_identity.current.account_id
+    ecr_url       = aws_ecr_repository.stereocrafter_sagemaker.repository_url
+    image_tag     = var.ecs_image_tag
+    region        = local.region
+    hf_token_arn  = aws_secretsmanager_secret.hf_token.arn
+    log_group     = aws_cloudwatch_log_group.inference_ec2[0].name
   }) : ""
 }
 
 resource "aws_instance" "inference" {
   count = local.create_inference_ec2 ? 1 : 0
 
-  ami                    = var.inference_ec2_ami_id != "" ? var.inference_ec2_ami_id : data.aws_ami.inference_ec2_default[0].id
-  instance_type          = "g4dn.xlarge"
+  ami                    = local.inference_ec2_ami_id
+  instance_type          = var.inference_ec2_instance_type
   subnet_id              = module.vpc.private_subnets[0]
   vpc_security_group_ids = [aws_security_group.inference_ec2[0].id]
   iam_instance_profile   = aws_iam_instance_profile.inference_ec2[0].name
 
   user_data = local.inference_ec2_user_data
+
+  root_block_device {
+    volume_size           = 80
+    volume_type           = "gp3"
+    encrypted             = true
+    delete_on_termination = true
+  }
 
   tags = merge(local.common_tags, {
     Name = "${local.name}-inference-ec2"

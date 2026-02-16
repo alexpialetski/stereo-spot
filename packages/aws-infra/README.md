@@ -24,7 +24,8 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 | `ecs_video_worker_max_capacity` | Maximum video-worker tasks | `8` |
 | `inference_backend` | Inference backend: `sagemaker` (managed endpoint) or `http` (e.g. EC2) | `sagemaker` |
 | `inference_http_url` | When `inference_backend=http`, URL of your inference server; leave **empty** to have Terraform create the inference EC2 | (empty) |
-| `inference_ec2_ami_id` | When `inference_backend=http` and Terraform creates EC2: AMI for the GPU instance. Empty = latest AWS Deep Learning OSS Nvidia Driver GPU AMI (same family as SageMaker) | (empty) |
+| `inference_ec2_ami_id` | When `inference_backend=http` and Terraform creates EC2: AMI for the instance. Empty = latest AWS Deep Learning OSS Nvidia Driver GPU AMI. For CPU-only (e.g. `t3.medium`) use an Amazon Linux AMI if needed. | (empty) |
+| `inference_ec2_instance_type` | Instance type for inference EC2. Use `g4dn.xlarge` for GPU; use `t3.medium` when org SCP denies GPU (e.g. `ec2:RunInstances` on g4dn). | `t3.medium` |
 | `sagemaker_instance_type` | SageMaker endpoint instance type (e.g. ml.g4dn.xlarge) | `ml.g4dn.xlarge` |
 | `sagemaker_instance_count` | Number of instances for the SageMaker endpoint | `1` |
 | `codebuild_stereocrafter_repo_url` | Git repo URL for CodeBuild to clone (stereocrafter-sagemaker) | `https://github.com/alexpialetski/stereo-spot.git` |

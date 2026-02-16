@@ -10,6 +10,7 @@
   },
   "targets": {
     "terraform-init": {
+      "cache": true,
       "metadata": {
         "backendProject": "aws-infra-setup"
       }

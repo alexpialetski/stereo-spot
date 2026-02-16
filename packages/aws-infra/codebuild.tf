@@ -36,8 +36,8 @@ resource "aws_iam_role_policy" "codebuild_stereocrafter" {
         Resource = "*"
       },
       {
-        Effect   = "Allow"
-        Action   = [
+        Effect = "Allow"
+        Action = [
           "ecr:BatchCheckLayerAvailability",
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
@@ -74,8 +74,8 @@ resource "aws_codebuild_project" "stereocrafter" {
             - git clone --depth 1 $REPO_URL src && cd src
             - echo "Logging in to ECR..."
             - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${local.account_id}.dkr.ecr.${local.region}.amazonaws.com
-            - echo "Pulling previous image for cache (ignore failure on first build)..."
-            - docker pull $ECR_URI || true
+            # - echo "Pulling previous image for cache (ignore failure on first build)..."
+            # - docker pull $ECR_URI || true
             - echo "Building Docker image..."
             - docker build --cache-from $ECR_URI -f packages/stereocrafter-sagemaker/Dockerfile -t $ECR_URI .
             - echo "Pushing to ECR..."
@@ -84,11 +84,11 @@ resource "aws_codebuild_project" "stereocrafter" {
   }
 
   environment {
-    type                = "LINUX_CONTAINER"
-    image               = "aws/codebuild/standard:7.0"
-    compute_type        = "BUILD_GENERAL1_LARGE"
+    type                        = "LINUX_CONTAINER"
+    image                       = "aws/codebuild/standard:7.0"
+    compute_type                = "BUILD_GENERAL1_LARGE"
     image_pull_credentials_type = "CODEBUILD"
-    privileged_mode     = true # Required for Docker build
+    privileged_mode             = true # Required for Docker build
   }
 
   artifacts {
