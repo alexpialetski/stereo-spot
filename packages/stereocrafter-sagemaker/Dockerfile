@@ -25,9 +25,10 @@ WORKDIR /opt/stereocrafter
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Forward-Warp (CUDA extension; requires torch from previous step)
-# TORCH_CUDA_ARCH_LIST needed: CodeBuild has no GPU, so PyTorch can't auto-detect archs
+# TORCH_CUDA_ARCH_LIST needed: CodeBuild has no GPU, so PyTorch can't auto-detect archs.
+# Must export: VAR=value cmd1 && cmd2 does NOT pass VAR to cmd2; use export for the whole chain.
 WORKDIR /opt/stereocrafter/dependency/Forward-Warp
-RUN TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6" chmod +x install.sh && ./install.sh
+RUN export TORCH_CUDA_ARCH_LIST="7.0 7.5 8.0 8.6" && chmod +x install.sh && ./install.sh
 
 # SageMaker app deps
 RUN pip install --no-cache-dir boto3 gunicorn huggingface_hub
