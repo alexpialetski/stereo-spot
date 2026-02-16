@@ -210,7 +210,9 @@ Replace `<JOB_ID>` with the stuck job’s ID. Then refresh the job in the web UI
 
 ### Updating the SageMaker inference image
 
-After building and pushing a new StereoCrafter inference image to ECR:
+The stereocrafter-sagemaker image is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:deploy` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR.
+
+After the image is in ECR (or if you build and push locally):
 
 1. **Create a new endpoint configuration** (or update in Terraform with the same image tag) so SageMaker uses the new image. If you use Terraform with `ecs_image_tag` (e.g. `latest`), re-pushing the same tag and running **update-endpoint** is enough.
 2. **Update the endpoint** to use the new configuration:
