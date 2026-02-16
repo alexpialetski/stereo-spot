@@ -36,6 +36,8 @@ nx run stereocrafter-sagemaker:deploy
 
 CodeBuild clones the public repo, runs `docker build`, and pushes to ECR. No local Docker build needed.
 
+**Build time (from scratch):** ~7–8 minutes on CodeBuild `BUILD_GENERAL1_LARGE` (clone ~3s, base image ~70s, apt ~15s, StereoCrafter deps ~82s, Forward-Warp ~1min, push ~4min). Subsequent builds benefit from Docker layer cache if layers are unchanged.
+
 For local build (requires Docker and ~10GB+ for CUDA base + StereoCrafter):
 ```bash
 nx run stereocrafter-sagemaker:build

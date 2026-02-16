@@ -20,13 +20,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt
 RUN git clone --recursive https://github.com/TencentARC/StereoCrafter.git stereocrafter
 
-# Install Forward-Warp (CUDA extension)
-WORKDIR /opt/stereocrafter/dependency/Forward-Warp
-RUN chmod +x install.sh && ./install.sh
-
-# Install StereoCrafter Python deps
+# Install StereoCrafter Python deps first (Forward-Warp install.sh needs torch for CUDA extension)
 WORKDIR /opt/stereocrafter
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Forward-Warp (CUDA extension; requires torch from previous step)
+WORKDIR /opt/stereocrafter/dependency/Forward-Warp
+RUN chmod +x install.sh && ./install.sh
 
 # SageMaker app deps
 RUN pip install --no-cache-dir boto3 gunicorn huggingface_hub
