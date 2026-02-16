@@ -11,6 +11,7 @@ into WEIGHTS_DIR (default /opt/ml/model/weights).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -108,6 +109,21 @@ def download_weights() -> bool:
         except Exception as e:
             logger.exception("Failed to download %s: %s", repo_id, e)
             return False
+
+    # tencent/DepthCrafter has config.json + diffusion_pytorch_model.safetensors at root
+    # but no model_index.json; diffusers expects it for DepthCrafterPipeline.from_pretrained().
+    depthcrafter_dir = os.path.join(WEIGHTS_DIR, "depthcrafter")
+    if os.path.isdir(depthcrafter_dir):
+        model_index_path = os.path.join(depthcrafter_dir, "model_index.json")
+        if not os.path.isfile(model_index_path):
+            model_index = {
+                "_class_name": "DepthCrafterPipeline",
+                "unet": [".", "DiffusersUNetSpatioTemporalConditionModelDepthCrafter"],
+            }
+            with open(model_index_path, "w", encoding="utf-8") as f:
+                json.dump(model_index, f, indent=2)
+            logger.info("Wrote %s for diffusers pipeline loading", model_index_path)
+
     logger.info("All weights downloaded to %s", WEIGHTS_DIR)
     return True
 
