@@ -9,7 +9,7 @@ ENV CUDA_HOME=/usr/local/cuda
 
 # Python 3.10, git, build deps for Forward-Warp
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3.10-venv python3-pip \
+    python3.10 python3.10-dev python3.10-venv python3-pip \
     git git-lfs \
     build-essential \
     && rm -rf /var/lib/apt/lists/* \
