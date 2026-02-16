@@ -206,9 +206,11 @@ Replace `<JOB_ID>` with the stuck job’s ID. Then refresh the job in the web UI
 
 ---
 
-## 4. SageMaker endpoint update and HF token rotation
+## 4. Inference endpoint update and HF token rotation
 
-### Updating the SageMaker inference image
+Inference is **backend-switchable** (Terraform `inference_backend`: `sagemaker` or `http`). Use the matching deploy step after building the image.
+
+### Updating the SageMaker inference image (when `inference_backend=sagemaker`)
 
 The stereocrafter-sagemaker image is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:sagemaker-build` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR. Then run `nx run stereocrafter-sagemaker:sagemaker-deploy` to update the SageMaker endpoint to use the new image.
 
@@ -222,6 +224,17 @@ After the image is in ECR (or if you build and push locally):
    Or with Terraform: change the endpoint config (e.g. new image tag), apply, then update the endpoint in the console or via CLI to point to the new config.
 
 The endpoint will roll to the new config; in-flight invocations may complete on the old instance.
+
+### Updating the inference container on EC2 (when `inference_backend=http` and Terraform creates the EC2)
+
+When using the HTTP backend with Terraform-managed inference EC2, build the image as above (`nx run stereocrafter-sagemaker:sagemaker-build`), then deploy to the EC2 via SSM:
+
+```bash
+# Ensure packages/aws-infra/.env has INFERENCE_EC2_INSTANCE_ID, ECR_STEREOCRAFTER_SAGEMAKER_URL, REGION (from terraform-output)
+nx run stereocrafter-sagemaker:stereocrafter-ec2-deploy
+```
+
+This runs ECR login, `docker pull`, and `docker run` on the EC2 so the new image is used. See `packages/stereocrafter-sagemaker/README.md` and `packages/aws-infra/README.md` (variables `inference_backend`, `inference_ec2_enabled`, `inference_ec2_ami_id`).
 
 ### Rotating the Hugging Face token
 
@@ -245,7 +258,8 @@ All services log **job_id** (and where relevant **segment_index**) so you can tr
 - Media-worker: `/ecs/stereo-spot-media-worker`
 - Video-worker: `/ecs/stereo-spot-video-worker`
 - Reassembly-trigger Lambda: `/aws/lambda/<reassembly-trigger-function-name>`
-- SageMaker endpoint: `/aws/sagemaker/Endpoints/<endpoint-name>` (if endpoint logging is enabled)
+- SageMaker endpoint: `/aws/sagemaker/Endpoints/<endpoint-name>` (when `inference_backend=sagemaker` and endpoint logging is enabled)
+- Inference EC2 (when `inference_backend=http`): container logs depend on how the EC2 is configured (e.g. CloudWatch agent or Docker logging driver)
 
 **CloudWatch Logs Insights – one job across all services:**
 

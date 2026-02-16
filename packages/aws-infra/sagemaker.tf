@@ -1,7 +1,9 @@
-# SageMaker: StereoCrafter inference endpoint. Video-worker (Fargate) invokes it with S3 URIs.
+# SageMaker: StereoCrafter inference endpoint. Only when inference_backend=sagemaker.
 
 # --- IAM: SageMaker endpoint execution role ---
 data "aws_iam_policy_document" "sagemaker_endpoint_assume" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
@@ -13,14 +15,18 @@ data "aws_iam_policy_document" "sagemaker_endpoint_assume" {
 }
 
 resource "aws_iam_role" "sagemaker_endpoint" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   name               = "${local.name}-sagemaker-endpoint"
-  assume_role_policy = data.aws_iam_policy_document.sagemaker_endpoint_assume.json
+  assume_role_policy = data.aws_iam_policy_document.sagemaker_endpoint_assume[0].json
   tags               = merge(local.common_tags, { Name = "${local.name}-sagemaker-endpoint" })
 }
 
 resource "aws_iam_role_policy" "sagemaker_endpoint" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   name = "sagemaker-endpoint"
-  role = aws_iam_role.sagemaker_endpoint.id
+  role = aws_iam_role.sagemaker_endpoint[0].id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -47,7 +53,7 @@ resource "aws_iam_role_policy" "sagemaker_endpoint" {
       {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "${aws_cloudwatch_log_group.sagemaker_endpoint.arn}:*"
+        Resource = "${aws_cloudwatch_log_group.sagemaker_endpoint[0].arn}:*"
       }
     ]
   })
@@ -59,8 +65,10 @@ locals {
 }
 
 resource "aws_sagemaker_model" "stereocrafter" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   name               = "${local.name}-stereocrafter"
-  execution_role_arn = aws_iam_role.sagemaker_endpoint.arn
+  execution_role_arn = aws_iam_role.sagemaker_endpoint[0].arn
 
   primary_container {
     image          = local.sagemaker_image
@@ -75,11 +83,13 @@ resource "aws_sagemaker_model" "stereocrafter" {
 
 # --- Endpoint configuration and endpoint ---
 resource "aws_sagemaker_endpoint_configuration" "stereocrafter" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   name = "${local.name}-stereocrafter"
 
   production_variants {
     variant_name           = "AllTraffic"
-    model_name             = aws_sagemaker_model.stereocrafter.name
+    model_name             = aws_sagemaker_model.stereocrafter[0].name
     instance_type           = var.sagemaker_instance_type
     initial_instance_count  = var.sagemaker_instance_count
     initial_variant_weight  = 1
@@ -89,16 +99,17 @@ resource "aws_sagemaker_endpoint_configuration" "stereocrafter" {
 }
 
 resource "aws_sagemaker_endpoint" "stereocrafter" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   name                 = "${local.name}-stereocrafter"
-  endpoint_config_name  = aws_sagemaker_endpoint_configuration.stereocrafter.name
+  endpoint_config_name  = aws_sagemaker_endpoint_configuration.stereocrafter[0].name
   tags                  = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })
 }
 
 # --- CloudWatch log group for SageMaker endpoint container logs ---
-# SageMaker sends the container's stdout/stderr to /aws/sagemaker/Endpoints/<endpoint-name>.
-# Name must match the endpoint name (local.name-stereocrafter). Creating it explicitly
-# ensures the log group appears in the console and we set retention.
 resource "aws_cloudwatch_log_group" "sagemaker_endpoint" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
   name              = "/aws/sagemaker/Endpoints/${local.name}-stereocrafter"
   retention_in_days = 7
   tags              = merge(local.common_tags, { Name = "${local.name}-sagemaker-endpoint-logs" })

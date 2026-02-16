@@ -23,6 +23,16 @@
       "configurations": {},
       "dependsOn": ["aws-infra:terraform-output"],
       "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
+    },
+    "stereocrafter-ec2-deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash packages/stereocrafter-sagemaker/scripts/deploy-ec2.sh packages/aws-infra/.env",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["aws-infra:terraform-output"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     }
   }
 }

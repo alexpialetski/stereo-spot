@@ -12,6 +12,7 @@ from stereo_spot_shared.interfaces import (
     SegmentCompletionStore,
 )
 
+from .model_http import invoke_http_endpoint
 from .model_sagemaker import invoke_sagemaker_endpoint
 from .model_stub import process_segment
 from .output_key import build_output_segment_key
@@ -33,6 +34,10 @@ def _parse_s3_uri(s3_uri: str) -> tuple[str, str] | None:
 
 def _use_sagemaker_backend() -> bool:
     return os.environ.get("INFERENCE_BACKEND", "stub").lower() == "sagemaker"
+
+
+def _use_http_backend() -> bool:
+    return os.environ.get("INFERENCE_BACKEND", "stub").lower() == "http"
 
 
 def process_one_message(
@@ -77,6 +82,16 @@ def process_one_message(
             endpoint_name,
             mode=payload.mode.value,
             region_name=region_name or None,
+        )
+    elif _use_http_backend():
+        http_url = os.environ.get("INFERENCE_HTTP_URL")
+        if not http_url:
+            raise ValueError("INFERENCE_BACKEND=http requires INFERENCE_HTTP_URL")
+        invoke_http_endpoint(
+            http_url,
+            payload.segment_s3_uri,
+            output_s3_uri,
+            mode=payload.mode.value,
         )
     else:
         parsed = _parse_s3_uri(payload.segment_s3_uri)

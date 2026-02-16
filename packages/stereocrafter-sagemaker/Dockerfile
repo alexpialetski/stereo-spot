@@ -7,11 +7,12 @@ FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CUDA_HOME=/usr/local/cuda
 
-# Python 3.10, git, build deps for Forward-Warp
+# Python 3.10, git, build deps for Forward-Warp, libGL for opencv (cv2)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 python3.10-dev python3.10-venv python3-pip \
     git git-lfs \
     build-essential \
+    libgl1-mesa-glx libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.10 /usr/bin/python \
     && ln -sf /usr/bin/python3.10 /usr/bin/python3

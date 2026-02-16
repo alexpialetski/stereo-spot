@@ -45,6 +45,14 @@ nx run stereocrafter-sagemaker:sagemaker-deploy
 
 Terraform expects the image at the ECR repository URL with tag from `ecs_image_tag` (e.g. `latest`). Run `sagemaker-deploy` after `sagemaker-build` (or after pushing a new image to ECR) to roll out the new image to the SageMaker endpoint.
 
+**Docker image:** Includes `libgl1-mesa-glx` and `libglib2.0-0` so `cv2` (opencv) in the StereoCrafter scripts can load without a display.
+
+### HTTP backend (EC2 for dev/testing)
+
+When Terraform is set to `inference_backend=http`, the video-worker calls an HTTP URL instead of SageMaker. You can run the same container on a GPU EC2 for faster iteration:
+
+- **stereocrafter-ec2-deploy**: Updates the inference EC2 with the latest image from ECR via SSM (no SageMaker endpoint update). Requires `inference_backend=http`, `inference_ec2_enabled=true`, and `inference_ec2_ami_id` set. Run after `sagemaker-build` to roll the EC2 to the new image.
+
 ## Environment variables (injected by SageMaker/Terraform)
 
 | Variable      | Description |

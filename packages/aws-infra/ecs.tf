@@ -123,33 +123,35 @@ resource "aws_iam_role_policy" "video_worker_task" {
   role = aws_iam_role.video_worker_task.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query"]
-        Resource = [aws_dynamodb_table.segment_completions.arn]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
-        Resource = [aws_dynamodb_table.jobs.arn]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        Resource = [aws_sqs_queue.video_worker.arn]
-      },
-      {
+    Statement = concat(
+      [
+        {
+          Effect   = "Allow"
+          Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+          Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query"]
+          Resource = [aws_dynamodb_table.segment_completions.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+          Resource = [aws_dynamodb_table.jobs.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+          Resource = [aws_sqs_queue.video_worker.arn]
+        }
+      ],
+      var.inference_backend == "sagemaker" ? [{
         Effect   = "Allow"
         Action   = ["sagemaker:InvokeEndpoint"]
-        Resource = [aws_sagemaker_endpoint.stereocrafter.arn]
-      }
-    ]
+        Resource = [aws_sagemaker_endpoint.stereocrafter[0].arn]
+      }] : []
+    )
   })
 }
 
@@ -277,16 +279,22 @@ locals {
     { name = "CHUNKING_QUEUE_URL", value = aws_sqs_queue.chunking.url },
     { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url }
   ])
+  inference_http_url = var.inference_backend == "http" ? (length(aws_instance.inference) > 0 ? "http://${aws_instance.inference[0].private_ip}:8080" : var.inference_http_url) : ""
+  video_worker_inference_env = var.inference_backend == "sagemaker" ? [
+    { name = "INFERENCE_BACKEND", value = "sagemaker" },
+    { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.stereocrafter[0].name },
+    { name = "SAGEMAKER_REGION", value = local.region }
+  ] : [
+    { name = "INFERENCE_BACKEND", value = "http" },
+    { name = "INFERENCE_HTTP_URL", value = local.inference_http_url }
+  ]
   video_worker_env = concat(local.ecs_env_common, [
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
     { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url },
-    { name = "INFERENCE_BACKEND", value = "sagemaker" },
-    { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.stereocrafter.name },
-    { name = "SAGEMAKER_REGION", value = local.region }
-  ])
+  ], local.video_worker_inference_env)
 }
 
 resource "aws_ecs_task_definition" "web_ui" {

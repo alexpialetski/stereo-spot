@@ -85,16 +85,16 @@ output "ecr_stereocrafter_sagemaker_url" {
   value       = aws_ecr_repository.stereocrafter_sagemaker.repository_url
 }
 
-# --- SageMaker ---
+# --- SageMaker (only when inference_backend=sagemaker) ---
 
 output "sagemaker_endpoint_name" {
   description = "SageMaker endpoint name (for video-worker SAGEMAKER_ENDPOINT_NAME)"
-  value       = aws_sagemaker_endpoint.stereocrafter.name
+  value       = var.inference_backend == "sagemaker" ? aws_sagemaker_endpoint.stereocrafter[0].name : null
 }
 
 output "sagemaker_endpoint_role_arn" {
   description = "IAM role ARN for SageMaker endpoint (for stereocrafter-sagemaker:sagemaker-deploy)"
-  value       = aws_iam_role.sagemaker_endpoint.arn
+  value       = var.inference_backend == "sagemaker" ? aws_iam_role.sagemaker_endpoint[0].arn : null
 }
 
 output "sagemaker_instance_type" {
@@ -105,6 +105,23 @@ output "sagemaker_instance_type" {
 output "sagemaker_instance_count" {
   description = "SageMaker endpoint instance count"
   value       = var.sagemaker_instance_count
+}
+
+# --- Inference EC2 (only when inference_backend=http and inference_ec2_enabled=true) ---
+
+output "inference_http_url" {
+  description = "URL for HTTP inference backend (video-worker INFERENCE_HTTP_URL)"
+  value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? "http://${aws_instance.inference[0].private_ip}:8080" : null
+}
+
+output "inference_ec2_private_ip" {
+  description = "Private IP of the inference EC2 (for SSH or stereocrafter-ec2-deploy)"
+  value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? aws_instance.inference[0].private_ip : null
+}
+
+output "inference_ec2_instance_id" {
+  description = "Instance ID of the inference EC2 (for SSM deploy)"
+  value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? aws_instance.inference[0].id : null
 }
 
 output "hf_token_secret_arn" {
