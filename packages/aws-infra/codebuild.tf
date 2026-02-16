@@ -74,8 +74,10 @@ resource "aws_codebuild_project" "stereocrafter" {
             - git clone --depth 1 $REPO_URL src && cd src
             - echo "Logging in to ECR..."
             - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${local.account_id}.dkr.ecr.${local.region}.amazonaws.com
+            - echo "Pulling previous image for cache (ignore failure on first build)..."
+            - docker pull $ECR_URI || true
             - echo "Building Docker image..."
-            - docker build -f packages/stereocrafter-sagemaker/Dockerfile -t $ECR_URI .
+            - docker build --cache-from $ECR_URI -f packages/stereocrafter-sagemaker/Dockerfile -t $ECR_URI .
             - echo "Pushing to ECR..."
             - docker push $ECR_URI
       BUILDSPEC
