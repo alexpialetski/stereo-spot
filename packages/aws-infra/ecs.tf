@@ -412,6 +412,9 @@ resource "aws_ecs_service" "media_worker" {
   desired_count   = 0
   launch_type     = "FARGATE"
 
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = module.vpc.private_subnets
     security_groups  = [aws_security_group.fargate_tasks.id]
@@ -419,6 +422,10 @@ resource "aws_ecs_service" "media_worker" {
   }
 
   tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }
 
 # Video-worker: Fargate (thin client; inference on SageMaker).
@@ -429,6 +436,9 @@ resource "aws_ecs_service" "video_worker" {
   desired_count   = 0
   launch_type     = "FARGATE"
 
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = module.vpc.private_subnets
     security_groups  = [aws_security_group.fargate_tasks.id]
@@ -436,6 +446,10 @@ resource "aws_ecs_service" "video_worker" {
   }
 
   tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }
 
 # --- Application Auto Scaling: video-worker (scale on video-worker queue depth) ---
@@ -473,7 +487,7 @@ resource "aws_appautoscaling_policy" "video_worker_sqs" {
 # --- Application Auto Scaling: media-worker (scale on chunking queue depth) ---
 resource "aws_appautoscaling_target" "media_worker" {
   max_capacity       = 10
-  min_capacity       = 0
+  min_capacity       = 1
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.media_worker.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"

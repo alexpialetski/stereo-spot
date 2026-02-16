@@ -61,9 +61,9 @@ variable "ecs_video_worker_memory" {
 }
 
 variable "ecs_video_worker_min_capacity" {
-  description = "Minimum number of video-worker tasks"
+  description = "Minimum number of video-worker tasks (1 = one task always running)"
   type        = number
-  default     = 0
+  default     = 1
 }
 
 variable "ecs_video_worker_max_capacity" {
