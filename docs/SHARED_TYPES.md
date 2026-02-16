@@ -8,13 +8,13 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 
 ### JobStore
 
-**Methods:** `get(job_id)`, `put(job)`, `update(job_id, status=..., total_segments=..., completed_at=...)`, `list_completed(limit, exclusive_start_key=None)`.
+**Methods:** `get(job_id)`, `put(job)`, `update(job_id, status=..., total_segments=..., completed_at=...)`, `list_completed(limit, exclusive_start_key=None)`, `list_in_progress(limit=20)`.
 
 **Purpose:** Single source of truth for job metadata (mode, status, total_segments, timestamps). Used for create job, update status after chunking/reassembly, and list completed jobs for the UI.
 
 **Consumers:**
 
-- **web-ui:** put (create job), get (job detail), list_completed (list page), update (not typically; workers update).
+- **web-ui:** put (create job), get (job detail), list_completed and list_in_progress (unified jobs page), update (not typically; workers update).
 - **media-worker (chunking):** get (fetch mode), update (chunking_in_progress → chunking_complete + total_segments).
 - **media-worker (reassembly):** get (total_segments, status), update (status=completed, completed_at).
 - **reassembly-trigger (Lambda):** get (total_segments, status) to decide when to send to reassembly queue.
@@ -54,13 +54,13 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 
 ### ObjectStorage
 
-**Methods:** `presign_upload(bucket, key, expires_in=3600)`, `presign_download(bucket, key, expires_in=3600)`, `upload(bucket, key, body)`, `download(bucket, key)`.
+**Methods:** `presign_upload(bucket, key, expires_in=3600)`, `presign_download(bucket, key, expires_in=3600, response_content_disposition=None)`, `upload(bucket, key, body)`, `download(bucket, key)`. Use `response_content_disposition` (e.g. `'attachment; filename="x.mp4"'`) to force download instead of inline display.
 
 **Purpose:** Upload/download bytes and generate presigned URLs for direct browser/client access (upload source file, playback final file).
 
 **Consumers:**
 
-- **web-ui:** presign_upload (create job → upload URL), presign_download (playback URL).
+- **web-ui:** presign_upload (create job → upload URL), presign_download (playback and download URLs).
 - **media-worker (chunking):** download (source), upload (segment files).
 - **video-worker:** download (segment), upload (segment output).
 - **media-worker (reassembly):** download (segment outputs), upload (final.mp4).
