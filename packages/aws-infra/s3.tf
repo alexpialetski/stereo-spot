@@ -36,6 +36,18 @@ resource "aws_s3_bucket" "output" {
   })
 }
 
+# CORS: allow browser video playback from web UI (video element loads from presigned URL)
+resource "aws_s3_bucket_cors_configuration" "output" {
+  bucket = aws_s3_bucket.output.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = ["*"]
+    max_age_seconds = 3600
+  }
+}
+
 resource "aws_s3_bucket_versioning" "output" {
   bucket = aws_s3_bucket.output.id
 

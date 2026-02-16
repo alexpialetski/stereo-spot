@@ -1,4 +1,4 @@
-# Jobs table: PK job_id; GSI status-completed_at for list completed jobs
+# Jobs table: PK job_id; GSI status-completed_at for completed; GSI status-created_at for in-progress
 resource "aws_dynamodb_table" "jobs" {
   name         = "${local.name}-jobs"
   billing_mode = "PAY_PER_REQUEST"
@@ -20,10 +20,22 @@ resource "aws_dynamodb_table" "jobs" {
     type = "N"
   }
 
+  attribute {
+    name = "created_at"
+    type = "N"
+  }
+
   global_secondary_index {
     name            = "status-completed_at"
     hash_key        = "status"
     range_key       = "completed_at"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "status-created_at"
+    hash_key        = "status"
+    range_key       = "created_at"
     projection_type = "ALL"
   }
 

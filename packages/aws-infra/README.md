@@ -54,7 +54,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 ### DynamoDB
 
-- **Jobs**: PK `job_id` (String). GSI `status-completed_at`: PK `status`, SK `completed_at` (Number) for "list completed jobs" (query `status = 'completed'`, descending by `completed_at`, pagination via `ExclusiveStartKey`).
+- **Jobs**: PK `job_id` (String). GSI `status-completed_at`: PK `status`, SK `completed_at` (Number) for list completed jobs. GSI `status-created_at`: PK `status`, SK `created_at` (Number) for list in-progress jobs.
 - **SegmentCompletions**: PK `job_id`, SK `segment_index`. Query by `job_id` returns segments in order for reassembly.
 - **ReassemblyTriggered**: PK `job_id`. TTL enabled on attribute `ttl` (e.g. set to `triggered_at + 90 days` by Lambda/worker).
 
@@ -65,9 +65,10 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 ## Access patterns
 
 1. **List completed jobs**: Query Jobs GSI `status-completed_at` with `status = 'completed'`, `ScanIndexForward = false`, pagination via `Limit` and `ExclusiveStartKey`.
-2. **Get/update job by job_id**: GetItem / UpdateItem on Jobs.
-3. **Query SegmentCompletions by job_id**: Query with PK `job_id`, ordered by `segment_index`.
-4. **Conditional write to ReassemblyTriggered by job_id**: PutItem with condition (e.g. item must not exist) for idempotency.
+2. **List in-progress jobs**: Query Jobs GSI `status-created_at` for `status` in (created, chunking_in_progress, chunking_complete), merge and sort by `created_at` desc.
+3. **Get/update job by job_id**: GetItem / UpdateItem on Jobs.
+4. **Query SegmentCompletions by job_id**: Query with PK `job_id`, ordered by `segment_index`.
+5. **Conditional write to ReassemblyTriggered by job_id**: PutItem with condition (e.g. item must not exist) for idempotency.
 
 ## ECS cluster, task definitions, services, ALB
 

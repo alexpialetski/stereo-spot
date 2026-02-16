@@ -69,6 +69,11 @@ resource "aws_iam_role_policy" "web_ui_task" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:BatchGetItem"]
         Resource = [aws_dynamodb_table.jobs.arn, "${aws_dynamodb_table.jobs.arn}/index/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:Query"]
+        Resource = [aws_dynamodb_table.segment_completions.arn]
       }
     ]
   })
@@ -255,7 +260,8 @@ locals {
   web_ui_env = concat(local.ecs_env_common, [
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
-    { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name }
+    { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
+    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name }
   ])
   media_worker_env = concat(local.ecs_env_common, [
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
