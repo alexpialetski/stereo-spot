@@ -77,7 +77,7 @@ variable "ecs_video_worker_max_capacity" {
 variable "inference_backend" {
   description = "Inference backend: sagemaker (managed endpoint) or http (e.g. EC2 running same container)"
   type        = string
-  default     = "sagemaker"
+  default     = "http"
 
   validation {
     condition     = contains(["sagemaker", "http"], var.inference_backend)
@@ -86,19 +86,13 @@ variable "inference_backend" {
 }
 
 variable "inference_http_url" {
-  description = "When inference_backend=http and inference_ec2_enabled=false, URL of inference server (e.g. http://10.0.1.5:8080)"
+  description = "When inference_backend=http, URL of your inference server to use instead of Terraform-created EC2 (e.g. http://10.0.1.5:8080). Leave empty to have Terraform create the inference EC2."
   type        = string
   default     = ""
 }
 
-variable "inference_ec2_enabled" {
-  description = "When inference_backend=http, create and manage the inference EC2 (true). Set false to use your own server and inference_http_url."
-  type        = bool
-  default     = true
-}
-
 variable "inference_ec2_ami_id" {
-  description = "When inference_backend=http and inference_ec2_enabled=true, AMI for the GPU EC2 (e.g. Deep Learning AMI with NVIDIA driver)"
+  description = "When inference_backend=http and inference_http_url is empty, AMI for the GPU EC2. Empty = use latest AWS Deep Learning OSS Nvidia Driver GPU AMI (same family as typical SageMaker GPU runtimes)."
   type        = string
   default     = ""
 }

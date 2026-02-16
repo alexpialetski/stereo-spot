@@ -107,7 +107,7 @@ output "sagemaker_instance_count" {
   value       = var.sagemaker_instance_count
 }
 
-# --- Inference EC2 (only when inference_backend=http and inference_ec2_enabled=true) ---
+# --- Inference EC2 (only when inference_backend=http and inference_http_url is empty) ---
 
 output "inference_http_url" {
   description = "URL for HTTP inference backend (video-worker INFERENCE_HTTP_URL)"

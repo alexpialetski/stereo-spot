@@ -225,7 +225,7 @@ After the image is in ECR (or if you build and push locally):
 
 The endpoint will roll to the new config; in-flight invocations may complete on the old instance.
 
-### Updating the inference container on EC2 (when `inference_backend=http` and Terraform creates the EC2)
+### Updating the inference container on EC2 (when `inference_backend=http` and `inference_http_url` is empty)
 
 When using the HTTP backend with Terraform-managed inference EC2, build the image as above (`nx run stereocrafter-sagemaker:sagemaker-build`), then deploy to the EC2 via SSM:
 
@@ -234,7 +234,7 @@ When using the HTTP backend with Terraform-managed inference EC2, build the imag
 nx run stereocrafter-sagemaker:stereocrafter-ec2-deploy
 ```
 
-This runs ECR login, `docker pull`, and `docker run` on the EC2 so the new image is used. See `packages/stereocrafter-sagemaker/README.md` and `packages/aws-infra/README.md` (variables `inference_backend`, `inference_ec2_enabled`, `inference_ec2_ami_id`).
+This runs ECR login, `docker pull`, and `docker run` on the EC2 so the new image is used. See `packages/stereocrafter-sagemaker/README.md` and `packages/aws-infra/README.md` (variables `inference_backend`, `inference_http_url`, `inference_ec2_ami_id`).
 
 ### Rotating the Hugging Face token
 

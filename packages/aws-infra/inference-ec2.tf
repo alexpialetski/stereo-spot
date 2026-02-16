@@ -1,10 +1,29 @@
-# Optional inference EC2: when inference_backend=http and inference_ec2_enabled=true.
+# Optional inference EC2: when inference_backend=http and inference_http_url is empty.
 # Same VPC as ECS so video-worker can call it. Runs the stereocrafter container from ECR.
-# Set inference_ec2_ami_id to a GPU AMI with NVIDIA driver (e.g. Deep Learning AMI).
+# AMI: use inference_ec2_ami_id if set, else latest AWS Deep Learning OSS Nvidia GPU AMI (same family as SageMaker GPU).
+
+locals {
+  create_inference_ec2 = var.inference_backend == "http" && var.inference_http_url == ""
+}
+
+# Default AMI when inference_ec2_ami_id is empty (Deep Learning OSS Nvidia Driver GPU — same family as SageMaker)
+data "aws_ami" "inference_ec2_default" {
+  count       = local.create_inference_ec2 ? 1 : 0
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["Deep Learning OSS Nvidia Driver AMI GPU*"]
+  }
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
 
 # IAM role for the inference EC2 (ECR pull, S3, Secrets Manager)
 data "aws_iam_policy_document" "inference_ec2_assume" {
-  count = var.inference_backend == "http" && var.inference_ec2_enabled ? 1 : 0
+  count = local.create_inference_ec2 ? 1 : 0
 
   statement {
     effect  = "Allow"
@@ -17,7 +36,7 @@ data "aws_iam_policy_document" "inference_ec2_assume" {
 }
 
 resource "aws_iam_role" "inference_ec2" {
-  count = var.inference_backend == "http" && var.inference_ec2_enabled ? 1 : 0
+  count = local.create_inference_ec2 ? 1 : 0
 
   name               = "${local.name}-inference-ec2"
   assume_role_policy = data.aws_iam_policy_document.inference_ec2_assume[0].json
@@ -25,7 +44,7 @@ resource "aws_iam_role" "inference_ec2" {
 }
 
 resource "aws_iam_role_policy" "inference_ec2" {
-  count = var.inference_backend == "http" && var.inference_ec2_enabled ? 1 : 0
+  count = local.create_inference_ec2 ? 1 : 0
 
   name = "inference-ec2"
   role = aws_iam_role.inference_ec2[0].id
@@ -67,7 +86,7 @@ resource "aws_iam_role_policy" "inference_ec2" {
 }
 
 resource "aws_iam_instance_profile" "inference_ec2" {
-  count = var.inference_backend == "http" && var.inference_ec2_enabled ? 1 : 0
+  count = local.create_inference_ec2 ? 1 : 0
 
   name = "${local.name}-inference-ec2"
   role = aws_iam_role.inference_ec2[0].name
@@ -75,7 +94,7 @@ resource "aws_iam_instance_profile" "inference_ec2" {
 
 # Security group: allow 8080 from VPC (so ECS tasks can call the container)
 resource "aws_security_group" "inference_ec2" {
-  count = var.inference_backend == "http" && var.inference_ec2_enabled ? 1 : 0
+  count = local.create_inference_ec2 ? 1 : 0
 
   name        = "${local.name}-inference-ec2"
   description = "Inference EC2: allow 8080 from VPC"
@@ -99,10 +118,9 @@ resource "aws_security_group" "inference_ec2" {
   tags = merge(local.common_tags, { Name = "${local.name}-inference-ec2" })
 }
 
-# User-data: install Docker + NVIDIA container toolkit, pull image from ECR, run container.
-# Requires an AMI with NVIDIA driver (e.g. Deep Learning AMI). Set inference_ec2_ami_id.
+# User-data: ECR login, pull image, run container (AMI has Docker + NVIDIA driver).
 locals {
-  inference_ec2_user_data = var.inference_backend == "http" && var.inference_ec2_enabled && var.inference_ec2_ami_id != "" ? templatefile("${path.module}/templates/inference-ec2-userdata.sh", {
+  inference_ec2_user_data = local.create_inference_ec2 ? templatefile("${path.module}/templates/inference-ec2-userdata.sh", {
     account_id   = data.aws_caller_identity.current.account_id
     ecr_url      = aws_ecr_repository.stereocrafter_sagemaker.repository_url
     image_tag    = var.ecs_image_tag
@@ -112,9 +130,9 @@ locals {
 }
 
 resource "aws_instance" "inference" {
-  count = var.inference_backend == "http" && var.inference_ec2_enabled && var.inference_ec2_ami_id != "" ? 1 : 0
+  count = local.create_inference_ec2 ? 1 : 0
 
-  ami                    = var.inference_ec2_ami_id
+  ami                    = var.inference_ec2_ami_id != "" ? var.inference_ec2_ami_id : data.aws_ami.inference_ec2_default[0].id
   instance_type          = "g4dn.xlarge"
   subnet_id              = module.vpc.private_subnets[0]
   vpc_security_group_ids = [aws_security_group.inference_ec2[0].id]

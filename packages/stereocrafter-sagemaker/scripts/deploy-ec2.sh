@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy latest stereocrafter-sagemaker image from ECR to the inference EC2 via SSM.
-# Requires: inference_backend=http, inference_ec2_enabled=true, and SSM agent on the EC2.
+# Requires: inference_backend=http, inference_http_url empty (Terraform-created EC2), and SSM agent on the EC2.
 # Usage: deploy-ec2.sh <path-to-env-file>
 
 set -euo pipefail
@@ -20,7 +20,7 @@ fi
 
 INSTANCE_ID="${INFERENCE_EC2_INSTANCE_ID:-}"
 if [[ -z "$INSTANCE_ID" ]]; then
-  echo "Error: INFERENCE_EC2_INSTANCE_ID not set. Set inference_backend=http and inference_ec2_enabled=true, then run terraform-output." >&2
+  echo "Error: INFERENCE_EC2_INSTANCE_ID not set. Set inference_backend=http and leave inference_http_url empty, then run terraform-output." >&2
   exit 1
 fi
 

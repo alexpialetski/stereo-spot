@@ -51,7 +51,7 @@ Terraform expects the image at the ECR repository URL with tag from `ecs_image_t
 
 When Terraform is set to `inference_backend=http`, the video-worker calls an HTTP URL instead of SageMaker. You can run the same container on a GPU EC2 for faster iteration:
 
-- **stereocrafter-ec2-deploy**: Updates the inference EC2 with the latest image from ECR via SSM (no SageMaker endpoint update). Requires `inference_backend=http`, `inference_ec2_enabled=true`, and `inference_ec2_ami_id` set. Run after `sagemaker-build` to roll the EC2 to the new image.
+- **stereocrafter-ec2-deploy**: Updates the inference EC2 with the latest image from ECR via SSM (no SageMaker endpoint update). Requires `inference_backend=http` and `inference_http_url` empty (so Terraform creates the EC2). Run after `sagemaker-build` to roll the EC2 to the new image.
 
 ## Environment variables (injected by SageMaker/Terraform)
 
