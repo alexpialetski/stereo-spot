@@ -46,6 +46,13 @@ class JobStore(Protocol):
         """
         ...
 
+    def list_in_progress(self, limit: int = 20) -> list[Job]:
+        """
+        List jobs with status in (created, chunking_in_progress, chunking_complete),
+        ordered by created_at descending. Returns up to limit items.
+        """
+        ...
+
 
 @runtime_checkable
 class SegmentCompletionStore(Protocol):
@@ -110,8 +117,9 @@ class ObjectStorage(Protocol):
         key: str,
         *,
         expires_in: int = 3600,
+        response_content_disposition: str | None = None,
     ) -> str:
-        """Return a presigned GET URL for the given bucket and key."""
+        """Return presigned GET URL. Use response_content_disposition for download."""
         ...
 
     def upload(self, bucket: str, key: str, body: bytes) -> None:

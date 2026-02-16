@@ -59,6 +59,19 @@ class MockJobStore:
         completed.sort(key=lambda x: x.completed_at, reverse=True)
         return completed[:limit], None
 
+    def list_in_progress(self, limit: int = 20) -> list[Job]:
+        in_progress_statuses = {
+            JobStatus.CREATED,
+            JobStatus.CHUNKING_IN_PROGRESS,
+            JobStatus.CHUNKING_COMPLETE,
+        }
+        items = [
+            j for j in self._jobs.values()
+            if j.status in in_progress_statuses and j.created_at is not None
+        ]
+        items.sort(key=lambda j: j.created_at or 0, reverse=True)
+        return items[:limit]
+
 
 class MockSegmentCompletionStore:
     """Minimal SegmentCompletionStore implementation for testing."""
@@ -128,6 +141,7 @@ class MockObjectStorage:
         key: str,
         *,
         expires_in: int = 3600,
+        response_content_disposition: str | None = None,
     ) -> str:
         return f"https://mock-download/{bucket}/{key}?expires={expires_in}"
 
