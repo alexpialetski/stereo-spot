@@ -2,11 +2,12 @@
 Parse S3 event notification payload from the chunking queue message body.
 
 S3 sends to SQS a JSON body with Records[].s3.bucket.name and Records[].s3.object.key.
-We only care about the first record (one object per notification for our config).
+The object key may be URL-encoded. We decode it then check input key format.
 """
 
 import json
 from typing import Any
+from urllib.parse import unquote_plus
 
 from stereo_spot_shared import ChunkingPayload, parse_input_key
 
@@ -47,6 +48,7 @@ def parse_s3_event_body(body: str | bytes) -> ChunkingPayload | None:
         return None
     if not bucket_name or not key:
         return None
+    key = unquote_plus(key)
     # Only accept input keys (input/{job_id}/source.mp4)
     if parse_input_key(key) is None:
         return None

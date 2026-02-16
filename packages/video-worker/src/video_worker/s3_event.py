@@ -2,11 +2,13 @@
 Parse S3 event notification payload from the video-worker queue message body.
 
 S3 sends to SQS a JSON body with Records[].s3.bucket.name and Records[].s3.object.key.
-We use parse_segment_key from shared-types to get the canonical VideoWorkerPayload.
+The object key may be URL-encoded (e.g. %2F for /). We decode it then use
+parse_segment_key from shared-types to get the canonical VideoWorkerPayload.
 """
 
 import json
 from typing import Any
+from urllib.parse import unquote_plus
 
 from stereo_spot_shared import VideoWorkerPayload, parse_segment_key
 
@@ -47,4 +49,6 @@ def parse_s3_event_body(body: str | bytes) -> VideoWorkerPayload | None:
         return None
     if not bucket_name or not key:
         return None
+    # S3 event notifications may send the key URL-encoded (e.g. %2F for /).
+    key = unquote_plus(key)
     return parse_segment_key(bucket_name, key)
