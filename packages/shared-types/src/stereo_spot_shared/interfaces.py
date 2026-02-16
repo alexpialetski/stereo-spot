@@ -48,7 +48,7 @@ class JobStore(Protocol):
 
     def list_in_progress(self, limit: int = 20) -> list[Job]:
         """
-        List jobs with status in (created, chunking_in_progress, chunking_complete),
+        List jobs with status in (created, chunking_in_progress, chunking_complete, failed),
         ordered by created_at descending. Returns up to limit items.
         """
         ...

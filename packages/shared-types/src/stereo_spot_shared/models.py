@@ -20,6 +20,7 @@ class JobStatus(str, Enum):
     CHUNKING_IN_PROGRESS = "chunking_in_progress"
     CHUNKING_COMPLETE = "chunking_complete"
     COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class Job(BaseModel):

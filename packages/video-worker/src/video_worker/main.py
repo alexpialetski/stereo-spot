@@ -5,6 +5,7 @@ Entrypoint for the video worker. Wires AWS adapters from env and runs the loop.
 import logging
 
 from stereo_spot_aws_adapters.env_config import (
+    job_store_from_env,
     object_storage_from_env,
     output_bucket_name,
     segment_completion_store_from_env,
@@ -25,9 +26,10 @@ def main() -> None:
     logger.info("video-worker starting")
     storage = object_storage_from_env()
     segment_store = segment_completion_store_from_env()
+    job_store = job_store_from_env()
     output_bucket = output_bucket_name()
     receiver = video_worker_queue_receiver_from_env()
-    run_loop(receiver, storage, segment_store, output_bucket)
+    run_loop(receiver, storage, segment_store, output_bucket, job_store=job_store)
 
 
 if __name__ == "__main__":

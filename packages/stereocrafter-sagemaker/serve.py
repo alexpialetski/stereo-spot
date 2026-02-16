@@ -90,8 +90,21 @@ def run_stereocrafter_pipeline(
             "--unet_path", depthcrafter,
             "--pre_trained_path", depthcrafter,
         ]
-        logger.info("Running depth splatting: %s", " ".join(cmd1))
-        subprocess.run(cmd1, env=env, cwd=STEREOCRAFTER_ROOT, check=True)
+        def _run(cmd: list, stage: str) -> None:
+            logger.info("Running %s: %s", stage, " ".join(cmd))
+            r = subprocess.run(
+                cmd, env=env, cwd=STEREOCRAFTER_ROOT,
+                capture_output=True, text=True, timeout=3600,
+            )
+            if r.returncode != 0:
+                err_msg = f"{stage} exited {r.returncode}"
+                if r.stderr:
+                    err_msg += f"; stderr:\n{r.stderr}"
+                if r.stdout:
+                    err_msg += f"; stdout:\n{r.stdout}"
+                raise RuntimeError(err_msg)
+
+        _run(cmd1, "depth_splatting")
 
         # Stage 2: inpainting (produces _sbs.mp4 and _anaglyph.mp4)
         cmd2 = [
@@ -102,8 +115,7 @@ def run_stereocrafter_pipeline(
             "--input_video_path", splatting_path,
             "--save_dir", inpainting_dir,
         ]
-        logger.info("Running inpainting: %s", " ".join(cmd2))
-        subprocess.run(cmd2, env=env, cwd=STEREOCRAFTER_ROOT, check=True)
+        _run(cmd2, "inpainting")
 
         # Select output by mode: segment_splatting_results_inpainting_results_sbs.mp4 | _anaglyph.mp4
         base_name = "segment_splatting_results_inpainting_results"

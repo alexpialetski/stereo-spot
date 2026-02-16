@@ -90,6 +90,8 @@
     if (data.progress_percent >= 100) {
       es.close();
       window.location.reload();
+    } else if (data.stage_label === 'Failed') {
+      es.close();
     }
   };
 

@@ -133,11 +133,12 @@ class DynamoDBJobStore:
         return (items, next_key if next_key else None)
 
     def list_in_progress(self, limit: int = 20) -> list[Job]:
-        """List in-progress jobs by created_at desc."""
+        """List in-progress jobs (including failed) by created_at desc."""
         statuses = [
             JobStatus.CREATED.value,
             JobStatus.CHUNKING_IN_PROGRESS.value,
             JobStatus.CHUNKING_COMPLETE.value,
+            JobStatus.FAILED.value,
         ]
         merged: list[Job] = []
         per_status = max(limit, 7)  # fetch enough per partition to merge

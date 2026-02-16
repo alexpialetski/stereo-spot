@@ -80,6 +80,8 @@ def _compute_progress(
         # 25% .. 75% for segment phase
         pct = 25 + int(50 * segments_done / total)
         return min(75, pct), "Processing segments"
+    if job.status == JobStatus.FAILED:
+        return 0, "Failed"
     return 0, "Unknown"
 
 

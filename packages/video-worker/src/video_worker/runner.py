@@ -4,8 +4,13 @@ import logging
 import os
 import time
 
-from stereo_spot_shared import SegmentCompletion
-from stereo_spot_shared.interfaces import ObjectStorage, QueueReceiver, SegmentCompletionStore
+from stereo_spot_shared import JobStatus, SegmentCompletion
+from stereo_spot_shared.interfaces import (
+    JobStore,
+    ObjectStorage,
+    QueueReceiver,
+    SegmentCompletionStore,
+)
 
 from .model_sagemaker import invoke_sagemaker_endpoint
 from .model_stub import process_segment
@@ -35,6 +40,7 @@ def process_one_message(
     storage: ObjectStorage,
     segment_store: SegmentCompletionStore,
     output_bucket: str,
+    job_store: JobStore | None = None,
 ) -> bool:
     """
     Process a single video-worker queue message (S3 event body).
@@ -104,10 +110,12 @@ def run_loop(
     storage: ObjectStorage,
     segment_store: SegmentCompletionStore,
     output_bucket: str,
+    job_store: JobStore | None = None,
     *,
     poll_interval_sec: float = 5.0,
 ) -> None:
-    """Long-running loop: receive messages, process each, delete on success."""
+    """Long-running loop: receive messages, process each, delete on success.
+    When job_store is set and processing raises, the job is marked failed."""
     backend = os.environ.get("INFERENCE_BACKEND", "stub")
     logger.info("video-worker loop started (backend=%s)", backend)
     while True:
@@ -116,16 +124,24 @@ def run_loop(
             logger.debug("video-worker: received %s message(s)", len(messages))
         for msg in messages:
             body = msg.body
+            payload = parse_s3_event_body(body)
             try:
                 ok = process_one_message(
                     body,
                     storage,
                     segment_store,
                     output_bucket,
+                    job_store=job_store,
                 )
                 if ok:
                     receiver.delete(msg.receipt_handle)
             except Exception as e:
                 logger.exception("video-worker: failed to process message: %s", e)
+                if job_store and payload:
+                    try:
+                        job_store.update(payload.job_id, status=JobStatus.FAILED.value)
+                        logger.info("video-worker: job_id=%s marked failed", payload.job_id)
+                    except Exception as update_err:
+                        logger.exception("video-worker: failed to mark job failed: %s", update_err)
         if not messages:
             time.sleep(poll_interval_sec)

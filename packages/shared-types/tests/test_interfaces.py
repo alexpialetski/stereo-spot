@@ -64,6 +64,7 @@ class MockJobStore:
             JobStatus.CREATED,
             JobStatus.CHUNKING_IN_PROGRESS,
             JobStatus.CHUNKING_COMPLETE,
+            JobStatus.FAILED,
         }
         items = [
             j for j in self._jobs.values()

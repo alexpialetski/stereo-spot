@@ -43,6 +43,11 @@ resource "aws_iam_role_policy" "sagemaker_endpoint" {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = aws_secretsmanager_secret.hf_token.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.sagemaker_endpoint.arn}:*"
       }
     ]
   })
@@ -87,4 +92,14 @@ resource "aws_sagemaker_endpoint" "stereocrafter" {
   name                 = "${local.name}-stereocrafter"
   endpoint_config_name  = aws_sagemaker_endpoint_configuration.stereocrafter.name
   tags                  = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })
+}
+
+# --- CloudWatch log group for SageMaker endpoint container logs ---
+# SageMaker sends the container's stdout/stderr to /aws/sagemaker/Endpoints/<endpoint-name>.
+# Name must match the endpoint name (local.name-stereocrafter). Creating it explicitly
+# ensures the log group appears in the console and we set retention.
+resource "aws_cloudwatch_log_group" "sagemaker_endpoint" {
+  name              = "/aws/sagemaker/Endpoints/${local.name}-stereocrafter"
+  retention_in_days = 7
+  tags              = merge(local.common_tags, { Name = "${local.name}-sagemaker-endpoint-logs" })
 }
