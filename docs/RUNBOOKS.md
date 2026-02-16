@@ -210,7 +210,7 @@ Replace `<JOB_ID>` with the stuck job’s ID. Then refresh the job in the web UI
 
 ### Updating the SageMaker inference image
 
-The stereocrafter-sagemaker image is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:deploy` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR.
+The stereocrafter-sagemaker image is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:build` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR. Then run `nx run stereocrafter-sagemaker:deploy` to update the SageMaker endpoint to use the new image.
 
 After the image is in ECR (or if you build and push locally):
 
@@ -231,7 +231,7 @@ The SageMaker container reads the HF token from **Secrets Manager** (secret ARN 
    ```bash
    aws secretsmanager put-secret-value --secret-id <hf_token_secret_arn> --secret-string '{"token":"hf_NEW_TOKEN"}'
    ```
-2. **Redeploy the SageMaker endpoint** so new instances pull the updated secret (e.g. update-endpoint with the same config, or scale to 0 then back to 1). Existing instances keep the old value until replaced.
+2. **Redeploy the SageMaker endpoint** so new instances pull the updated secret: run `nx run stereocrafter-sagemaker:deploy` (creates new model/endpoint config and updates the endpoint). Existing instances keep the old value until replaced.
 
 ---
 

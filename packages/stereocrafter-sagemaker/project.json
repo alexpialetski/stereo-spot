@@ -7,16 +7,17 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build -f packages/stereocrafter-sagemaker/Dockerfile -t stereo-spot-stereocrafter-sagemaker:latest .",
+        "command": ". packages/aws-infra/.env && aws codebuild start-build --project-name \"${CODEBUILD_PROJECT_NAME}\" --region \"${REGION}\"",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
-      "outputs": []
+      "dependsOn": ["aws-infra:terraform-output"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     },
     "deploy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": ". packages/aws-infra/.env && aws codebuild start-build --project-name \"${CODEBUILD_PROJECT_NAME}\" --region \"${REGION}\"",
+        "command": ". packages/aws-infra/.env && bash packages/stereocrafter-sagemaker/scripts/deploy-sagemaker.sh",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},

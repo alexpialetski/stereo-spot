@@ -101,7 +101,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 ## Outputs
 
-See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
+See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`, `sagemaker_endpoint_role_arn`, `sagemaker_instance_type`, `sagemaker_instance_count`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
 
 ## Running Terraform
 

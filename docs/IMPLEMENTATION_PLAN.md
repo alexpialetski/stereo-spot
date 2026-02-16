@@ -328,7 +328,7 @@ nx run aws-infra:terraform-plan
 - **Media-worker:** Fargate service, desired 0 or 1; Application Auto Scaling on custom metric (chunking + reassembly queue depth sum) or single-queue metric.
 - **Video-worker:** EC2 launch type, GPU in task definition; capacity provider or ASG with Spot + on-demand (g4dn/g5); scaling on video-worker queue depth.
 - Document in `packages/aws-infra/README.md`: order of operations (terraform apply → build/push images → force new deployment), scaling and GPU capacity.
-- **Nx deploy targets:** `deploy` on web-ui, media-worker, video-worker (source `packages/aws-infra/.env`, tag/push to ECR, `aws ecs update-service --force-new-deployment`). `aws-infra:ecr-login` logs Docker into ECR using the same .env. Terraform output target writes to `packages/aws-infra/.env`.
+- **Nx deploy targets:** `deploy` on web-ui, media-worker, video-worker (source `packages/aws-infra/.env`, tag/push to ECR, `aws ecs update-service --force-new-deployment`). **stereocrafter-sagemaker:** `build` triggers CodeBuild (build image, push to ECR); `deploy` updates the SageMaker endpoint to use the new image (new model + endpoint config, then update-endpoint). `aws-infra:ecr-login` logs Docker into ECR using the same .env. Terraform output target writes to `packages/aws-infra/.env`.
 
 **A/C:**
 
@@ -492,7 +492,7 @@ After implementation, expected dependency structure:
 - **reassembly-trigger** — depends on **shared-types** (build: install from shared-types wheel).
 - **integration** — depends on **web-ui**, **media-worker**, **video-worker** (and optionally **reassembly-trigger** for Lambda-in-loop tests). May also host the Step 2.3 smoke test (e.g. `integration:smoke-test`).
 - **aws-infra** — depends on **aws-infra-setup** (already). Provisions ECS cluster, task definitions, services, ALB, **CodeBuild** (stereocrafter-sagemaker), SageMaker model, endpoint config, endpoint. Video-worker task role has `sagemaker:InvokeEndpoint`.
-- **stereocrafter-sagemaker** (or equivalent) — deploy triggers **CodeBuild** to clone the repo, build the inference Docker image, and push to ECR (no local Docker build required). SageMaker model references the ECR image. Weights are downloaded inside the container at startup, not in the image.
+- **stereocrafter-sagemaker** — `build` triggers **CodeBuild** to clone the repo, build the inference Docker image, and push to ECR (no local Docker build). `deploy` updates the SageMaker endpoint to use the new ECR image (create model + endpoint config, update-endpoint). SageMaker model references the ECR image. Weights are downloaded inside the container at startup, not in the image.
 - **video-worker** — when using SageMaker (Step 5.3), runs on Fargate (CPU) and calls the SageMaker endpoint; no GPU required.
 
 Use `nx run-many -t test` to run tests for all projects; use `nx run-many -t build` for buildable packages. Ensure CI runs tests and, when enabled, `nx run integration:test` on every PR.

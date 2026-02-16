@@ -92,6 +92,21 @@ output "sagemaker_endpoint_name" {
   value       = aws_sagemaker_endpoint.stereocrafter.name
 }
 
+output "sagemaker_endpoint_role_arn" {
+  description = "IAM role ARN for SageMaker endpoint (for stereocrafter-sagemaker:deploy)"
+  value       = aws_iam_role.sagemaker_endpoint.arn
+}
+
+output "sagemaker_instance_type" {
+  description = "SageMaker endpoint instance type (e.g. ml.g4dn.xlarge)"
+  value       = var.sagemaker_instance_type
+}
+
+output "sagemaker_instance_count" {
+  description = "SageMaker endpoint instance count"
+  value       = var.sagemaker_instance_count
+}
+
 output "hf_token_secret_arn" {
   description = "ARN of the Secrets Manager secret for Hugging Face token (set value manually)"
   value       = aws_secretsmanager_secret.hf_token.arn
@@ -100,6 +115,6 @@ output "hf_token_secret_arn" {
 # --- CodeBuild ---
 
 output "codebuild_project_name" {
-  description = "Name of the CodeBuild project for stereocrafter-sagemaker (for nx run stereocrafter-sagemaker:deploy)"
+  description = "Name of the CodeBuild project for stereocrafter-sagemaker (for nx run stereocrafter-sagemaker:build)"
   value       = aws_codebuild_project.stereocrafter.name
 }

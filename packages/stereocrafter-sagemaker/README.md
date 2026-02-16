@@ -29,22 +29,21 @@ If `HF_TOKEN_ARN` is not set, the download is skipped and the server still start
 From the repo root:
 
 ```bash
-# Deploy: triggers AWS CodeBuild to clone the repo, build the image, and push to ECR
-# Requires aws-infra:terraform-output (writes .env with CODEBUILD_PROJECT_NAME, REGION)
+# 1. Build: triggers AWS CodeBuild to clone the repo, build the image, and push to ECR
+# Requires aws-infra:terraform-output (writes .env with CODEBUILD_PROJECT_NAME, REGION, etc.)
+nx run stereocrafter-sagemaker:build
+
+# 2. Deploy: update the SageMaker endpoint to use the new image in ECR
+# (Creates a new model and endpoint config, then updates the endpoint so it pulls the latest image.)
 nx run stereocrafter-sagemaker:deploy
 ```
 
-CodeBuild clones the public repo, runs `docker build`, and pushes to ECR. No local Docker build needed.
+- **build**: CodeBuild clones the public repo, runs `docker build`, and pushes to ECR. No local Docker build.
+- **deploy**: Creates a new SageMaker model and endpoint config pointing at the ECR image (`:latest`), then updates the endpoint so new instances use the new image. Requires `terraform-output` to have been run so `.env` includes `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_ENDPOINT_ROLE_ARN`, `SAGEMAKER_INSTANCE_TYPE`, `SAGEMAKER_INSTANCE_COUNT`, `ECR_STEREOCRAFTER_SAGEMAKER_URL`, `HF_TOKEN_SECRET_ARN`, `REGION`.
 
 **Build time (from scratch):** ~7–8 minutes on CodeBuild `BUILD_GENERAL1_LARGE` (clone ~3s, base image ~70s, apt ~15s, StereoCrafter deps ~82s, Forward-Warp ~1min, push ~4min). Subsequent builds benefit from Docker layer cache if layers are unchanged.
 
-For local build (requires Docker and ~10GB+ for CUDA base + StereoCrafter):
-```bash
-nx run stereocrafter-sagemaker:build
-# Then manually: docker tag ... && docker push ... (or use ecr-login + push)
-```
-
-Terraform expects the image at the ECR repository URL with tag from `ecs_image_tag` (e.g. `latest`). After deploying, update the SageMaker endpoint (re-deploy or create new endpoint config) so it uses the new image.
+Terraform expects the image at the ECR repository URL with tag from `ecs_image_tag` (e.g. `latest`). Run `deploy` after `build` (or after pushing a new image to ECR) to roll out the new image to the SageMaker endpoint.
 
 ## Environment variables (injected by SageMaker/Terraform)
 
