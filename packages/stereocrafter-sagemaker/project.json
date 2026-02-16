@@ -17,7 +17,7 @@
     "deploy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": ". packages/aws-infra/.env && bash packages/stereocrafter-sagemaker/scripts/deploy-sagemaker.sh",
+        "command": "bash packages/stereocrafter-sagemaker/scripts/deploy-sagemaker.sh packages/aws-infra/.env",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},

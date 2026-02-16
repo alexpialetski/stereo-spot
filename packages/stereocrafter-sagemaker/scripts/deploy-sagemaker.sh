@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
 # Deploy the stereocrafter-sagemaker ECR image to the SageMaker endpoint.
 # Creates a new model and endpoint config, then updates the endpoint so it pulls the latest image.
-# Requires: .env loaded (from aws-infra terraform-output) with SAGEMAKER_*, ECR_*, REGION, HF_TOKEN_SECRET_ARN.
+#
+# Usage: deploy-sagemaker.sh <path-to-env-file>
+#   <path-to-env-file>: path to aws-infra .env (from terraform-output). Sourced to get SAGEMAKER_*, ECR_*, REGION, HF_TOKEN_SECRET_ARN.
 
 set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <path-to-env-file>" >&2
+  echo "  e.g. $0 packages/aws-infra/.env" >&2
+  exit 1
+fi
+ENV_FILE="$1"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Error: env file not found: $ENV_FILE. Run: nx run aws-infra:terraform-output" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$ENV_FILE"
 
 IMAGE_URI="${ECR_STEREOCRAFTER_SAGEMAKER_URL}:latest"
 SUFFIX=$(date +%s)
