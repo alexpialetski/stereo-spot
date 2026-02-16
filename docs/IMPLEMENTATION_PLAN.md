@@ -439,7 +439,7 @@ nx run video-worker:test
 
 ---
 
-### Step 5.4 — Real StereoCrafter inference in SageMaker container (future)
+### Step 5.4 — Real StereoCrafter inference in SageMaker container
 
 **Goal:** Replace the stub in `packages/stereocrafter-sagemaker` with the real two-stage pipeline (depth splatting → inpainting). Weights are downloaded from Hugging Face at container startup using the injected HF token; no weights baked into the image.
 
@@ -450,8 +450,8 @@ nx run video-worker:test
 
 **A/C:**
 
-- [ ] Container downloads StereoCrafter (and dependency) weights from Hugging Face at startup using the Secrets Manager–injected HF token.
-- [ ] Handler runs the full two-stage pipeline and writes the stereo segment to `s3_output_uri`; endpoint is usable for production segments.
+- [x] Container downloads StereoCrafter (and dependency) weights from Hugging Face at startup using the Secrets Manager–injected HF token.
+- [x] Handler runs the full two-stage pipeline and writes the stereo segment to `s3_output_uri`; endpoint is usable for production segments.
 
 **Verification:**
 
@@ -478,7 +478,7 @@ nx run video-worker:test
 | 5.1  | integration                | E2E test + reassembly idempotency                                                     | TESTING.md                  |
 | 5.2  | docs / tools               | Runbooks, chunking recovery script/procedure, cross-links                             | RUNBOOKS.md                 |
 | 5.3  | stereocrafter-sagemaker, aws-infra, video-worker | SageMaker endpoint (custom container; stub handler; Secrets Manager for HF token), video-worker InvokeEndpoint, Fargate | README; video-worker tests (stub + mocked SageMaker) |
-| 5.4  | stereocrafter-sagemaker                          | Real StereoCrafter inference in container; HF weights at startup (future)                                                | README                                                |
+| 5.4  | stereocrafter-sagemaker                          | Real StereoCrafter inference in container; HF weights at startup                                                         | README                                                |
 
 ---
 
@@ -491,8 +491,8 @@ After implementation, expected dependency structure:
 - **media-worker**, **video-worker**, **web-ui** — depend on **shared-types** and **aws-adapters** (for AWS implementations at runtime).
 - **reassembly-trigger** — depends on **shared-types** (build: install from shared-types wheel).
 - **integration** — depends on **web-ui**, **media-worker**, **video-worker** (and optionally **reassembly-trigger** for Lambda-in-loop tests). May also host the Step 2.3 smoke test (e.g. `integration:smoke-test`).
-- **aws-infra** — depends on **aws-infra-setup** (already). Provisions ECS cluster, task definitions, services, ALB; also SageMaker model, endpoint config, endpoint. Video-worker task role has `sagemaker:InvokeEndpoint`.
-- **stereocrafter-sagemaker** (or equivalent) — build produces the inference Docker image (no Nx package deps). Pushed to ECR; SageMaker model references it. Weights are downloaded inside the container at startup, not in the image.
+- **aws-infra** — depends on **aws-infra-setup** (already). Provisions ECS cluster, task definitions, services, ALB, **CodeBuild** (stereocrafter-sagemaker), SageMaker model, endpoint config, endpoint. Video-worker task role has `sagemaker:InvokeEndpoint`.
+- **stereocrafter-sagemaker** (or equivalent) — deploy triggers **CodeBuild** to clone the repo, build the inference Docker image, and push to ECR (no local Docker build required). SageMaker model references the ECR image. Weights are downloaded inside the container at startup, not in the image.
 - **video-worker** — when using SageMaker (Step 5.3), runs on Fargate (CPU) and calls the SageMaker endpoint; no GPU required.
 
 Use `nx run-many -t test` to run tests for all projects; use `nx run-many -t build` for buildable packages. Ensure CI runs tests and, when enabled, `nx run integration:test` on every PR.

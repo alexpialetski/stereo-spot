@@ -1,13 +1,14 @@
 """
 SageMaker inference server: GET /ping and POST /invocations.
 
-Request body (JSON): {"s3_input_uri": "...", "s3_output_uri": "..."}.
-The handler reads the segment from S3, runs inference (StereoCrafter two-stage pipeline),
-and writes the result to s3_output_uri.
-
-For production: replace run_inference_stub() with the real StereoCrafter pipeline
-(depth_splatting_inference.py then inpainting_inference.py). Weights are expected
-under /opt/ml/model/weights (downloaded at startup from Hugging Face when HF_TOKEN_ARN is set).
+Request body (JSON): {
+  "s3_input_uri": "...",
+  "s3_output_uri": "...",
+  "mode": "anaglyph" | "sbs"  (optional, default "anaglyph")
+}
+The handler reads the segment from S3, runs the StereoCrafter two-stage pipeline
+(depth splatting -> inpainting), and writes the result in the requested format
+to s3_output_uri.
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
+import subprocess
 import tempfile
 from urllib.parse import urlparse
 
@@ -27,7 +30,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = None  # Set by gunicorn or Flask
+STEREOCRAFTER_ROOT = "/opt/stereocrafter"
+WEIGHTS_DIR = os.environ.get("WEIGHTS_DIR", "/opt/ml/model/weights")
 
 
 def get_s3_client():
@@ -52,16 +56,62 @@ def upload_to_s3(path: str, s3_uri: str) -> None:
     get_s3_client().upload_file(path, bucket, key)
 
 
-def run_inference_stub(input_path: str, output_path: str) -> None:
+def run_stereocrafter_pipeline(
+    input_path: str, output_path: str, mode: str = "anaglyph"
+) -> None:
     """
-    Stub: copy input to output. Replace with StereoCrafter two-stage pipeline:
+    Run the two-stage StereoCrafter pipeline:
     1. depth_splatting_inference.py (DepthCrafter + SVD) -> splatting result
-    2. inpainting_inference.py (StereoCrafter + SVD) -> final stereo (SBS/anaglyph)
+    2. inpainting_inference.py (StereoCrafter + SVD) -> SBS + anaglyph, select by mode
     """
-    with open(input_path, "rb") as f:
-        data = f.read()
-    with open(output_path, "wb") as f:
-        f.write(data)
+    depthcrafter = os.path.join(WEIGHTS_DIR, "depthcrafter")
+    svd = os.path.join(WEIGHTS_DIR, "stable-video-diffusion-img2vid-xt-1-1")
+    stereocrafter = os.path.join(WEIGHTS_DIR, "stereocrafter")
+
+    if not all(os.path.isdir(d) for d in (depthcrafter, svd, stereocrafter)):
+        raise FileNotFoundError(
+            f"Weights not found. Ensure HF_TOKEN_ARN is set and download_weights ran. "
+            f"Expected: {depthcrafter}, {svd}, {stereocrafter}"
+        )
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = STEREOCRAFTER_ROOT
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        splatting_path = os.path.join(tmpdir, "segment_splatting_results.mp4")
+        inpainting_dir = tmpdir
+
+        # Stage 1: depth splatting
+        cmd1 = [
+            "python",
+            os.path.join(STEREOCRAFTER_ROOT, "depth_splatting_inference.py"),
+            "--input_video_path", input_path,
+            "--output_video_path", splatting_path,
+            "--unet_path", depthcrafter,
+            "--pre_trained_path", depthcrafter,
+        ]
+        logger.info("Running depth splatting: %s", " ".join(cmd1))
+        subprocess.run(cmd1, env=env, cwd=STEREOCRAFTER_ROOT, check=True)
+
+        # Stage 2: inpainting (produces _sbs.mp4 and _anaglyph.mp4)
+        cmd2 = [
+            "python",
+            os.path.join(STEREOCRAFTER_ROOT, "inpainting_inference.py"),
+            "--pre_trained_path", svd,
+            "--unet_path", stereocrafter,
+            "--input_video_path", splatting_path,
+            "--save_dir", inpainting_dir,
+        ]
+        logger.info("Running inpainting: %s", " ".join(cmd2))
+        subprocess.run(cmd2, env=env, cwd=STEREOCRAFTER_ROOT, check=True)
+
+        # Select output by mode: segment_splatting_results_inpainting_results_sbs.mp4 | _anaglyph.mp4
+        base_name = "segment_splatting_results_inpainting_results"
+        suffix = "_sbs.mp4" if mode == "sbs" else "_anaglyph.mp4"
+        result_path = os.path.join(inpainting_dir, base_name + suffix)
+        if not os.path.isfile(result_path):
+            raise FileNotFoundError(f"Inpainting did not produce {result_path}")
+        shutil.copy2(result_path, output_path)
 
 
 def _job_id_segment_from_output_uri(s3_output_uri: str) -> tuple[str | None, str | None]:
@@ -81,7 +131,7 @@ def _job_id_segment_from_output_uri(s3_output_uri: str) -> tuple[str | None, str
 
 def invocations_handler(body: bytes) -> tuple[str, int]:
     """
-    Handle POST /invocations. Body: JSON with s3_input_uri and s3_output_uri.
+    Handle POST /invocations. Body: JSON with s3_input_uri, s3_output_uri, and optional mode.
     Returns (response_body, status_code).
     """
     try:
@@ -92,11 +142,16 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
     s3_output_uri = data.get("s3_output_uri")
     if not s3_input_uri or not s3_output_uri:
         return json.dumps({"error": "s3_input_uri and s3_output_uri required"}), 400
+    mode = data.get("mode", "anaglyph")
+    if mode not in ("anaglyph", "sbs"):
+        return json.dumps({"error": "mode must be anaglyph or sbs"}), 400
+
     job_id, segment_index = _job_id_segment_from_output_uri(s3_output_uri)
     logger.info(
-        "job_id=%s segment_index=%s invocations start",
+        "job_id=%s segment_index=%s mode=%s invocations start",
         job_id or "?",
         segment_index or "?",
+        mode,
     )
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_in:
         input_path = tmp_in.name
@@ -104,7 +159,7 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
         output_path = tmp_out.name
     try:
         download_from_s3(s3_input_uri, input_path)
-        run_inference_stub(input_path, output_path)
+        run_stereocrafter_pipeline(input_path, output_path, mode=mode)
         upload_to_s3(output_path, s3_output_uri)
         logger.info("job_id=%s segment_index=%s invocations complete", job_id or "?", segment_index or "?")
         return json.dumps({"status": "ok"}), 200
