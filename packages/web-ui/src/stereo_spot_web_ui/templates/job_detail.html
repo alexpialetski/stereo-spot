@@ -1,33 +1,37 @@
 {% extends "base.html" %}
 {% block title %}Job {{ job.job_id }} — Stereo-Spot{% endblock %}
 {% block content %}
-<h1>Job {{ job.job_id }}</h1>
-<p><strong>Status:</strong> <span class="status">{{ job.status.value }}</span></p>
+<h1>Job <code>{{ job.job_id }}</code></h1>
 <p><strong>Mode:</strong> {{ job.mode.value }}</p>
 
 {% if upload_url %}
-<h2>Upload your video</h2>
-<div id="upload-area" data-upload-url="{{ upload_url }}">
-  <p>
-    <label for="source-file">Choose an MP4 file:</label><br>
+<article>
+  <h2>Upload your video</h2>
+  <div id="upload-area" data-upload-url="{{ upload_url }}">
+    <label for="source-file">Choose an MP4 file:</label>
     <input type="file" id="source-file" name="source" accept=".mp4,video/mp4">
-  </p>
-  <p>
     <button type="button" id="upload-btn" disabled>Upload file</button>
-  </p>
-  <p id="upload-status" aria-live="polite"></p>
-</div>
-<p class="upload-url" style="font-size: 0.85em; color: #666;">Or upload via PUT to this URL (expires in 1 hour): {{ upload_url }}</p>
-<p>After uploading, the chunking worker will process the file automatically.</p>
-<p><a href="/jobs/{{ job.job_id }}">Refresh status</a></p>
-{% else %}
-{% if job.status.value == "completed" %}
-<p><a href="/jobs/{{ job.job_id }}/play">Play final video</a></p>
-{% endif %}
-<p><a href="/jobs/{{ job.job_id }}">Refresh status</a></p>
+    <p id="upload-status" aria-live="polite"></p>
+  </div>
+  <p>After uploading, the chunking worker will process the file automatically. Progress will update below.</p>
+</article>
 {% endif %}
 
-<p><a href="/">Dashboard</a> · <a href="/jobs">Completed jobs</a></p>
+{% if job.status.value != "completed" %}
+<article>
+  <h2>Progress</h2>
+  <p id="stage-label" aria-live="polite">{{ stage_label }}</p>
+  <progress id="progress-bar" value="{{ progress_percent }}" max="100">{{ progress_percent }}%</progress>
+</article>
+{% else %}
+<article>
+  <h2>Final video</h2>
+  {% if playback_url %}
+  <video src="{{ playback_url }}" controls preload="metadata" style="width: 100%; display: block; margin-bottom: 1rem;"></video>
+  <p><a href="{{ download_url }}" role="button">Download</a></p>
+  {% endif %}
+</article>
+{% endif %}
 
 {% if upload_url %}
 <script>
@@ -48,7 +52,6 @@
     if (!file) return;
     uploadBtn.disabled = true;
     statusEl.textContent = 'Uploading…';
-    statusEl.style.color = '';
 
     fetch(uploadUrl, {
       method: 'PUT',
@@ -56,20 +59,43 @@
       headers: { 'Content-Type': file.type || 'video/mp4' }
     }).then(function (res) {
       if (res.ok) {
-        statusEl.textContent = 'Upload complete. The chunking worker will process the file. Refresh the page to see status updates.';
-        statusEl.style.color = 'green';
+        statusEl.textContent = 'Upload complete. Progress will update automatically.';
         fileInput.value = '';
       } else {
         statusEl.textContent = 'Upload failed: ' + res.status + ' ' + res.statusText;
-        statusEl.style.color = 'crimson';
         uploadBtn.disabled = false;
       }
     }).catch(function (err) {
       statusEl.textContent = 'Upload failed: ' + err.message;
-      statusEl.style.color = 'crimson';
       uploadBtn.disabled = false;
     });
   });
+})();
+</script>
+{% endif %}
+
+{% if job.status.value != "completed" %}
+<script>
+(function () {
+  var jobId = '{{ job.job_id }}';
+  var progressBar = document.getElementById('progress-bar');
+  var stageLabel = document.getElementById('stage-label');
+  var es = new EventSource('/jobs/' + jobId + '/events');
+
+  es.onmessage = function (e) {
+    var data = JSON.parse(e.data);
+    progressBar.value = data.progress_percent;
+    progressBar.textContent = data.progress_percent + '%';
+    stageLabel.textContent = data.stage_label;
+    if (data.progress_percent >= 100) {
+      es.close();
+      window.location.reload();
+    }
+  };
+
+  es.onerror = function () {
+    es.close();
+  };
 })();
 </script>
 {% endif %}

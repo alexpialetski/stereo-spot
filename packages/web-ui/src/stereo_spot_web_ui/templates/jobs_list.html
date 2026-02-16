@@ -1,33 +1,81 @@
 {% extends "base.html" %}
-{% block title %}Completed jobs — Stereo-Spot{% endblock %}
+{% block title %}All jobs — Stereo-Spot{% endblock %}
 {% block content %}
-<h1>Completed jobs</h1>
-{% if jobs %}
-<table class="job-list">
+<h1>All jobs</h1>
+
+{% if in_progress_jobs %}
+<h2>In progress</h2>
+<figure>
+  <table role="grid">
     <thead>
-        <tr>
-            <th>Job ID</th>
-            <th>Mode</th>
-            <th>Completed</th>
-            <th></th>
-        </tr>
+      <tr>
+        <th>Job ID</th>
+        <th>Mode</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
     </thead>
     <tbody>
-        {% for job in jobs %}
-        <tr>
-            <td><code>{{ job.job_id }}</code></td>
-            <td>{{ job.mode.value }}</td>
-            <td>{{ job.completed_at }}</td>
-            <td><a href="/jobs/{{ job.job_id }}/play">Play</a></td>
-        </tr>
-        {% endfor %}
+      {% for job in in_progress_jobs %}
+      <tr>
+        <td><code>{{ job.job_id }}</code></td>
+        <td>{{ job.mode.value }}</td>
+        <td>{{ job.status.value }}</td>
+        <td data-timestamp="{{ job.created_at }}">{{ job.created_at }}</td>
+        <td><a href="/jobs/{{ job.job_id }}">View</a></td>
+      </tr>
+      {% endfor %}
     </tbody>
-</table>
+  </table>
+</figure>
+{% endif %}
+
+{% if completed_jobs %}
+<h2>Completed</h2>
+<figure>
+  <table role="grid">
+    <thead>
+      <tr>
+        <th>Job ID</th>
+        <th>Mode</th>
+        <th>Completed</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in completed_jobs %}
+      <tr>
+        <td><code>{{ job.job_id }}</code></td>
+        <td>{{ job.mode.value }}</td>
+        <td data-timestamp="{{ job.completed_at }}">{{ job.completed_at }}</td>
+        <td><a href="/jobs/{{ job.job_id }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</figure>
 {% if next_token %}
 <p><a href="/jobs?limit={{ request.query_params.get('limit', 20) }}&next_token={{ next_token }}">Next page</a></p>
 {% endif %}
-{% else %}
-<p>No completed jobs yet.</p>
 {% endif %}
-<p><a href="/">Back to dashboard</a></p>
+
+{% if not in_progress_jobs and not completed_jobs %}
+<p>No jobs yet. <a href="/">Create one</a>.</p>
+{% endif %}
+
+<script>
+(function () {
+  var formatter = new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+  document.querySelectorAll('[data-timestamp]').forEach(function (el) {
+    var ts = parseInt(el.getAttribute('data-timestamp'), 10);
+    if (!isNaN(ts)) {
+      el.textContent = formatter.format(new Date(ts * 1000));
+    }
+  });
+})();
+</script>
 {% endblock %}

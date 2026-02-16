@@ -1,7 +1,7 @@
 """Dependencies and app state for FastAPI routes."""
 
 from fastapi import Request
-from stereo_spot_shared import JobStore, ObjectStorage
+from stereo_spot_shared import JobStore, ObjectStorage, SegmentCompletionStore
 
 
 def get_job_store(request: Request) -> JobStore:
@@ -42,3 +42,13 @@ def get_output_bucket(request: Request) -> str:
     from stereo_spot_aws_adapters.env_config import output_bucket_name
 
     return output_bucket_name()
+
+
+def get_segment_completion_store(request: Request) -> SegmentCompletionStore:
+    """Return SegmentCompletionStore from app state or build from env."""
+    store = getattr(request.app.state, "segment_completion_store", None)
+    if store is not None:
+        return store
+    from stereo_spot_aws_adapters.env_config import segment_completion_store_from_env
+
+    return segment_completion_store_from_env()

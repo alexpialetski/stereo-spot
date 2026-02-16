@@ -1,7 +1,12 @@
-"""Pytest fixtures: app with mocked JobStore and ObjectStorage."""
+"""Pytest fixtures: app with mocked JobStore, ObjectStorage, SegmentCompletionStore."""
 
 import pytest
-from stereo_spot_shared import Job, JobListItem, JobStatus
+from stereo_spot_shared import (
+    Job,
+    JobListItem,
+    JobStatus,
+    SegmentCompletion,
+)
 
 from stereo_spot_web_ui.main import app
 
@@ -57,6 +62,19 @@ class MockJobStore:
         completed.sort(key=lambda x: x.completed_at, reverse=True)
         return completed[:limit], None
 
+    def list_in_progress(self, limit: int = 20) -> list[Job]:
+        in_progress_statuses = {
+            JobStatus.CREATED,
+            JobStatus.CHUNKING_IN_PROGRESS,
+            JobStatus.CHUNKING_COMPLETE,
+        }
+        items = [
+            j for j in self._jobs.values()
+            if j.status in in_progress_statuses and j.created_at is not None
+        ]
+        items.sort(key=lambda j: j.created_at or 0, reverse=True)
+        return items[:limit]
+
 
 class MockObjectStorage:
     """ObjectStorage for tests: presign URLs include bucket/key for assertions."""
@@ -76,6 +94,7 @@ class MockObjectStorage:
         key: str,
         *,
         expires_in: int = 3600,
+        response_content_disposition: str | None = None,
     ) -> str:
         return f"https://mock-download/{bucket}/{key}?expires={expires_in}"
 
@@ -92,6 +111,19 @@ class MockObjectStorage:
         return b""
 
 
+class MockSegmentCompletionStore:
+    """SegmentCompletionStore for tests: in-memory, query_by_job returns list."""
+
+    def __init__(self) -> None:
+        self._completions: list[SegmentCompletion] = []
+
+    def put(self, completion: SegmentCompletion) -> None:
+        self._completions.append(completion)
+
+    def query_by_job(self, job_id: str) -> list[SegmentCompletion]:
+        return [c for c in self._completions if c.job_id == job_id]
+
+
 @pytest.fixture
 def mock_job_store() -> MockJobStore:
     return MockJobStore()
@@ -103,12 +135,19 @@ def mock_object_storage() -> MockObjectStorage:
 
 
 @pytest.fixture
+def mock_segment_completion_store() -> MockSegmentCompletionStore:
+    return MockSegmentCompletionStore()
+
+
+@pytest.fixture
 def app_with_mocks(
     mock_job_store: MockJobStore,
     mock_object_storage: MockObjectStorage,
+    mock_segment_completion_store: MockSegmentCompletionStore,
 ) -> None:
     """Set app.state so routes use mocks; bucket names fixed."""
     app.state.job_store = mock_job_store
     app.state.object_storage = mock_object_storage
+    app.state.segment_completion_store = mock_segment_completion_store
     app.state.input_bucket_name = "input-bucket"
     app.state.output_bucket_name = "output-bucket"

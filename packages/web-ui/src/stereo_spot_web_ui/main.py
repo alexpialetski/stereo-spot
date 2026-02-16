@@ -1,23 +1,41 @@
 """FastAPI app: server-rendered pages for dashboard, jobs, create, detail, play."""
 
+import asyncio
 import base64
 import json
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
 
+import dotenv
 from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from stereo_spot_shared import Job, JobStatus, JobStore, ObjectStorage, StereoMode
+from stereo_spot_shared import (
+    Job,
+    JobStatus,
+    JobStore,
+    ObjectStorage,
+    SegmentCompletionStore,
+    StereoMode,
+)
 
 from .deps import (
     get_input_bucket,
     get_job_store,
     get_object_storage,
     get_output_bucket,
+    get_segment_completion_store,
 )
+
+# When STEREOSPOT_ENV_FILE is set (e.g. by nx run web-ui:serve), load env from that path
+# so the app has JOBS_TABLE_NAME etc. without relying on shell sourcing. Unset in ECS.
+_env_file = os.environ.get("STEREOSPOT_ENV_FILE")
+if _env_file:
+    dotenv.load_dotenv(Path(_env_file).resolve())
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +45,45 @@ OUTPUT_FINAL_KEY_TEMPLATE = "jobs/{job_id}/final.mp4"
 
 app = FastAPI(title="Stereo-Spot Web UI", version="0.1.0")
 
-templates_dir = Path(__file__).resolve().parent / "templates"
+_package_dir = Path(__file__).resolve().parent
+templates_dir = _package_dir / "templates"
+static_dir = _package_dir / "static"
 templates = Jinja2Templates(directory=str(templates_dir))
+
+# SSE poll interval and max stream duration
+PROGRESS_POLL_SEC = 2
+PROGRESS_STREAM_TIMEOUT_SEC = 600  # 10 min
+
+
+def _compute_progress(
+    job: Job | None,
+    segment_store: SegmentCompletionStore,
+) -> tuple[int, str]:
+    """
+    Compute progress_percent (0-100) and stage_label from job and segment completions.
+    Backend owns the semantics; UI just displays the numbers.
+    """
+    if job is None:
+        return 0, "Unknown"
+    if job.status == JobStatus.COMPLETED:
+        return 100, "Completed"
+    if job.status == JobStatus.CREATED:
+        return 5, "Waiting for upload"
+    if job.status == JobStatus.CHUNKING_IN_PROGRESS:
+        return 15, "Chunking video"
+    if job.status == JobStatus.CHUNKING_COMPLETE:
+        total = job.total_segments or 0
+        if total <= 0:
+            return 50, "Processing segments"
+        completions = segment_store.query_by_job(job.job_id)
+        segments_done = len(completions)
+        # 25% .. 75% for segment phase
+        pct = 25 + int(50 * segments_done / total)
+        return min(75, pct), "Processing segments"
+    return 0, "Unknown"
+
+
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -44,7 +99,8 @@ async def list_jobs(
     limit: int = 20,
     next_token: str | None = None,
 ) -> HTMLResponse:
-    """List completed jobs (GSI status=completed, descending completed_at)."""
+    """Unified jobs page: in-progress (View link) + completed (Play link)."""
+    in_progress = job_store.list_in_progress(limit=limit)
     exclusive_start_key = None
     if next_token:
         try:
@@ -52,7 +108,9 @@ async def list_jobs(
             exclusive_start_key = json.loads(raw.decode())
         except Exception:
             exclusive_start_key = None
-    items, next_key = job_store.list_completed(limit=limit, exclusive_start_key=exclusive_start_key)
+    completed_items, next_key = job_store.list_completed(
+        limit=limit, exclusive_start_key=exclusive_start_key
+    )
     next_token_out = None
     if next_key:
         next_token_out = base64.urlsafe_b64encode(
@@ -63,7 +121,8 @@ async def list_jobs(
         "jobs_list.html",
         {
             "request": request,
-            "jobs": items,
+            "in_progress_jobs": in_progress,
+            "completed_jobs": completed_items,
             "next_token": next_token_out,
         },
     )
@@ -92,26 +151,79 @@ async def create_job(
     return RedirectResponse(url=request.url_for("job_detail", job_id=job_id), status_code=303)
 
 
+@app.get("/jobs/{job_id}/events")
+async def job_progress_events(
+    job_id: str,
+    job_store: JobStore = Depends(get_job_store),
+    segment_store: SegmentCompletionStore = Depends(get_segment_completion_store),
+):
+    """
+    Server-Sent Events stream: progress_percent and stage_label.
+    Polls job + segment completions every few seconds; closes when completed or timeout.
+    """
+    async def generate() -> str:
+        start = time.monotonic()
+        last_percent = -1
+        last_label = ""
+        while (time.monotonic() - start) < PROGRESS_STREAM_TIMEOUT_SEC:
+            job = job_store.get(job_id)
+            if job is None:
+                yield f"data: {json.dumps({'progress_percent': 0, 'stage_label': 'Not found'})}\n\n"
+                return
+            percent, label = _compute_progress(job, segment_store)
+            # Send event when value changed or first time
+            if percent != last_percent or label != last_label:
+                last_percent = percent
+                last_label = label
+                payload = {"progress_percent": percent, "stage_label": label}
+                yield f"data: {json.dumps(payload)}\n\n"
+            if job.status == JobStatus.COMPLETED:
+                return
+            await asyncio.sleep(PROGRESS_POLL_SEC)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
 async def job_detail(
     request: Request,
     job_id: str,
     job_store: JobStore = Depends(get_job_store),
     object_storage: ObjectStorage = Depends(get_object_storage),
+    segment_store: SegmentCompletionStore = Depends(get_segment_completion_store),
     input_bucket: str = Depends(get_input_bucket),
+    output_bucket: str = Depends(get_output_bucket),
 ) -> HTMLResponse:
-    """Job detail: upload URL + instructions if status=created; otherwise status."""
+    """Job detail: upload URL + instructions if status=created; otherwise status + progress."""
     job = job_store.get(job_id)
     if job is None:
         logger.warning("job_id=%s not found (detail)", job_id)
         return HTMLResponse(content="Job not found", status_code=404)
     logger.info("job_id=%s detail status=%s", job_id, job.status.value)
     upload_url = None
+    playback_url = None
+    download_url = None
     if job.status == JobStatus.CREATED:
         input_key = INPUT_KEY_TEMPLATE.format(job_id=job_id)
         upload_url = object_storage.presign_upload(
             input_bucket, input_key, expires_in=3600
         )
+    if job.status == JobStatus.COMPLETED:
+        key = OUTPUT_FINAL_KEY_TEMPLATE.format(job_id=job_id)
+        playback_url = object_storage.presign_download(
+            output_bucket, key, expires_in=3600
+        )
+        download_url = object_storage.presign_download(
+            output_bucket,
+            key,
+            expires_in=3600,
+            response_content_disposition='attachment; filename="final.mp4"',
+        )
+    progress_percent, stage_label = _compute_progress(job, segment_store)
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -119,6 +231,10 @@ async def job_detail(
             "request": request,
             "job": job,
             "upload_url": upload_url,
+            "playback_url": playback_url,
+            "download_url": download_url,
+            "progress_percent": progress_percent,
+            "stage_label": stage_label,
         },
     )
 

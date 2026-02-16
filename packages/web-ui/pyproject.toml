@@ -12,6 +12,7 @@ dependencies = [
     "stereo-spot-shared",
     "stereo-spot-aws-adapters",
     "fastapi>=0.100",
+    "python-dotenv>=1.0",
     "jinja2>=3.1",
     "python-multipart>=0.0.6",
     "httpx>=0.24",
@@ -26,6 +27,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"stereo_spot_web_ui" = ["static/*", "templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

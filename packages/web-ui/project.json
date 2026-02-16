@@ -43,8 +43,8 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && uvicorn stereo_spot_web_ui.main:app --reload",
-        "cwd": "{projectRoot}"
+        "command": "export STEREOSPOT_ENV_FILE=\"$PWD/packages/aws-infra/.env\" && cd packages/web-ui && pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && uvicorn stereo_spot_web_ui.main:app --reload",
+        "cwd": "{workspaceRoot}"
       },
       "configurations": {}
     }
