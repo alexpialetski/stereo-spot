@@ -89,6 +89,37 @@ class TestDynamoDBJobStore:
         assert len(items) == 1
         assert items[0].job_id == "done"
 
+    def test_list_in_progress(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        store.put(
+            Job(
+                job_id="ip1",
+                mode=StereoMode.ANAGLYPH,
+                status=JobStatus.CREATED,
+                created_at=1000,
+            )
+        )
+        store.put(
+            Job(
+                job_id="ip2",
+                mode=StereoMode.SBS,
+                status=JobStatus.CHUNKING_IN_PROGRESS,
+                created_at=2000,
+            )
+        )
+        store.put(
+            Job(
+                job_id="done",
+                mode=StereoMode.ANAGLYPH,
+                status=JobStatus.COMPLETED,
+                created_at=500,
+                completed_at=3000,
+            )
+        )
+        items = store.list_in_progress(limit=10)
+        assert len(items) == 2
+        assert [x.job_id for x in items] == ["ip2", "ip1"]
+
 
 class TestDynamoSegmentCompletionStore:
     """Tests for DynamoSegmentCompletionStore."""

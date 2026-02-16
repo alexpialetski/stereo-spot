@@ -37,6 +37,7 @@ def jobs_table(moto_aws):
             {"AttributeName": "job_id", "AttributeType": "S"},
             {"AttributeName": "status", "AttributeType": "S"},
             {"AttributeName": "completed_at", "AttributeType": "N"},
+            {"AttributeName": "created_at", "AttributeType": "N"},
         ],
         GlobalSecondaryIndexes=[
             {
@@ -46,7 +47,15 @@ def jobs_table(moto_aws):
                     {"AttributeName": "completed_at", "KeyType": "RANGE"},
                 ],
                 "Projection": {"ProjectionType": "ALL"},
-            }
+            },
+            {
+                "IndexName": "status-created_at",
+                "KeySchema": [
+                    {"AttributeName": "status", "KeyType": "HASH"},
+                    {"AttributeName": "created_at", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            },
         ],
     )
     return "test-jobs"

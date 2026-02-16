@@ -32,9 +32,10 @@ def _item_to_completion(item: dict[str, Any]) -> SegmentCompletion:
 
 
 class DynamoDBJobStore:
-    """JobStore implementation using DynamoDB Jobs table and status-completed_at GSI."""
+    """JobStore: DynamoDB Jobs table with status-completed_at and status-created_at GSIs."""
 
-    GSI_NAME = "status-completed_at"
+    GSI_COMPLETED = "status-completed_at"
+    GSI_CREATED = "status-created_at"
 
     def __init__(
         self,
@@ -111,7 +112,7 @@ class DynamoDBJobStore:
     ) -> tuple[list[JobListItem], dict[str, Any] | None]:
         """List jobs with status=completed, ordered by completed_at descending."""
         params: dict[str, Any] = {
-            "IndexName": self.GSI_NAME,
+            "IndexName": self.GSI_COMPLETED,
             "KeyConditionExpression": Key("status").eq(JobStatus.COMPLETED.value),
             "ScanIndexForward": False,
             "Limit": limit,
@@ -130,6 +131,27 @@ class DynamoDBJobStore:
         ]
         next_key = resp.get("LastEvaluatedKey")
         return (items, next_key if next_key else None)
+
+    def list_in_progress(self, limit: int = 20) -> list[Job]:
+        """List in-progress jobs by created_at desc."""
+        statuses = [
+            JobStatus.CREATED.value,
+            JobStatus.CHUNKING_IN_PROGRESS.value,
+            JobStatus.CHUNKING_COMPLETE.value,
+        ]
+        merged: list[Job] = []
+        per_status = max(limit, 7)  # fetch enough per partition to merge
+        for status in statuses:
+            resp = self._table.query(
+                IndexName=self.GSI_CREATED,
+                KeyConditionExpression=Key("status").eq(status),
+                ScanIndexForward=False,
+                Limit=per_status,
+            )
+            for row in resp.get("Items", []):
+                merged.append(_item_to_job(row))
+        merged.sort(key=lambda j: j.created_at or 0, reverse=True)
+        return merged[:limit]
 
 
 class DynamoSegmentCompletionStore:

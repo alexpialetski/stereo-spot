@@ -51,11 +51,15 @@ class S3ObjectStorage:
         key: str,
         *,
         expires_in: int = 3600,
+        response_content_disposition: str | None = None,
     ) -> str:
-        """Return a presigned GET URL for the given bucket and key."""
+        """Return presigned GET URL. Use response_content_disposition for download."""
+        params: dict = {"Bucket": bucket, "Key": key}
+        if response_content_disposition:
+            params["ResponseContentDisposition"] = response_content_disposition
         return self._client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": bucket, "Key": key},
+            Params=params,
             ExpiresIn=expires_in,
         )
 
