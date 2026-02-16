@@ -2,7 +2,8 @@
 # Contract: GET /ping, POST /invocations with JSON {s3_input_uri, s3_output_uri, mode?}.
 # Weights downloaded at startup from Hugging Face when HF_TOKEN_ARN is set.
 
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+# Use NVCR (nvcr.io) to avoid Docker Hub anonymous rate limit (429) in CodeBuild
+FROM nvcr.io/nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CUDA_HOME=/usr/local/cuda
