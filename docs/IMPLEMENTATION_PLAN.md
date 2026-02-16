@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3 is done:** Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui and media-worker, EC2 service for video-worker (GPU), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`. **Step 5.1** is done: **packages/integration** with E2E pipeline test (create job → upload → chunking → video-worker → reassembly → completed) and reassembly idempotency test (two reassembly messages, one winner); tests use moto; E2E and idempotency require ffmpeg (skipped if absent). docs/TESTING.md updated. **Step 5.2** is done: **scripts/chunking_recovery.py** (recovery script using shared-types segment key parser); **docs/RUNBOOKS.md** (chunking recovery, DLQ handling, ECS max capacity and SQS visibility timeout); ARCHITECTURE.md has Implementation section linking to IMPLEMENTATION_PLAN.md and RUNBOOKS.md; IMPLEMENTATION_PLAN.md Principles reference ARCHITECTURE.md. **Step 5.3** is revised: StereoCrafter is hosted on **SageMaker** (custom inference container; weights downloaded from **Hugging Face** at endpoint startup; **Secrets Manager** for HF token). Video-worker invokes the endpoint and runs on Fargate (no GPU on ECS).
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3** is done: Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui and media-worker, video-worker on **Fargate** (no GPU; invokes SageMaker), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`. **Step 5.1** is done: **packages/integration** with E2E pipeline test and reassembly idempotency test; docs/TESTING.md updated. **Step 5.2** is done: **scripts/chunking_recovery.py**, **docs/RUNBOOKS.md**, ARCHITECTURE/IMPLEMENTATION_PLAN cross-links. **Step 5.3** is done: **packages/stereocrafter-sagemaker** (SageMaker custom container with stub handler, contract: s3_input_uri/s3_output_uri); **Secrets Manager** for HF token; Terraform: ECR, SageMaker model/endpoint, video-worker Fargate + InvokeEndpoint; video-worker `INFERENCE_BACKEND=sagemaker` and unit tests. **Step 5.4** (future): replace stub with real StereoCrafter inference and Hugging Face weights at container startup.
 
 **Principles:**
 
@@ -144,6 +144,7 @@ nx run aws-infra:terraform-plan
 - [x] All four abstraction interfaces have AWS implementations in `packages/aws-adapters`.
 - [x] Unit tests run against moto (or equivalent) and pass.
 - [x] Documentation explains configuration and env vars.
+- [x] Queue receivers (chunking, video-worker, reassembly) use SQS long polling (default 20s) for responsive message pickup; optional env `SQS_LONG_POLL_WAIT_SECONDS`.
 
 **Verification:**
 
@@ -424,10 +425,10 @@ nx run integration:test
 
 **A/C:**
 
-- [ ] StereoCrafter runs in a SageMaker custom container; weights are downloaded from Hugging Face at startup; HF token is provided via Secrets Manager and injected into the container.
-- [ ] SageMaker handler writes the stereo segment **directly to the `s3_output_uri`** provided in the request (canonical key `jobs/{job_id}/segments/{segment_index}.mp4`); video-worker does not upload segment bytes.
-- [ ] Video-worker invokes the endpoint when `INFERENCE_BACKEND=sagemaker`; stub remains for CI; video-worker runs on Fargate (no GPU).
-- [ ] Documentation covers endpoint deploy order, env vars, and segment sizing/timeouts.
+- [x] SageMaker custom container runs the inference contract; HF token is provided via Secrets Manager and injected into the container. (Container currently uses a stub that copies input→output; real StereoCrafter and HF weights at startup are Step 5.4.)
+- [x] SageMaker handler writes the stereo segment **directly to the `s3_output_uri`** provided in the request (canonical key `jobs/{job_id}/segments/{segment_index}.mp4`); video-worker does not upload segment bytes.
+- [x] Video-worker invokes the endpoint when `INFERENCE_BACKEND=sagemaker`; stub remains for CI; video-worker runs on Fargate (no GPU).
+- [x] Documentation covers endpoint deploy order, env vars, and segment sizing/timeouts.
 
 **Verification:**
 
@@ -435,6 +436,26 @@ nx run integration:test
 nx run video-worker:test
 # Manual: deploy endpoint, set INFERENCE_BACKEND=sagemaker and SAGEMAKER_ENDPOINT_NAME, run one segment through pipeline.
 ```
+
+---
+
+### Step 5.4 — Real StereoCrafter inference in SageMaker container (future)
+
+**Goal:** Replace the stub in `packages/stereocrafter-sagemaker` with the real two-stage pipeline (depth splatting → inpainting). Weights are downloaded from Hugging Face at container startup using the injected HF token; no weights baked into the image.
+
+**Tasks:**
+
+- In **`packages/stereocrafter-sagemaker`**: base image with CUDA and Python; add StereoCrafter code and dependencies (e.g. Forward-Warp). In the container entrypoint or first request: download the three weight sets (SVD, DepthCrafter, StereoCrafter) from Hugging Face using `HF_TOKEN`; load models. In `POST /invocations`: read segment from `s3_input_uri`, run the two-stage pipeline, write stereo output to `s3_output_uri`. Keep `GET /ping` and the existing request/response contract.
+- Document in the package README: weight download at startup, required env, and any segment size/timeout limits for real inference.
+
+**A/C:**
+
+- [ ] Container downloads StereoCrafter (and dependency) weights from Hugging Face at startup using the Secrets Manager–injected HF token.
+- [ ] Handler runs the full two-stage pipeline and writes the stereo segment to `s3_output_uri`; endpoint is usable for production segments.
+
+**Verification:**
+
+- Deploy updated image to SageMaker; run a segment through the pipeline and confirm stereo output in S3.
 
 ---
 
@@ -456,7 +477,8 @@ nx run video-worker:test
 | 4.3  | aws-infra                  | ECS cluster, task definitions, services (Fargate + EC2 GPU), ALB, task roles, scaling | README                      |
 | 5.1  | integration                | E2E test + reassembly idempotency                                                     | TESTING.md                  |
 | 5.2  | docs / tools               | Runbooks, chunking recovery script/procedure, cross-links                             | RUNBOOKS.md                 |
-| 5.3  | stereocrafter-sagemaker, aws-infra, video-worker | SageMaker endpoint (custom container; Hugging Face weights at startup, Secrets Manager for HF token), video-worker InvokeEndpoint, Fargate | README; video-worker tests (stub + mocked SageMaker) |
+| 5.3  | stereocrafter-sagemaker, aws-infra, video-worker | SageMaker endpoint (custom container; stub handler; Secrets Manager for HF token), video-worker InvokeEndpoint, Fargate | README; video-worker tests (stub + mocked SageMaker) |
+| 5.4  | stereocrafter-sagemaker                          | Real StereoCrafter inference in container; HF weights at startup (future)                                                | README                                                |
 
 ---
 

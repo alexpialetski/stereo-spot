@@ -42,7 +42,7 @@ Two event flows are configured on the **input bucket** (S3 → SQS direct, no La
 2. **Segment upload → video-worker queue**  
    Prefix `segments/`, suffix `.mp4` → **video-worker queue**. When the media-worker uploads segment files to `segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4`, S3 sends the event to the video-worker queue; the video-worker consumes it and runs inference.
 
-Queue policies allow the input bucket to send messages to the chunking and video-worker queues. Workers already consume raw S3 events; no code changes required.
+Queue policies allow the input bucket to send messages to the chunking and video-worker queues. Workers consume raw S3 events and use **SQS long polling** (default 20s wait) for responsive pickup; optional env `SQS_LONG_POLL_WAIT_SECONDS` (0–20) can be set in the task definition if needed.
 
 ### SQS
 
