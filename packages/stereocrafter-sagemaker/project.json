@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "packages/stereocrafter-sagemaker",
   "targets": {
-    "build": {
+    "sagemaker-build": {
       "executor": "nx:run-commands",
       "options": {
         "command": ". packages/aws-infra/.env && aws codebuild start-build --project-name \"${CODEBUILD_PROJECT_NAME}\" --region \"${REGION}\"",
@@ -14,7 +14,7 @@
       "dependsOn": ["aws-infra:terraform-output"],
       "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     },
-    "deploy": {
+    "sagemaker-deploy": {
       "executor": "nx:run-commands",
       "options": {
         "command": "bash packages/stereocrafter-sagemaker/scripts/deploy-sagemaker.sh packages/aws-infra/.env",

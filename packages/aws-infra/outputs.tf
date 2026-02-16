@@ -93,7 +93,7 @@ output "sagemaker_endpoint_name" {
 }
 
 output "sagemaker_endpoint_role_arn" {
-  description = "IAM role ARN for SageMaker endpoint (for stereocrafter-sagemaker:deploy)"
+  description = "IAM role ARN for SageMaker endpoint (for stereocrafter-sagemaker:sagemaker-deploy)"
   value       = aws_iam_role.sagemaker_endpoint.arn
 }
 
@@ -115,6 +115,6 @@ output "hf_token_secret_arn" {
 # --- CodeBuild ---
 
 output "codebuild_project_name" {
-  description = "Name of the CodeBuild project for stereocrafter-sagemaker (for nx run stereocrafter-sagemaker:build)"
+  description = "Name of the CodeBuild project for stereocrafter-sagemaker (for nx run stereocrafter-sagemaker:sagemaker-build)"
   value       = aws_codebuild_project.stereocrafter.name
 }
