@@ -69,6 +69,7 @@ def process_one_message(
             payload.segment_s3_uri,
             output_s3_uri,
             endpoint_name,
+            mode=payload.mode.value,
             region_name=region_name or None,
         )
     else:

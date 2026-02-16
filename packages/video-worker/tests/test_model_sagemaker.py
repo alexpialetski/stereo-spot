@@ -7,7 +7,7 @@ from video_worker.model_sagemaker import invoke_sagemaker_endpoint
 
 
 def test_invoke_sagemaker_endpoint_calls_client_with_correct_body() -> None:
-    """invoke_sagemaker_endpoint sends JSON with s3_input_uri and s3_output_uri."""
+    """invoke_sagemaker_endpoint sends JSON with s3_input_uri, s3_output_uri, and mode."""
     mock_client = MagicMock()
     segment_uri = "s3://input-bucket/segments/job-1/00000_00010_sbs.mp4"
     output_uri = "s3://output-bucket/jobs/job-1/segments/0.mp4"
@@ -16,6 +16,7 @@ def test_invoke_sagemaker_endpoint_calls_client_with_correct_body() -> None:
         segment_uri,
         output_uri,
         "my-endpoint",
+        mode="sbs",
         client=mock_client,
     )
 
@@ -26,6 +27,20 @@ def test_invoke_sagemaker_endpoint_calls_client_with_correct_body() -> None:
     body = json.loads(call_kw["Body"].decode("utf-8"))
     assert body["s3_input_uri"] == segment_uri
     assert body["s3_output_uri"] == output_uri
+    assert body["mode"] == "sbs"
+
+
+def test_invoke_sagemaker_endpoint_defaults_to_anaglyph_mode() -> None:
+    """When mode is omitted, defaults to anaglyph."""
+    mock_client = MagicMock()
+    invoke_sagemaker_endpoint(
+        "s3://in/seg.mp4",
+        "s3://out/seg.mp4",
+        "ep",
+        client=mock_client,
+    )
+    body = json.loads(mock_client.invoke_endpoint.call_args[1]["Body"].decode("utf-8"))
+    assert body["mode"] == "anaglyph"
 
 
 def test_invoke_sagemaker_endpoint_uses_region_when_provided() -> None:

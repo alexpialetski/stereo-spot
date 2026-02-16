@@ -16,6 +16,7 @@ def invoke_sagemaker_endpoint(
     output_s3_uri: str,
     endpoint_name: str,
     *,
+    mode: str = "anaglyph",
     region_name: str | None = None,
     client: object | None = None,
 ) -> None:
@@ -23,14 +24,14 @@ def invoke_sagemaker_endpoint(
     Call SageMaker InvokeEndpoint with S3 input/output URIs.
 
     The endpoint is expected to read the segment from segment_s3_uri, run inference,
-    and write the result to output_s3_uri. This function blocks until the endpoint
-    responds or raises on failure.
+    and write the result in the requested mode (anaglyph or sbs) to output_s3_uri.
 
     Args:
         segment_s3_uri: S3 URI of the input segment (e.g. s3://bucket/segments/...).
         output_s3_uri: S3 URI where the endpoint should write the result
             (e.g. s3://bucket/jobs/{job_id}/segments/{segment_index}.mp4).
         endpoint_name: SageMaker endpoint name.
+        mode: Output stereo format ("anaglyph" or "sbs"); defaults to "anaglyph".
         region_name: AWS region for the endpoint; if None, uses default.
         client: Optional boto3 sagemaker-runtime client (for testing).
             If None, creates one via boto3.client("sagemaker-runtime", ...).
@@ -51,6 +52,7 @@ def invoke_sagemaker_endpoint(
     body = json.dumps({
         "s3_input_uri": segment_s3_uri,
         "s3_output_uri": output_s3_uri,
+        "mode": mode,
     }).encode("utf-8")
 
     sagemaker_runtime.invoke_endpoint(

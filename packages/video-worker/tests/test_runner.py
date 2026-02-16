@@ -87,6 +87,7 @@ def test_process_one_message_sagemaker_backend_no_download_upload() -> None:
         "s3://input-bucket/segments/job-xyz/00001_00005_sbs.mp4",
         "s3://output-bucket/jobs/job-xyz/segments/1.mp4",
         "my-ep",
+        mode="sbs",
         region_name=None,
     )
     segment_store.put.assert_called_once()
