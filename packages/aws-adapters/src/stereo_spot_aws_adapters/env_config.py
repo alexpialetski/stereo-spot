@@ -18,6 +18,7 @@ Required env vars (match Terraform output names, uppercased with underscores):
 Optional:
 - AWS_REGION (default: us-east-1)
 - AWS_ENDPOINT_URL (e.g. for LocalStack)
+- SQS_LONG_POLL_WAIT_SECONDS (default: 20, max 20) for receive long polling
 """
 
 import os
@@ -29,6 +30,12 @@ from .dynamodb_stores import (
 )
 from .s3_storage import S3ObjectStorage
 from .sqs_queues import SQSQueueReceiver, SQSQueueSender
+
+
+def _sqs_wait_time_seconds() -> int:
+    """Long-poll wait time for SQS receive (0-20). Default 20 for responsive pickup."""
+    val = os.environ.get("SQS_LONG_POLL_WAIT_SECONDS", "20")
+    return min(20, max(0, int(val)))
 
 
 def _get_region() -> str | None:
@@ -76,6 +83,7 @@ def chunking_queue_receiver_from_env() -> SQSQueueReceiver:
         url,
         region_name=_get_region(),
         endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
     )
 
 
@@ -96,6 +104,7 @@ def video_worker_queue_receiver_from_env() -> SQSQueueReceiver:
         url,
         region_name=_get_region(),
         endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
     )
 
 
@@ -126,6 +135,7 @@ def reassembly_queue_receiver_from_env() -> SQSQueueReceiver:
         url,
         region_name=_get_region(),
         endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
     )
 
 
