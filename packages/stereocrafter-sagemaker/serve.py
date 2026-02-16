@@ -13,11 +13,19 @@ under /opt/ml/model/weights (downloaded at startup from Hugging Face when HF_TOK
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from urllib.parse import urlparse
 
 import boto3
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+logger = logging.getLogger(__name__)
 
 app = None  # Set by gunicorn or Flask
 
@@ -56,6 +64,21 @@ def run_inference_stub(input_path: str, output_path: str) -> None:
         f.write(data)
 
 
+def _job_id_segment_from_output_uri(s3_output_uri: str) -> tuple[str | None, str | None]:
+    """Extract job_id and segment_index from s3_output_uri (e.g. s3://b/jobs/jid/segments/0.mp4)."""
+    try:
+        parsed = urlparse(s3_output_uri)
+        key = parsed.path.lstrip("/")
+        parts = key.split("/")
+        if len(parts) >= 4 and parts[0] == "jobs" and parts[2] == "segments":
+            segment_part = parts[3]
+            segment_index = segment_part.replace(".mp4", "") if segment_part.endswith(".mp4") else segment_part
+            return parts[1], segment_index
+    except Exception:
+        pass
+    return None, None
+
+
 def invocations_handler(body: bytes) -> tuple[str, int]:
     """
     Handle POST /invocations. Body: JSON with s3_input_uri and s3_output_uri.
@@ -69,6 +92,12 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
     s3_output_uri = data.get("s3_output_uri")
     if not s3_input_uri or not s3_output_uri:
         return json.dumps({"error": "s3_input_uri and s3_output_uri required"}), 400
+    job_id, segment_index = _job_id_segment_from_output_uri(s3_output_uri)
+    logger.info(
+        "job_id=%s segment_index=%s invocations start",
+        job_id or "?",
+        segment_index or "?",
+    )
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_in:
         input_path = tmp_in.name
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_out:
@@ -77,8 +106,10 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
         download_from_s3(s3_input_uri, input_path)
         run_inference_stub(input_path, output_path)
         upload_to_s3(output_path, s3_output_uri)
+        logger.info("job_id=%s segment_index=%s invocations complete", job_id or "?", segment_index or "?")
         return json.dumps({"status": "ok"}), 200
     except Exception as e:
+        logger.exception("job_id=%s segment_index=%s invocations failed: %s", job_id or "?", segment_index or "?", e)
         return json.dumps({"error": str(e)}), 500
     finally:
         for p in (input_path, output_path):

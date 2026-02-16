@@ -2,6 +2,7 @@
 Chunking loop: receive S3 event from queue, chunk source, upload segments, update job.
 """
 
+import logging
 import os
 import tempfile
 import time
@@ -15,6 +16,8 @@ from stereo_spot_shared.interfaces import JobStore, ObjectStorage, QueueReceiver
 
 from .ffmpeg_chunk import DEFAULT_SEGMENT_DURATION_SEC, chunk_video_to_temp
 from .s3_event import parse_s3_event_body
+
+logger = logging.getLogger(__name__)
 
 
 def process_one_chunking_message(
@@ -33,16 +36,20 @@ def process_one_chunking_message(
     """
     payload = parse_s3_event_body(payload_str)
     if payload is None:
+        logger.warning("chunking: invalid S3 event body")
         return False
     job_id = parse_input_key(payload.key)
     if job_id is None:
+        logger.warning("chunking: could not parse job_id from key=%s", getattr(payload, "key", ""))
         return False
     job = job_store.get(job_id)
     if job is None:
+        logger.warning("chunking: job_id=%s not found", job_id)
         return False
     if job.status not in (JobStatus.CREATED, JobStatus.CHUNKING_IN_PROGRESS):
-        # Already chunked or completed; idempotent skip
+        logger.info("chunking: job_id=%s skip (status=%s)", job_id, job.status.value)
         return True
+    logger.info("chunking: job_id=%s start (key=%s)", job_id, payload.key)
     mode = job.mode
     job_store.update(job_id, status=JobStatus.CHUNKING_IN_PROGRESS.value)
     try:
@@ -71,6 +78,7 @@ def process_one_chunking_message(
                 status=JobStatus.CHUNKING_COMPLETE.value,
                 total_segments=total,
             )
+            logger.info("chunking: job_id=%s complete total_segments=%s", job_id, total)
         finally:
             tmp.cleanup()
     finally:
@@ -93,8 +101,11 @@ def run_chunking_loop(
     """
     Long-running loop: receive messages from chunking queue, process each, delete on success.
     """
+    logger.info("chunking loop started")
     while True:
         messages = receiver.receive(max_messages=1)
+        if messages:
+            logger.debug("chunking: received %s message(s)", len(messages))
         for msg in messages:
             body = msg.body
             try:
@@ -107,8 +118,8 @@ def run_chunking_loop(
                 )
                 if ok:
                     receiver.delete(msg.receipt_handle)
-            except Exception:
+            except Exception as e:
+                logger.exception("chunking: failed to process message: %s", e)
                 # Message will become visible again after visibility timeout
-                pass
         if not messages:
             time.sleep(poll_interval_sec)

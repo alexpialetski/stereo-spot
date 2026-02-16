@@ -7,6 +7,7 @@ If so, conditional create on ReassemblyTriggered; on success send job_id to reas
 """
 
 import json
+import logging
 import os
 import time
 from collections.abc import Sequence
@@ -16,6 +17,8 @@ from botocore.exceptions import ClientError
 
 # shared-types bundled in layer/deployment package
 from stereo_spot_shared import Job, JobStatus, ReassemblyPayload
+
+logger = logging.getLogger(__name__)
 
 
 def _get_job_ids_from_stream_records(records: Sequence[dict]) -> set[str]:
@@ -137,19 +140,41 @@ def should_trigger_reassembly(
     """
     job_item = _get_job(jobs_table, job_id, dynamodb_client=dynamodb_client)
     if not job_item:
+        logger.warning("job_id=%s: job not found", job_id)
         return False
     try:
         job = Job.model_validate(job_item)
-    except Exception:
+    except Exception as e:
+        logger.warning("job_id=%s: invalid job item: %s", job_id, e)
         return False
     if job.status != JobStatus.CHUNKING_COMPLETE:
+        logger.info(
+            "job_id=%s: skip trigger (status=%s, need chunking_complete)",
+            job_id,
+            job.status.value,
+        )
         return False
     if job.total_segments is None or job.total_segments < 1:
+        logger.warning("job_id=%s: total_segments=%s", job_id, job.total_segments)
         return False
     count = _count_segment_completions(
         segment_completions_table, job_id, dynamodb_client=dynamodb_client
     )
-    return count == job.total_segments
+    if count != job.total_segments:
+        logger.info(
+            "job_id=%s: skip trigger (completions=%s, total_segments=%s)",
+            job_id,
+            count,
+            job.total_segments,
+        )
+        return False
+    logger.info(
+        "job_id=%s: should trigger (completions=%s == total_segments=%s)",
+        job_id,
+        count,
+        job.total_segments,
+    )
+    return True
 
 
 def process_job_id(
@@ -179,11 +204,14 @@ def process_job_id(
         dynamodb_client=dynamodb_client,
     )
     if created:
+        logger.info("job_id=%s: created ReassemblyTriggered, sending to reassembly queue", job_id)
         _send_reassembly_message(
             reassembly_queue_url,
             job_id,
             sqs_client=sqs_client,
         )
+    else:
+        logger.info("job_id=%s: ReassemblyTriggered already exists (idempotent skip)", job_id)
 
 
 def lambda_handler(event: dict, context: object) -> dict:
@@ -200,6 +228,11 @@ def lambda_handler(event: dict, context: object) -> dict:
 
     records = event.get("Records") or []
     job_ids = _get_job_ids_from_stream_records(records)
+    logger.info(
+        "invocation: records=%s job_ids=%s",
+        len(records),
+        list(job_ids),
+    )
 
     dynamodb_client = boto3.client("dynamodb")
     sqs_client = boto3.client("sqs")

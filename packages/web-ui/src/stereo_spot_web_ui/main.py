@@ -2,6 +2,7 @@
 
 import base64
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -17,6 +18,8 @@ from .deps import (
     get_object_storage,
     get_output_bucket,
 )
+
+logger = logging.getLogger(__name__)
 
 # Keys per ARCHITECTURE: input/{job_id}/source.mp4, jobs/{job_id}/final.mp4
 INPUT_KEY_TEMPLATE = "input/{job_id}/source.mp4"
@@ -85,7 +88,7 @@ async def create_job(
         created_at=now,
     )
     job_store.put(job)
-    # Redirect to job detail page (shows upload URL and instructions)
+    logger.info("job_id=%s created mode=%s", job_id, mode)
     return RedirectResponse(url=request.url_for("job_detail", job_id=job_id), status_code=303)
 
 
@@ -100,7 +103,9 @@ async def job_detail(
     """Job detail: upload URL + instructions if status=created; otherwise status."""
     job = job_store.get(job_id)
     if job is None:
+        logger.warning("job_id=%s not found (detail)", job_id)
         return HTMLResponse(content="Job not found", status_code=404)
+    logger.info("job_id=%s detail status=%s", job_id, job.status.value)
     upload_url = None
     if job.status == JobStatus.CREATED:
         input_key = INPUT_KEY_TEMPLATE.format(job_id=job_id)
@@ -129,12 +134,15 @@ async def play(
     """Redirect to presigned GET URL for jobs/{job_id}/final.mp4."""
     job = job_store.get(job_id)
     if job is None:
+        logger.warning("job_id=%s not found (play)", job_id)
         return HTMLResponse(content="Job not found", status_code=404)
     if job.status != JobStatus.COMPLETED:
+        logger.info("job_id=%s play skipped status=%s", job_id, job.status.value)
         return HTMLResponse(
             content="Job not completed yet.",
             status_code=400,
         )
+    logger.info("job_id=%s play redirect to final.mp4", job_id)
     key = OUTPUT_FINAL_KEY_TEMPLATE.format(job_id=job_id)
     playback_url = object_storage.presign_download(
         output_bucket, key, expires_in=3600

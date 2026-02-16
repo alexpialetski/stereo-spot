@@ -3,6 +3,7 @@ Entrypoint for the media worker. Wires AWS adapters from env and runs chunking
 and reassembly loops in two threads (one process, both queues).
 """
 
+import logging
 import os
 import threading
 
@@ -20,10 +21,18 @@ from stereo_spot_aws_adapters.env_config import (
 from .chunking import run_chunking_loop
 from .reassembly import run_reassembly_loop
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+
 SEGMENT_DURATION_SEC = int(os.environ.get("CHUNK_SEGMENT_DURATION_SEC", "300"))
 
 
 def main() -> None:
+    logger = logging.getLogger(__name__)
+    logger.info("media-worker starting (chunking + reassembly)")
     job_store = job_store_from_env()
     storage = object_storage_from_env()
     input_bucket = input_bucket_name()

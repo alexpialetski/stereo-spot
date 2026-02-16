@@ -5,6 +5,7 @@ Reassembly loop: receive job_id, acquire lock, concat segments, upload final, up
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 import time
 from pathlib import Path
@@ -20,6 +21,8 @@ from stereo_spot_shared.interfaces import (
 
 from .concat import build_concat_list_paths, concat_segments_to_file
 from .output_key import build_final_key
+
+logger = logging.getLogger(__name__)
 
 
 class ReassemblyLock(Protocol):
@@ -56,21 +59,26 @@ def process_one_reassembly_message(
     """
     payload = _parse_reassembly_body(payload_str)
     if payload is None:
+        logger.warning("reassembly: invalid message body")
         return False
     job_id = payload.job_id
+    logger.info("reassembly: job_id=%s received", job_id)
 
     if not reassembly_lock.try_acquire(job_id):
-        # Another worker is handling this job; delete message so it does not reappear
+        logger.info("reassembly: job_id=%s lock not acquired (another worker)", job_id)
         return True
 
     job = job_store.get(job_id)
     if job is None:
+        logger.warning("reassembly: job_id=%s job not found", job_id)
         return False
     if job.status == JobStatus.COMPLETED:
+        logger.info("reassembly: job_id=%s already completed", job_id)
         return True
 
     final_key = build_final_key(job_id)
     if storage.exists(output_bucket, final_key):
+        logger.info("reassembly: job_id=%s final.mp4 already exists (idempotent)", job_id)
         job_store.update(
             job_id,
             status=JobStatus.COMPLETED.value,
@@ -80,9 +88,17 @@ def process_one_reassembly_message(
 
     completions = segment_store.query_by_job(job_id)
     if not completions:
+        logger.warning("reassembly: job_id=%s no segment completions", job_id)
         return False
     if job.total_segments is not None and len(completions) != job.total_segments:
+        logger.warning(
+            "reassembly: job_id=%s completions=%s != total_segments=%s",
+            job_id,
+            len(completions),
+            job.total_segments,
+        )
         return False
+    logger.info("reassembly: job_id=%s concat %s segments -> final.mp4", job_id, len(completions))
 
     with tempfile.TemporaryDirectory(prefix="reassembly_") as tmpdir:
         segment_dir = Path(tmpdir)
@@ -98,6 +114,7 @@ def process_one_reassembly_message(
         status=JobStatus.COMPLETED.value,
         completed_at=int(time.time()),
     )
+    logger.info("reassembly: job_id=%s completed", job_id)
     return True
 
 
@@ -115,8 +132,11 @@ def run_reassembly_loop(
     Long-running loop: receive messages from reassembly queue, process each, delete on success.
     If lock is not acquired, delete message (another worker will not process it either).
     """
+    logger.info("reassembly loop started")
     while True:
         messages = receiver.receive(max_messages=1)
+        if messages:
+            logger.debug("reassembly: received %s message(s)", len(messages))
         for msg in messages:
             body = msg.body
             try:
@@ -130,8 +150,8 @@ def run_reassembly_loop(
                 )
                 if ok:
                     receiver.delete(msg.receipt_handle)
-            except Exception:
+            except Exception as e:
+                logger.exception("reassembly: failed to process message: %s", e)
                 # Message returns to queue after visibility timeout for retry
-                pass
         if not messages:
             time.sleep(poll_interval_sec)
