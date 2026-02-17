@@ -107,26 +107,11 @@ output "sagemaker_instance_count" {
   value       = var.sagemaker_instance_count
 }
 
-# --- Inference EC2 (only when inference_backend=http and inference_http_url is empty) ---
+# --- HTTP inference (only when inference_backend=http) ---
 
 output "inference_http_url" {
-  description = "URL for HTTP inference backend (video-worker INFERENCE_HTTP_URL)"
-  value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? "http://${aws_instance.inference[0].private_ip}:8080" : null
-}
-
-output "inference_ec2_private_ip" {
-  description = "Private IP of the inference EC2 (for SSH or stereocrafter-ec2-deploy)"
-  value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? aws_instance.inference[0].private_ip : null
-}
-
-output "inference_ec2_instance_id" {
-  description = "Instance ID of the inference EC2 (for SSM deploy)"
-  value       = var.inference_backend == "http" && length(aws_instance.inference) > 0 ? aws_instance.inference[0].id : null
-}
-
-output "inference_ec2_log_group" {
-  description = "CloudWatch log group for inference EC2 container logs"
-  value       = var.inference_backend == "http" && length(aws_cloudwatch_log_group.inference_ec2) > 0 ? aws_cloudwatch_log_group.inference_ec2[0].name : null
+  description = "URL for HTTP inference backend (video-worker INFERENCE_HTTP_URL); set via variable when inference_backend=http"
+  value       = var.inference_backend == "http" ? var.inference_http_url : null
 }
 
 output "hf_token_secret_arn" {

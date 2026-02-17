@@ -22,10 +22,8 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 | `ecs_video_worker_memory` | Memory (MiB) for video-worker Fargate task | `1024` |
 | `ecs_video_worker_min_capacity` | Minimum video-worker tasks | `0` |
 | `ecs_video_worker_max_capacity` | Maximum video-worker tasks | `8` |
-| `inference_backend` | Inference backend: `sagemaker` (managed endpoint) or `http` (e.g. EC2) | `sagemaker` |
-| `inference_http_url` | When `inference_backend=http`, URL of your inference server; leave **empty** to have Terraform create the inference EC2 | (empty) |
-| `inference_ec2_ami_id` | When `inference_backend=http` and Terraform creates EC2: AMI for the instance. Empty = latest AWS Deep Learning OSS Nvidia Driver GPU AMI. For CPU-only (e.g. `t3.medium`) use an Amazon Linux AMI if needed. | (empty) |
-| `inference_ec2_instance_type` | Instance type for inference EC2. Use `g4dn.xlarge` for GPU; use `t3.medium` when org SCP denies GPU (e.g. `ec2:RunInstances` on g4dn). | `t3.medium` |
+| `inference_backend` | Inference backend: `sagemaker` (managed endpoint) or `http` (your own inference server URL) | `sagemaker` |
+| `inference_http_url` | When `inference_backend=http`, URL of your inference server (e.g. `http://10.0.1.5:8080`). You run the inference service yourself (SageMaker, your own EC2, etc.). | (empty) |
 | `sagemaker_instance_type` | SageMaker endpoint instance type (e.g. ml.g4dn.xlarge) | `ml.g4dn.xlarge` |
 | `sagemaker_instance_count` | Number of instances for the SageMaker endpoint | `1` |
 | `codebuild_stereocrafter_repo_url` | Git repo URL for CodeBuild to clone (stereocrafter-sagemaker) | `https://github.com/alexpialetski/stereo-spot.git` |
@@ -105,7 +103,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 ## Outputs
 
-See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`, `sagemaker_endpoint_role_arn`, `sagemaker_instance_type`, `sagemaker_instance_count`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
+See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`, `sagemaker_endpoint_role_arn`, `sagemaker_instance_type`, `sagemaker_instance_count`), **HTTP inference** when `inference_backend=http` (`inference_http_url`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
 
 ## Running Terraform
 

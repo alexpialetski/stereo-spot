@@ -279,7 +279,7 @@ locals {
     { name = "CHUNKING_QUEUE_URL", value = aws_sqs_queue.chunking.url },
     { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url }
   ])
-  inference_http_url = var.inference_backend == "http" ? (length(aws_instance.inference) > 0 ? "http://${aws_instance.inference[0].private_ip}:8080" : var.inference_http_url) : ""
+  inference_http_url = var.inference_backend == "http" ? var.inference_http_url : ""
   video_worker_inference_env = var.inference_backend == "sagemaker" ? [
     { name = "INFERENCE_BACKEND", value = "sagemaker" },
     { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.stereocrafter[0].name },
