@@ -1,18 +1,18 @@
 """
 SageMaker inference server: GET /ping and POST /invocations.
 
+Uses iw3 (nunif) to convert 2D video to stereo SBS or anaglyph.
+
 Request body (JSON): {
   "s3_input_uri": "...",
   "s3_output_uri": "...",
   "mode": "anaglyph" | "sbs"  (optional, default "anaglyph")
 }
-The handler reads the segment from S3, runs the StereoCrafter two-stage pipeline
-(depth splatting -> inpainting), and writes the result in the requested format
-to s3_output_uri.
 """
 
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -30,8 +30,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-STEREOCRAFTER_ROOT = "/opt/stereocrafter"
-WEIGHTS_DIR = os.environ.get("WEIGHTS_DIR", "/opt/ml/model/weights")
+NUNIF_ROOT = "/opt/nunif"
 
 
 def get_s3_client():
@@ -56,73 +55,62 @@ def upload_to_s3(path: str, s3_uri: str) -> None:
     get_s3_client().upload_file(path, bucket, key)
 
 
-def run_stereocrafter_pipeline(
+def run_iw3_pipeline(
     input_path: str, output_path: str, mode: str = "anaglyph"
 ) -> None:
     """
-    Run the two-stage StereoCrafter pipeline:
-    1. depth_splatting_inference.py (DepthCrafter + SVD) -> splatting result
-    2. inpainting_inference.py (StereoCrafter + SVD) -> SBS + anaglyph, select by mode
+    Run iw3 (nunif): 2D video -> stereo SBS or anaglyph.
+    iw3 writes to -o directory as {original_filename}_LRF_Full_SBS.mp4 or anaglyph variant.
     """
-    depthcrafter = os.path.join(WEIGHTS_DIR, "depthcrafter")
-    svd = os.path.join(WEIGHTS_DIR, "stable-video-diffusion-img2vid-xt-1-1")
-    stereocrafter = os.path.join(WEIGHTS_DIR, "stereocrafter")
-
-    if not all(os.path.isdir(d) for d in (depthcrafter, svd, stereocrafter)):
-        raise FileNotFoundError(
-            f"Weights not found. Ensure HF_TOKEN_ARN is set and download_weights ran. "
-            f"Expected: {depthcrafter}, {svd}, {stereocrafter}"
+    with tempfile.TemporaryDirectory() as out_dir:
+        cmd = [
+            "python", "-m", "iw3",
+            "-i", input_path,
+            "-o", out_dir,
+            # Recommended for video: scene boundary detection + flicker reduction (iw3.md VDA notes)
+            "--scene-detect",
+            "--ema-normalize",
+        ]
+        if mode == "anaglyph":
+            cmd.extend([
+                "--anaglyph",
+                "--convergence", "0.5",
+                "--divergence", "2.0",
+                "--pix-fmt", "yuv444p",
+            ])
+        if os.environ.get("IW3_LOW_VRAM") == "1":
+            cmd.append("--low-vram")
+        logger.info("Running iw3: %s", " ".join(cmd))
+        env = os.environ.copy()
+        r = subprocess.run(
+            cmd,
+            cwd=NUNIF_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=3600,
         )
-
-    env = os.environ.copy()
-    env["PYTHONPATH"] = STEREOCRAFTER_ROOT
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        splatting_path = os.path.join(tmpdir, "segment_splatting_results.mp4")
-        inpainting_dir = tmpdir
-
-        # Stage 1: depth splatting
-        cmd1 = [
-            "python",
-            os.path.join(STEREOCRAFTER_ROOT, "depth_splatting_inference.py"),
-            "--input_video_path", input_path,
-            "--output_video_path", splatting_path,
-            "--unet_path", depthcrafter,
-            "--pre_trained_path", depthcrafter,
-        ]
-        def _run(cmd: list, stage: str) -> None:
-            logger.info("Running %s: %s", stage, " ".join(cmd))
-            r = subprocess.run(
-                cmd, env=env, cwd=STEREOCRAFTER_ROOT,
-                capture_output=True, text=True, timeout=3600,
-            )
-            if r.returncode != 0:
-                err_msg = f"{stage} exited {r.returncode}"
-                if r.stderr:
-                    err_msg += f"; stderr:\n{r.stderr}"
-                if r.stdout:
-                    err_msg += f"; stdout:\n{r.stdout}"
-                raise RuntimeError(err_msg)
-
-        _run(cmd1, "depth_splatting")
-
-        # Stage 2: inpainting (produces _sbs.mp4 and _anaglyph.mp4)
-        cmd2 = [
-            "python",
-            os.path.join(STEREOCRAFTER_ROOT, "inpainting_inference.py"),
-            "--pre_trained_path", svd,
-            "--unet_path", stereocrafter,
-            "--input_video_path", splatting_path,
-            "--save_dir", inpainting_dir,
-        ]
-        _run(cmd2, "inpainting")
-
-        # Select output by mode: segment_splatting_results_inpainting_results_sbs.mp4 | _anaglyph.mp4
-        base_name = "segment_splatting_results_inpainting_results"
-        suffix = "_sbs.mp4" if mode == "sbs" else "_anaglyph.mp4"
-        result_path = os.path.join(inpainting_dir, base_name + suffix)
-        if not os.path.isfile(result_path):
-            raise FileNotFoundError(f"Inpainting did not produce {result_path}")
+        if r.returncode != 0:
+            err_msg = f"iw3 exited {r.returncode}"
+            if r.stderr:
+                err_msg += f"; stderr:\n{r.stderr}"
+            if r.stdout:
+                err_msg += f"; stdout:\n{r.stdout}"
+            raise RuntimeError(err_msg)
+        # iw3 writes {basename}_LRF_Full_SBS.mp4 or anaglyph-named file into out_dir
+        candidates = glob.glob(os.path.join(out_dir, "*.mp4"))
+        if not candidates:
+            raise FileNotFoundError(f"iw3 produced no .mp4 in {out_dir}")
+        result_path = candidates[0]
+        if len(candidates) > 1:
+            # Prefer _LRF_Full_SBS for sbs, or any for anaglyph
+            for p in candidates:
+                if "_LRF_Full_SBS" in p and mode == "sbs":
+                    result_path = p
+                    break
+                if mode == "anaglyph" and "_LRF_Full_SBS" not in p:
+                    result_path = p
+                    break
         shutil.copy2(result_path, output_path)
 
 
@@ -171,7 +159,7 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
         output_path = tmp_out.name
     try:
         download_from_s3(s3_input_uri, input_path)
-        run_stereocrafter_pipeline(input_path, output_path, mode=mode)
+        run_iw3_pipeline(input_path, output_path, mode=mode)
         upload_to_s3(output_path, s3_output_uri)
         logger.info("job_id=%s segment_index=%s invocations complete", job_id or "?", segment_index or "?")
         return json.dumps({"status": "ok"}), 200

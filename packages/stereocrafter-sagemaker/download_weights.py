@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 
 logging.basicConfig(
@@ -111,18 +112,27 @@ def download_weights() -> bool:
             return False
 
     # tencent/DepthCrafter has config.json + diffusion_pytorch_model.safetensors at root
-    # but no model_index.json; diffusers expects it for DepthCrafterPipeline.from_pretrained().
+    # but no model_index.json; diffusers expects a subfolder per component (not ".").
     depthcrafter_dir = os.path.join(WEIGHTS_DIR, "depthcrafter")
+    unet_dir = os.path.join(depthcrafter_dir, "unet")
     if os.path.isdir(depthcrafter_dir):
+        config_src = os.path.join(depthcrafter_dir, "config.json")
+        weights_src = os.path.join(depthcrafter_dir, "diffusion_pytorch_model.safetensors")
+        if os.path.isfile(config_src) and os.path.isfile(weights_src) and not os.path.isfile(
+            os.path.join(unet_dir, "config.json")
+        ):
+            os.makedirs(unet_dir, exist_ok=True)
+            shutil.move(config_src, os.path.join(unet_dir, "config.json"))
+            shutil.move(weights_src, os.path.join(unet_dir, "diffusion_pytorch_model.safetensors"))
+            logger.info("Moved DepthCrafter UNet files into %s", unet_dir)
         model_index_path = os.path.join(depthcrafter_dir, "model_index.json")
-        if not os.path.isfile(model_index_path):
-            model_index = {
-                "_class_name": "DepthCrafterPipeline",
-                "unet": [".", "DiffusersUNetSpatioTemporalConditionModelDepthCrafter"],
-            }
-            with open(model_index_path, "w", encoding="utf-8") as f:
-                json.dump(model_index, f, indent=2)
-            logger.info("Wrote %s for diffusers pipeline loading", model_index_path)
+        model_index = {
+            "_class_name": "DepthCrafterPipeline",
+            "unet": ["unet", "DiffusersUNetSpatioTemporalConditionModelDepthCrafter"],
+        }
+        with open(model_index_path, "w", encoding="utf-8") as f:
+            json.dump(model_index, f, indent=2)
+        logger.info("Wrote %s for diffusers pipeline loading", model_index_path)
 
     logger.info("All weights downloaded to %s", WEIGHTS_DIR)
     return True
