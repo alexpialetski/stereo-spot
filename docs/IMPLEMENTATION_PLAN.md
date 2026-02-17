@@ -2,7 +2,7 @@
 
 This document provides an **incremental implementation plan** for the stereo-spot application as described in [ARCHITECTURE.md](../ARCHITECTURE.md). Each step is designed to be shippable, with unit tests and documentation. All steps include **Acceptance Criteria (A/C)** and **Verification** instructions.
 
-**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3** is done: Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui and media-worker, video-worker on **Fargate** (no GPU; inference backend switchable: **SageMaker** or **HTTP**), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`. **Step 5.1** is done: **packages/integration** with E2E pipeline test and reassembly idempotency test; docs/TESTING.md updated. **Step 5.2** is done: **scripts/chunking_recovery.py**, **docs/RUNBOOKS.md**, ARCHITECTURE/IMPLEMENTATION_PLAN cross-links. **Step 5.3** is done: **packages/stereocrafter-sagemaker** (inference container for SageMaker or HTTP, contract: s3_input_uri/s3_output_uri); **Secrets Manager** for HF token; Terraform: ECR, **inference backend** variable (`sagemaker` | `http`), conditional SageMaker model/endpoint or optional **inference EC2** in VPC, video-worker env (SageMaker or `INFERENCE_BACKEND=http` + `INFERENCE_HTTP_URL`); video-worker supports stub, sagemaker, and **http** backends with unit tests; **stereocrafter-ec2-deploy** target (SSM) to update inference container on EC2. **Step 5.4** (future): replace stub with real StereoCrafter inference and Hugging Face weights at container startup.
+**Current state:** Phase 1 and Step 2.1–2.3 are done. **packages/shared-types** exists (Pydantic models, segment/input key parsers, cloud abstraction interfaces). **packages/aws-infra-setup** provisions the Terraform S3 backend. **packages/aws-infra** provisions the data plane: two S3 buckets (input, output), three SQS queues + DLQs, three DynamoDB tables (Jobs with GSI, SegmentCompletions, ReassemblyTriggered with TTL), and CloudWatch alarms for each DLQ. **packages/aws-adapters** implements AWS backends for JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (exists, upload_file), and ReassemblyTriggeredLock (moto tests, env-based config). Data plane smoke test runs via `nx run aws-adapters:smoke-test` using `packages/aws-infra/.env` (from `nx run aws-infra:terraform-output`). **Step 3.1** is done: **packages/media-worker** (chunking + reassembly in one package/image). **Step 3.2** is done: **packages/video-worker** (stub model, unit tests, README). **Step 3.4** is done: **packages/reassembly-trigger** Lambda. **Step 4.1** is done: **packages/web-ui** FastAPI + Jinja2. **Step 4.2** is done: S3 event notifications (input/ and segments/ → chunking and video-worker queues). **Step 4.3** is done: Compute runs on **ECS** (not EKS). Terraform provisions ECS cluster, task definitions (web-ui, media-worker, video-worker), IAM task roles, Fargate services for web-ui, media-worker, and video-worker (no GPU; inference backend switchable: **SageMaker** or **HTTP**), ALB, Application Auto Scaling on SQS. **packages/helm** has been removed. Deploy flow: `nx run aws-infra:ecr-login` (when needed), then `nx run-many -t deploy` (build, push to ECR, force ECS deployment). Terraform output is written to `packages/aws-infra/.env`. **Step 5.1** is done: **packages/integration** with E2E pipeline test and reassembly idempotency test; docs/TESTING.md updated. **Step 5.2** is done: **scripts/chunking_recovery.py**, **docs/RUNBOOKS.md**, ARCHITECTURE/IMPLEMENTATION_PLAN cross-links. **Step 5.3** is done: **packages/stereocrafter-sagemaker** (inference container for SageMaker or HTTP, contract: s3_input_uri/s3_output_uri/mode); Terraform: ECR, **inference backend** variable (`sagemaker` | `http`), conditional SageMaker model/endpoint; video-worker env (SageMaker or `INFERENCE_BACKEND=http` + `INFERENCE_HTTP_URL`); video-worker supports stub, sagemaker, and **http** backends with unit tests. **Step 5.4** is done: inference container uses **iw3** ([nunif](https://github.com/nagadomi/nunif)) for 2D→stereo SBS/anaglyph; pre-trained models are baked into the image at build time (no Hugging Face token at startup). Optional tuning (e.g. `IW3_LOW_VRAM`, 60fps, smaller file size) is documented in RUNBOOKS and the package README.
 
 **Principles:**
 
@@ -217,7 +217,7 @@ nx run media-worker:build   # if Docker build is the “build” target
 - Create package with dependency on shared-types; use abstractions for queue, ObjectStorage, SegmentCompletionStore.
 - Parse S3 event with segment key parser from shared-types; download segment; run stub “model” (e.g. copy input to output or minimal transform); upload to `jobs/{job_id}/segments/{segment_index}.mp4`; put SegmentCompletion.
 - Unit tests: (1) segment key parsing from S3 event, (2) output key generation, (3) mock pipeline end-to-end (stub model).
-- Add README: design for swapping model (StereoCrafter later), env vars, local run.
+- Add README: design for inference (iw3), env vars, local run.
 
 **A/C:**
 
@@ -319,20 +319,20 @@ nx run aws-infra:terraform-plan
 
 ### Step 4.3 — ECS compute (task definitions, services, ALB, scaling)
 
-**Goal:** Terraform provisions ECS cluster, ECR (already exist), **task definitions** (env vars from Terraform: bucket names, table names, queue URLs, region), **IAM task roles** (one per workload, same permissions as prior IRSA). **Web-ui**: ECS Fargate service, 1 task, ALB in front. **Media-worker**: ECS Fargate service; scaling via Application Auto Scaling on a custom metric (e.g. sum of chunking + reassembly queue depths) or on one queue. **Video-worker**: ECS **EC2** launch type; capacity provider or ASG with GPU instance types (g4dn/g5), Spot + on-demand; scaling on video-worker queue depth. **Deploy flow:** Terraform apply → build/push images → force new deployment (or update task def with new image tag).
+**Goal:** Terraform provisions ECS cluster, ECR (already exist), **task definitions** (env vars from Terraform: bucket names, table names, queue URLs, region), **IAM task roles** (one per workload, same permissions as prior IRSA). **Web-ui**: ECS Fargate service, 1 task, ALB in front. **Media-worker**: ECS Fargate service; scaling via Application Auto Scaling on a custom metric (e.g. sum of chunking + reassembly queue depths) or on one queue. **Video-worker**: ECS **Fargate** (CPU); scaling on video-worker queue depth; GPU inference on SageMaker. **Deploy flow:** Terraform apply → build/push images → force new deployment (or update task def with new image tag).
 
 **Tasks:**
 
 - In `packages/aws-infra`: ECS cluster; task definitions for web-ui, media-worker, video-worker (container defs with image from ECR + tag variable, env from Terraform outputs); IAM task roles (web-ui: S3 + DynamoDB Jobs; media-worker: S3 + DynamoDB + SQS chunking/reassembly; video-worker: S3 + DynamoDB SegmentCompletions + SQS video-worker); Fargate execution role for image pull and logs.
 - **Web-ui:** Fargate service, desired 1, ALB + target group (HTTP 80 → 8000).
 - **Media-worker:** Fargate service, desired 0 or 1; Application Auto Scaling on custom metric (chunking + reassembly queue depth sum) or single-queue metric.
-- **Video-worker:** EC2 launch type, GPU in task definition; capacity provider or ASG with Spot + on-demand (g4dn/g5); scaling on video-worker queue depth.
+- **Video-worker:** Fargate (CPU); scaling on video-worker queue depth; inference via SageMaker or HTTP.
 - Document in `packages/aws-infra/README.md`: order of operations (terraform apply → build/push images → force new deployment), scaling and GPU capacity.
 - **Nx deploy targets:** `deploy` on web-ui, media-worker, video-worker (source `packages/aws-infra/.env`, tag/push to ECR, `aws ecs update-service --force-new-deployment`). **stereocrafter-sagemaker:** `build` triggers CodeBuild (build image, push to ECR); `deploy` updates the SageMaker endpoint to use the new image (new model + endpoint config, then update-endpoint). `aws-infra:ecr-login` logs Docker into ECR using the same .env. Terraform output target writes to `packages/aws-infra/.env`.
 
 **A/C:**
 
-- [x] ECS cluster exists; three task definitions and three services (web-ui Fargate + ALB, media-worker Fargate with scaling, video-worker EC2 GPU with scaling).
+- [x] ECS cluster exists; three task definitions and three services (web-ui Fargate + ALB, media-worker Fargate with scaling, video-worker Fargate with scaling).
 - [x] Web-ui is reachable via ALB; workers scale on queue depth.
 - [x] No EKS, Helm, or Argo CD in the main deployment path.
 
@@ -396,24 +396,22 @@ nx run integration:test
 
 ---
 
-### Step 5.3 — SageMaker-hosted StereoCrafter; video-worker as client
+### Step 5.3 — SageMaker-hosted inference; video-worker as client
 
-**Goal:** Host StereoCrafter on a **SageMaker real-time endpoint** (custom inference container). Model weights are **downloaded inside the SageMaker container at startup from Hugging Face**; the Hugging Face token (for gated models) is supplied via **AWS Secrets Manager** and injected into the container. The image stays small and weights are not on the developer machine. The **video-worker** becomes a thin client: it passes S3 input and **the canonical output URI** (`jobs/{job_id}/segments/{segment_index}.mp4`) to the endpoint; **SageMaker writes the stereo segment directly to that S3 key** (video-worker does not upload segment bytes). The video-worker only calls `InvokeEndpoint` and writes SegmentCompletion; it no longer needs a GPU and can run on **Fargate** (CPU only).
+**Goal:** Host inference on a **SageMaker real-time endpoint** (custom inference container). The **video-worker** is a thin client: it passes S3 input and **the canonical output URI** (`jobs/{job_id}/segments/{segment_index}.mp4`) to the endpoint; **SageMaker writes the stereo segment directly to that S3 key** (video-worker does not upload segment bytes). The video-worker only calls `InvokeEndpoint` and writes SegmentCompletion; it runs on **Fargate** (CPU only). *(Implemented: inference container uses **iw3** (nunif) with models baked in at build time; no HF token at startup.)*
 
 **Tasks:**
 
-- **SageMaker inference container (new package or directory, e.g. `packages/stereocrafter-sagemaker`):**
-  - Custom Docker image: base with CUDA 11.8, Python 3.8; clone StereoCrafter repo (or copy code); install dependencies and **Forward-Warp** (`dependency/Forward-Warp/install.sh`). Implement SageMaker contract: `GET /ping`, `POST /invocations`. **Request body:** JSON with `s3_input_uri` (segment in input bucket) and `s3_output_uri` (canonical output key `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4`). Handler reads the segment from S3, runs the two-stage pipeline (depth splatting → inpainting), and **writes the stereo output directly to the given `s3_output_uri`**; no response body needed beyond success/failure. This keeps the video-worker a thin client (no segment upload by the worker).
-  - **Weights at startup:** In the container entrypoint or first request, download the three weight sets (SVD, DepthCrafter, StereoCrafter) from **Hugging Face** into a local directory; then load models. Read **HF token** from env (e.g. `HF_TOKEN`), which is populated from **Secrets Manager** by SageMaker so the container never sees the raw secret in the image. Document required env: `HF_TOKEN` (or the Secrets Manager secret ARN / key used to inject it). No weights baked into the image.
-  - Build in CI (e.g. GitHub Actions or CodeBuild); push image to ECR.
+- **SageMaker inference container (`packages/stereocrafter-sagemaker`):**
+  - Custom Docker image: base with CUDA, Python; implement SageMaker contract: `GET /ping`, `POST /invocations`. **Request body:** JSON with `s3_input_uri`, `s3_output_uri`, and optional `mode` (anaglyph | sbs). Handler reads the segment from S3, runs inference, and **writes the stereo output directly to the given `s3_output_uri`**. *(Current implementation: **iw3** from [nunif](https://github.com/nagadomi/nunif); pre-trained models baked into the image at build time.)*
+  - Build in CI (CodeBuild); push image to ECR.
 
 - **Terraform (`packages/aws-infra`):**
-  - **Secrets Manager:** Create a secret (e.g. `stereo-spot/hf-token`) for the Hugging Face token; document manual one-time value creation. SageMaker endpoint execution role needs `secretsmanager:GetSecretValue` on this secret.
-  - SageMaker model resource (ECR image; optional `model_data_url` only if you use a small config artifact in S3).
-  - SageMaker endpoint configuration (GPU instance, e.g. `ml.g4dn.xlarge` or `ml.g5.xlarge`). Inject the HF token into the container via SageMaker environment configuration: use the secret ARN so SageMaker resolves it at endpoint creation (e.g. env var `HF_TOKEN` from Secrets Manager).
-  - SageMaker endpoint. IAM role for the endpoint: ECR pull, S3 read/write for invocation I/O, **Secrets Manager GetSecretValue** for the HF token secret.
+  - SageMaker model resource (ECR image).
+  - SageMaker endpoint configuration (GPU instance, e.g. `ml.g4dn.xlarge` or `ml.g5.xlarge`). Optional env e.g. `IW3_LOW_VRAM=1` for smaller instances.
+  - SageMaker endpoint. IAM role for the endpoint: ECR pull, S3 read/write for invocation I/O.
   - Output endpoint name (and region) for video-worker config.
-  - **Video-worker ECS:** Change from EC2 (GPU) to **Fargate** (CPU); add IAM permission `sagemaker:InvokeEndpoint` for the endpoint.
+  - **Video-worker ECS:** Fargate (CPU); add IAM permission `sagemaker:InvokeEndpoint` for the endpoint.
 
 - **Video-worker (`packages/video-worker`):**
   - Add **`model_sagemaker.py`**: for SageMaker backend, **do not** download segment bytes or upload result. Instead: build the canonical output URI `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4` (from shared-types or env); call `sagemaker_runtime.invoke_endpoint` with JSON `{"s3_input_uri": "<segment_uri>", "s3_output_uri": "<canonical_output_uri>"}`. **SageMaker writes the stereo segment directly to that S3 URI.** Video-worker waits for a successful response, then the rest of the pipeline (unchanged) only writes the **SegmentCompletion** to DynamoDB (no upload step). Stub backend keeps the existing `process_segment(bytes) -> bytes` and upload in the runner for CI.
@@ -421,14 +419,14 @@ nx run integration:test
   - Unit tests: keep stub for CI; add tests for `model_sagemaker` with mocked `invoke_endpoint` (SageMaker path does not assert upload by video-worker).
 
 - **Documentation:**
-  - README for the SageMaker package: how the container works, weights download from Hugging Face at startup, env `HF_TOKEN` (injected from Secrets Manager), build and push. `packages/aws-infra/README.md`: order of operations (create Secrets Manager secret with HF token → terraform apply for SageMaker + ECS → build/push inference image → create/update endpoint → deploy video-worker with endpoint name). Document how to create/update the HF token secret. Video-worker README: `INFERENCE_BACKEND`, `SAGEMAKER_ENDPOINT_NAME`, segment size and timeout considerations. Optional: RUNBOOKS.md entry for "SageMaker endpoint update / weights refresh" and "HF token rotation."
+  - README for the SageMaker package: how the container works (iw3, models baked in), build and push, optional env (e.g. `IW3_LOW_VRAM`). `packages/aws-infra/README.md`: order of operations (terraform apply → build/push inference image → deploy endpoint → deploy video-worker). Video-worker README: `INFERENCE_BACKEND`, `SAGEMAKER_ENDPOINT_NAME`, segment size and timeout. RUNBOOKS.md: SageMaker image update and optional iw3 tuning.
 
 **A/C:**
 
-- [x] SageMaker custom container runs the inference contract; HF token is provided via Secrets Manager and injected into the container. (Container currently uses a stub that copies input→output; real StereoCrafter and HF weights at startup are Step 5.4.)
+- [x] SageMaker custom container runs the inference contract (GET /ping, POST /invocations with s3_input_uri, s3_output_uri, mode). Container uses **iw3** (nunif); models baked in at build time (Step 5.4 done).
 - [x] SageMaker handler writes the stereo segment **directly to the `s3_output_uri`** provided in the request (canonical key `jobs/{job_id}/segments/{segment_index}.mp4`); video-worker does not upload segment bytes.
 - [x] Video-worker invokes the endpoint when `INFERENCE_BACKEND=sagemaker`; stub remains for CI; video-worker runs on Fargate (no GPU).
-- [x] Documentation covers endpoint deploy order, env vars, and segment sizing/timeouts.
+- [x] Documentation covers endpoint deploy order, env vars, optional iw3 tuning, and segment sizing/timeouts.
 
 **Verification:**
 
@@ -439,23 +437,23 @@ nx run video-worker:test
 
 ---
 
-### Step 5.4 — Real StereoCrafter inference in SageMaker container
+### Step 5.4 — Real inference in SageMaker container (iw3)
 
-**Goal:** Replace the stub in `packages/stereocrafter-sagemaker` with the real two-stage pipeline (depth splatting → inpainting). Weights are downloaded from Hugging Face at container startup using the injected HF token; no weights baked into the image.
+**Goal:** Run real 2D→stereo inference in `packages/stereocrafter-sagemaker`. *(Implemented with **iw3** (nunif): 2D video → SBS or anaglyph. Pre-trained models are baked into the image at build time; no Hugging Face token or network at startup.)*
 
 **Tasks:**
 
-- In **`packages/stereocrafter-sagemaker`**: base image with CUDA and Python; add StereoCrafter code and dependencies (e.g. Forward-Warp). In the container entrypoint or first request: download the three weight sets (SVD, DepthCrafter, StereoCrafter) from Hugging Face using `HF_TOKEN`; load models. In `POST /invocations`: read segment from `s3_input_uri`, run the two-stage pipeline, write stereo output to `s3_output_uri`. Keep `GET /ping` and the existing request/response contract.
-- Document in the package README: weight download at startup, required env, and any segment size/timeout limits for real inference.
+- In **`packages/stereocrafter-sagemaker`**: base image with CUDA; clone [nunif](https://github.com/nagadomi/nunif), install PyTorch and deps, run `python -m iw3.download_models` at build time. In `POST /invocations`: read segment from `s3_input_uri`, run `python -m iw3` (with `--scene-detect`, `--ema-normalize`; `--anaglyph` and `--pix-fmt yuv444p` when mode is anaglyph), write stereo output to `s3_output_uri`. Optional env `IW3_LOW_VRAM=1` for smaller GPUs.
+- Document in the package README: iw3 pipeline, baked-in models, build/deploy, optional tuning (see docs/RUNBOOKS.md).
 
 **A/C:**
 
-- [x] Container downloads StereoCrafter (and dependency) weights from Hugging Face at startup using the Secrets Manager–injected HF token.
-- [x] Handler runs the full two-stage pipeline and writes the stereo segment to `s3_output_uri`; endpoint is usable for production segments.
+- [x] Container runs iw3 with pre-trained models baked in at build time (no HF token).
+- [x] Handler runs iw3 and writes the stereo segment to `s3_output_uri`; endpoint is usable for production segments.
 
 **Verification:**
 
-- Deploy updated image to SageMaker; run a segment through the pipeline and confirm stereo output in S3.
+- Deploy image to SageMaker; run a segment through the pipeline and confirm stereo output in S3.
 
 ---
 
@@ -474,11 +472,11 @@ nx run video-worker:test
 | 3.4  | reassembly-trigger         | Lambda Streams → SQS (shared-types from wheel)                                        | Unit tests; README          |
 | 4.1  | web-ui                     | FastAPI + Jinja2 routes                                                               | Unit tests; README          |
 | 4.2  | aws-infra                  | S3 → SQS event notifications                                                          | README                      |
-| 4.3  | aws-infra                  | ECS cluster, task definitions, services (Fargate + EC2 GPU), ALB, task roles, scaling | README                      |
+| 4.3  | aws-infra                  | ECS cluster, task definitions, services (Fargate only), ALB, task roles, scaling      | README                      |
 | 5.1  | integration                | E2E test + reassembly idempotency                                                     | TESTING.md                  |
 | 5.2  | docs / tools               | Runbooks, chunking recovery script/procedure, cross-links                             | RUNBOOKS.md                 |
-| 5.3  | stereocrafter-sagemaker, aws-infra, video-worker | SageMaker endpoint (custom container; stub handler; Secrets Manager for HF token), video-worker InvokeEndpoint, Fargate | README; video-worker tests (stub + mocked SageMaker) |
-| 5.4  | stereocrafter-sagemaker                          | Real StereoCrafter inference in container; HF weights at startup                                                         | README                                                |
+| 5.3  | stereocrafter-sagemaker, aws-infra, video-worker | SageMaker endpoint (custom container; contract s3_input_uri/s3_output_uri/mode), video-worker InvokeEndpoint, Fargate | README; video-worker tests (stub + mocked SageMaker) |
+| 5.4  | stereocrafter-sagemaker                          | iw3 (nunif) inference in container; models baked in at build time                                                      | README                                                |
 
 ---
 
@@ -492,7 +490,7 @@ After implementation, expected dependency structure:
 - **reassembly-trigger** — depends on **shared-types** (build: install from shared-types wheel).
 - **integration** — depends on **web-ui**, **media-worker**, **video-worker** (and optionally **reassembly-trigger** for Lambda-in-loop tests). May also host the Step 2.3 smoke test (e.g. `integration:smoke-test`).
 - **aws-infra** — depends on **aws-infra-setup** (already). Provisions ECS cluster, task definitions, services, ALB, **CodeBuild** (stereocrafter-sagemaker), SageMaker model, endpoint config, endpoint. Video-worker task role has `sagemaker:InvokeEndpoint`.
-- **stereocrafter-sagemaker** — `build` triggers **CodeBuild** to clone the repo, build the inference Docker image, and push to ECR (no local Docker build). `deploy` updates the SageMaker endpoint to use the new ECR image (create model + endpoint config, update-endpoint). SageMaker model references the ECR image. Weights are downloaded inside the container at startup, not in the image.
+- **stereocrafter-sagemaker** — `build` triggers **CodeBuild** to clone the repo, build the inference Docker image (iw3/nunif; models baked in at build time), and push to ECR (no local Docker build). `deploy` updates the SageMaker endpoint to use the new ECR image (create model + endpoint config, update-endpoint). SageMaker model references the ECR image.
 - **video-worker** — when using SageMaker (Step 5.3), runs on Fargate (CPU) and calls the SageMaker endpoint; no GPU required.
 
 Use `nx run-many -t test` to run tests for all projects; use `nx run-many -t build` for buildable packages. Ensure CI runs tests and, when enabled, `nx run integration:test` on every PR.

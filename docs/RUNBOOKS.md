@@ -212,7 +212,7 @@ Inference is **backend-switchable** (Terraform `inference_backend`: `sagemaker` 
 
 ### Updating the SageMaker inference image (when `inference_backend=sagemaker`)
 
-The stereocrafter-sagemaker image is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:sagemaker-build` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR. Then run `nx run stereocrafter-sagemaker:sagemaker-deploy` to update the SageMaker endpoint to use the new image.
+The **stereocrafter-sagemaker** image (iw3/nunif: 2D→stereo SBS/anaglyph) is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:sagemaker-build` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR. Then run `nx run stereocrafter-sagemaker:sagemaker-deploy` to update the SageMaker endpoint to use the new image.
 
 After the image is in ECR (or if you build and push locally):
 
@@ -225,20 +225,22 @@ After the image is in ECR (or if you build and push locally):
 
 The endpoint will roll to the new config; in-flight invocations may complete on the old instance.
 
-### Updating the inference container on EC2 (when `inference_backend=http` and `inference_http_url` is empty)
+### Optional iw3 tuning (SageMaker inference container)
 
-When using the HTTP backend with Terraform-managed inference EC2, build the image as above (`nx run stereocrafter-sagemaker:sagemaker-build`), then deploy to the EC2 via SSM:
+The inference container uses [iw3](https://github.com/nagadomi/nunif) (nunif). Useful options you can expose later via env or request body:
 
-```bash
-# Ensure packages/aws-infra/.env has INFERENCE_EC2_INSTANCE_ID, ECR_STEREOCRAFTER_SAGEMAKER_URL, REGION (from terraform-output)
-nx run stereocrafter-sagemaker:stereocrafter-ec2-deploy
-```
+| Goal | iw3 option | Notes |
+|------|------------|--------|
+| **Reduce VRAM** (smaller GPUs, e.g. g5.xlarge) | `IW3_LOW_VRAM=1` | Already supported: set this env in the SageMaker model/endpoint config to pass `--low-vram` to iw3. |
+| **Preserve 60fps** | `--max-fps 128` | By default iw3 limits to 30fps; add this to allow 60fps (longer processing). |
+| **Smaller output file** | `--preset medium`, `--video-codec libx265` | Reduces bitrate / file size at some encode cost. |
+| **Older GPUs** (pre–GeForce 20) | `--disable-amp` | Disables FP16 if you see slowdowns or errors. |
 
-This runs ECR login, `docker pull`, and `docker run` on the EC2 so the new image is used. See `packages/stereocrafter-sagemaker/README.md` and `packages/aws-infra/README.md` (variables `inference_backend`, `inference_http_url`, `inference_ec2_ami_id`).
+To add these, extend `serve.py` to read env vars (e.g. `IW3_MAX_FPS`, `IW3_PRESET`) and append the corresponding flags to the iw3 CLI invocation.
 
-### Rotating the Hugging Face token
+### Rotating the Hugging Face token (optional)
 
-The SageMaker container reads the HF token from **Secrets Manager** (secret ARN in env `HF_TOKEN_ARN`). To rotate the token:
+The **current** iw3 inference image bakes pre-trained models into the image and **does not use** a Hugging Face token at startup. If you later add a container that downloads gated models from Hugging Face at startup, the HF token can be stored in **Secrets Manager** (secret ARN in env `HF_TOKEN_ARN`). To rotate that token:
 
 1. **Put a new secret value:**
    ```bash
@@ -259,7 +261,6 @@ All services log **job_id** (and where relevant **segment_index**) so you can tr
 - Video-worker: `/ecs/stereo-spot-video-worker`
 - Reassembly-trigger Lambda: `/aws/lambda/<reassembly-trigger-function-name>`
 - SageMaker endpoint: `/aws/sagemaker/Endpoints/<endpoint-name>` (when `inference_backend=sagemaker` and endpoint logging is enabled)
-- Inference EC2 (when `inference_backend=http`): `/ecs/<name>/inference-ec2` (Docker awslogs driver)
 
 **CloudWatch Logs Insights – one job across all services:**
 
