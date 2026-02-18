@@ -2,6 +2,7 @@
 Chunking loop: receive S3 event from queue, chunk source, upload segments, update job.
 """
 
+import json
 import logging
 import os
 import tempfile
@@ -20,6 +21,26 @@ from .s3_event import parse_s3_event_body
 logger = logging.getLogger(__name__)
 
 
+def _job_id_from_chunking_body(body: str | bytes) -> str:
+    """Extract job_id from chunking-queue S3 event body for logging; return '?' if not parseable."""
+    try:
+        raw = body.decode() if isinstance(body, bytes) else body
+        data = json.loads(raw)
+        records = data.get("Records") or []
+        first = records[0] if records else {}
+        s3 = first.get("s3") or {}
+        obj = s3.get("object") or {}
+        key = obj.get("key") or ""
+        if isinstance(key, str):
+            from urllib.parse import unquote_plus
+            key = unquote_plus(key)
+            job_id = parse_input_key(key)
+            return job_id or "?"
+    except (json.JSONDecodeError, TypeError, KeyError, IndexError):
+        pass
+    return "?"
+
+
 def process_one_chunking_message(
     payload_str: str | bytes,
     job_store: JobStore,
@@ -36,7 +57,8 @@ def process_one_chunking_message(
     """
     payload = parse_s3_event_body(payload_str)
     if payload is None:
-        logger.warning("chunking: invalid S3 event body")
+        job_id_ctx = _job_id_from_chunking_body(payload_str)
+        logger.warning("chunking: job_id=%s invalid S3 event body", job_id_ctx)
         return False
     job_id = parse_input_key(payload.key)
     if job_id is None:
@@ -119,7 +141,8 @@ def run_chunking_loop(
                 if ok:
                     receiver.delete(msg.receipt_handle)
             except Exception as e:
-                logger.exception("chunking: failed to process message: %s", e)
+                job_id_ctx = _job_id_from_chunking_body(body)
+                logger.exception("chunking: job_id=%s failed to process message: %s", job_id_ctx, e)
                 # Message will become visible again after visibility timeout
         if not messages:
             time.sleep(poll_interval_sec)

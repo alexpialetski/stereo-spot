@@ -252,7 +252,7 @@ The **current** iw3 inference image bakes pre-trained models into the image and 
 
 ## 5. Querying logs by job_id (correlation)
 
-All services log **job_id** (and where relevant **segment_index**) so you can trace one job across the pipeline in CloudWatch Logs.
+All services log **job_id** (and where relevant **segment_index**) so you can trace one job across the pipeline in CloudWatch Logs. **Error and exception logs** also include `job_id` (or `job_id=?` when the message body cannot be parsed, e.g. invalid JSON), so failed steps are searchable by job.
 
 **Log groups (typical names):**
 

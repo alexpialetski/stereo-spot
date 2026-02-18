@@ -59,7 +59,7 @@ def process_one_reassembly_message(
     """
     payload = _parse_reassembly_body(payload_str)
     if payload is None:
-        logger.warning("reassembly: invalid message body")
+        logger.warning("reassembly: job_id=? invalid message body")
         return False
     job_id = payload.job_id
     logger.info("reassembly: job_id=%s received", job_id)
@@ -151,7 +151,13 @@ def run_reassembly_loop(
                 if ok:
                     receiver.delete(msg.receipt_handle)
             except Exception as e:
-                logger.exception("reassembly: failed to process message: %s", e)
+                job_id_ctx = "?"
+                try:
+                    raw = body.decode() if isinstance(body, bytes) else body
+                    job_id_ctx = json.loads(raw).get("job_id", "?") or "?"
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    pass
+                logger.exception("reassembly: job_id=%s failed to process message: %s", job_id_ctx, e)
                 # Message returns to queue after visibility timeout for retry
         if not messages:
             time.sleep(poll_interval_sec)

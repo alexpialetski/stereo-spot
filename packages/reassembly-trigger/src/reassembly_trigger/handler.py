@@ -248,7 +248,8 @@ def lambda_handler(event: dict, context: object) -> dict:
                 dynamodb_client=dynamodb_client,
                 sqs_client=sqs_client,
             )
-        except Exception:
+        except Exception as e:
+            logger.exception("job_id=%s process_job_id failed: %s", job_id, e)
             # Let Lambda retry the batch
             raise
 

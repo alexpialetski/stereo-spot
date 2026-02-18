@@ -56,7 +56,12 @@ def upload_to_s3(path: str, s3_uri: str) -> None:
 
 
 def run_iw3_pipeline(
-    input_path: str, output_path: str, mode: str = "anaglyph"
+    input_path: str,
+    output_path: str,
+    mode: str = "anaglyph",
+    *,
+    job_id: str | None = None,
+    segment_index: str | None = None,
 ) -> None:
     """
     Run iw3 (nunif): 2D video -> stereo SBS or anaglyph.
@@ -80,7 +85,12 @@ def run_iw3_pipeline(
             ])
         if os.environ.get("IW3_LOW_VRAM") == "1":
             cmd.append("--low-vram")
-        logger.info("Running iw3: %s", " ".join(cmd))
+        logger.info(
+            "job_id=%s segment_index=%s Running iw3: %s",
+            job_id or "?",
+            segment_index or "?",
+            " ".join(cmd),
+        )
         env = os.environ.copy()
         r = subprocess.run(
             cmd,
@@ -159,7 +169,13 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
         output_path = tmp_out.name
     try:
         download_from_s3(s3_input_uri, input_path)
-        run_iw3_pipeline(input_path, output_path, mode=mode)
+        run_iw3_pipeline(
+            input_path,
+            output_path,
+            mode=mode,
+            job_id=job_id,
+            segment_index=segment_index,
+        )
         upload_to_s3(output_path, s3_output_uri)
         logger.info("job_id=%s segment_index=%s invocations complete", job_id or "?", segment_index or "?")
         return json.dumps({"status": "ok"}), 200
