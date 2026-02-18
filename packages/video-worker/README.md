@@ -16,7 +16,8 @@ Consumes **two SQS queues**: (1) **video-worker queue** — S3 events when segme
 1. **Receive message** — Long-poll the segment-output queue. Message body is the S3 event JSON (object created in output bucket, prefix `jobs/`, suffix `.mp4`).
 2. **Parse** — Use **`parse_output_segment_key(bucket, key)`** from shared-types. Keys like `jobs/{job_id}/final.mp4` are skipped (return None).
 3. **Record** — Put **SegmentCompletion** (job_id, segment_index, output_s3_uri, completed_at, total_segments=None) to DynamoDB.
-4. **Delete message** — Delete on success.
+4. **Reassembly trigger (trigger-on-write)** — After each SegmentCompletion put, the video-worker checks whether the job has `status: chunking_complete` and `count(SegmentCompletions) == total_segments`. When so, it performs a conditional create on **ReassemblyTriggered** and, on success, sends `job_id` to the reassembly queue. Media-worker then consumes the reassembly queue and runs ffmpeg concat.
+5. **Delete message** — Delete on success.
 
 All key parsing uses **shared-types** only. The video-worker runs both loops in two threads.
 
@@ -30,6 +31,8 @@ All key parsing uses **shared-types** only. The video-worker runs both loops in 
 | `SEGMENT_COMPLETIONS_TABLE_NAME` | DynamoDB SegmentCompletions table |
 | `VIDEO_WORKER_QUEUE_URL` | SQS video-worker queue URL (inference requests) |
 | `SEGMENT_OUTPUT_QUEUE_URL` | SQS segment-output queue URL (output bucket S3 events) |
+| `REASSEMBLY_TRIGGERED_TABLE_NAME` | DynamoDB ReassemblyTriggered table (conditional create when last segment completes) |
+| `REASSEMBLY_QUEUE_URL` | SQS reassembly queue URL (video-worker sends job_id when last segment completes) |
 | `INFERENCE_BACKEND` | `stub` (default), `sagemaker`, or `http` |
 | `SAGEMAKER_ENDPOINT_NAME` | Required when `INFERENCE_BACKEND=sagemaker`; SageMaker endpoint name |
 | `SAGEMAKER_REGION` | (Optional) AWS region for the endpoint; defaults to task region |
@@ -51,6 +54,8 @@ export OUTPUT_BUCKET_NAME=...
 export SEGMENT_COMPLETIONS_TABLE_NAME=...
 export VIDEO_WORKER_QUEUE_URL=...
 export SEGMENT_OUTPUT_QUEUE_URL=...
+export REASSEMBLY_TRIGGERED_TABLE_NAME=...
+export REASSEMBLY_QUEUE_URL=...
 
 pip install -e packages/shared-types -e packages/aws-adapters -e packages/video-worker
 python -m video_worker.main

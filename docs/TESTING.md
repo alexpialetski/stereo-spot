@@ -6,7 +6,7 @@ This document describes how to run unit tests, the data-plane smoke test, and in
 
 - **shared-types:** `nx run shared-types:test` (pytest)
 - **aws-adapters:** `nx run aws-adapters:test` (pytest with moto; no real AWS)
-- **web-ui, media-worker, video-worker, reassembly-trigger:** `nx run <project>:test`
+- **web-ui, media-worker, video-worker:** `nx run <project>:test`
 - Run all tests: `nx run-many -t test`
 
 Unit tests do not require AWS credentials. aws-adapters tests use **moto** to mock DynamoDB, SQS, and S3.

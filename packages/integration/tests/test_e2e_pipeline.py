@@ -12,13 +12,13 @@ import pytest
 from fastapi.testclient import TestClient
 from media_worker.chunking import process_one_chunking_message
 from media_worker.reassembly import process_one_reassembly_message
-from reassembly_trigger.handler import process_job_id
 from stereo_spot_aws_adapters.env_config import (
     chunking_queue_receiver_from_env,
     chunking_queue_sender_from_env,
     job_store_from_env,
     object_storage_from_env,
     reassembly_queue_receiver_from_env,
+    reassembly_queue_sender_from_env,
     reassembly_triggered_lock_from_env,
     segment_completion_store_from_env,
     video_worker_queue_receiver_from_env,
@@ -26,7 +26,7 @@ from stereo_spot_aws_adapters.env_config import (
 )
 from stereo_spot_shared import JobStatus, build_segment_key
 from stereo_spot_web_ui.main import app
-from video_worker.runner import process_one_message
+from video_worker.runner import maybe_trigger_reassembly, process_one_message
 
 
 def _make_s3_event_body(bucket: str, key: str) -> str:
@@ -60,10 +60,6 @@ def test_e2e_pipeline_create_upload_chunking_video_reassembly_completed(
 
     input_bucket = integration_env["INPUT_BUCKET_NAME"]
     output_bucket = integration_env["OUTPUT_BUCKET_NAME"]
-    jobs_table = integration_env["JOBS_TABLE_NAME"]
-    segment_completions_table = integration_env["SEGMENT_COMPLETIONS_TABLE_NAME"]
-    reassembly_triggered_table = integration_env["REASSEMBLY_TRIGGERED_TABLE_NAME"]
-    reassembly_queue_url = integration_env["REASSEMBLY_QUEUE_URL"]
 
     # 1. Create job via web-ui API
     client = TestClient(app)
@@ -133,18 +129,13 @@ def test_e2e_pipeline_create_upload_chunking_video_reassembly_completed(
             processed += 1
     assert processed == total_segments
 
-    # 6. Simulate reassembly trigger Lambda: conditional create ReassemblyTriggered, send to queue
-    process_job_id(
-        job_id,
-        jobs_table,
-        segment_completions_table,
-        reassembly_triggered_table,
-        reassembly_queue_url,
-    )
+    # 6. Simulate video-worker reassembly trigger: conditional create + send to queue
+    lock = reassembly_triggered_lock_from_env()
+    reassembly_sender = reassembly_queue_sender_from_env()
+    maybe_trigger_reassembly(job_id, job_store, segment_store, lock, reassembly_sender)
 
     # 7. Process one reassembly message
     reassembly_receiver = reassembly_queue_receiver_from_env()
-    lock = reassembly_triggered_lock_from_env()
     messages = reassembly_receiver.receive(max_messages=1)
     assert len(messages) == 1
     msg = messages[0]

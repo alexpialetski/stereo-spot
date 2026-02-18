@@ -98,7 +98,10 @@ def invoke_sagemaker_endpoint(
             Body=payload_bytes,
             ContentType="application/json",
         )
-        logger.debug("job_id=%s segment_index=%s uploaded invocation request to %s", job_id, segment_index, request_s3_uri)
+        logger.debug(
+            "job_id=%s segment_index=%s uploaded invocation request to %s",
+            job_id, segment_index, request_s3_uri,
+        )
 
     invocation_timeout = DEFAULT_ASYNC_POLL_TIMEOUT
     env_timeout = os.environ.get("SAGEMAKER_INVOKE_TIMEOUT_SECONDS")

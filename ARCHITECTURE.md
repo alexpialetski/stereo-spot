@@ -17,12 +17,12 @@ Using NX, you unify your frontend, cloud infrastructure, and worker logic. All p
 
 - `packages/web-ui`: **FastAPI** app (Python) **deployed on ECS Fargate**; **server-rendered UI** (Jinja2 templates). Serves HTML pages for the dashboard, job list, and playback; form POST for job creation (redirect to page with upload URL). Talks to AWS (S3, DynamoDB) via **IAM task role** for presigned URLs, uploads, and listing. See Web UI below.
 - `packages/media-worker`: **Single package and Docker image** for all CPU/ffmpeg work: **chunking** (split source with ffmpeg, upload segments to S3) and **reassembly** (ffmpeg concat to produce final 3D file). Consumes both the chunking and reassembly SQS queues in one process (two threads). Runs on **ECS Fargate**; scaled by **Application Auto Scaling** on SQS queue depth (chunking + reassembly). Saves storage (~600MB one image instead of two). See Chunking and Reassembly below.
-- `packages/video-worker`: **Thin client / coordinator** (Python container). Consumes **two SQS queues**: (1) **video-worker queue** — S3 events when segments are uploaded to the input bucket; (2) **segment-output queue** — S3 events when the inference side writes a segment to the output bucket. Invokes inference via a **backend-switchable** path: **stub**, **SageMaker** (async endpoint with S3 URIs), or **HTTP**. For SageMaker, the worker invokes async and polls only for the async response (success/error); **SegmentCompletion is written when the segment-output queue message is processed** (event-driven from output bucket), not by polling for the file. Runs on **ECS Fargate** (no GPU). See The Video Worker below.
+- `packages/video-worker`: **Thin client / coordinator** (Python container). Consumes **two SQS queues**: (1) **video-worker queue** — S3 events when segments are uploaded to the input bucket; (2) **segment-output queue** — S3 events when the inference side writes a segment to the output bucket. Invokes inference via a **backend-switchable** path: **stub**, **SageMaker** (async endpoint with S3 URIs), or **HTTP**. For SageMaker, the worker invokes async and polls only for the async response (success/error); **SegmentCompletion is written when the segment-output queue message is processed** (event-driven from output bucket), not by polling for the file. **After each SegmentCompletion put**, the video-worker runs the **reassembly trigger** (trigger-on-write): if the job has `status: chunking_complete` and `count(SegmentCompletions) == total_segments`, it conditionally creates ReassemblyTriggered and sends `job_id` to the reassembly queue. Runs on **ECS Fargate** (no GPU). See The Video Worker below.
 - `packages/stereocrafter-sagemaker`: Custom **inference container** (CUDA, **iw3** from [nunif](https://github.com/nagadomi/nunif): 2D video → stereo SBS or anaglyph) used by **SageMaker**. Pre-trained models (ZoeDepth, Depth-Anything, etc.) are **baked into the image** at build time; no network or Secrets Manager required at startup. The handler receives `s3_input_uri`, `s3_output_uri`, and `mode` (anaglyph | sbs), runs iw3, and writes the result to the given S3 key. Optional env **`IW3_LOW_VRAM=1`** reduces VRAM use on smaller GPU instances. **Build** triggers **AWS CodeBuild** (clone repo, build image, push to ECR); **deploy** is **SageMaker** (`sagemaker-deploy`). When `inference_backend=http`, you run your own inference service and set `inference_http_url`. See [packages/stereocrafter-sagemaker/README.md](packages/stereocrafter-sagemaker/README.md) and [docs/RUNBOOKS.md](docs/RUNBOOKS.md) for optional iw3 tuning (e.g. 60fps, smaller file size, older GPUs).
-- `packages/shared-types`: **Python library** (no Docker image). Single source of truth for job, segment, and message shapes used across the pipeline. Defines **Pydantic** models for Jobs, queue payloads, DynamoDB record shapes, and API DTOs. Consumed by `web-ui`, `media-worker`, `video-worker`, and by Lambda (e.g. reassembly trigger, S3 enrichment) when implemented in Python. See Shared types and library below.
+- `packages/shared-types`: **Python library** (no Docker image). Single source of truth for job, segment, and message shapes used across the pipeline. Defines **Pydantic** models for Jobs, queue payloads, DynamoDB record shapes, and API DTOs. Consumed by `web-ui`, `media-worker`, and `video-worker`. See Shared types and library below.
 - `packages/aws-infra-setup`: Terraform backend project that provisions the state file (S3 bucket, DynamoDB for locking). Uses the **nx-terraform** plugin (automatic project discovery and inferred tasks for init, plan, apply, destroy, validate, fmt, output). Linked to `aws-infra`. See [nx-terraform](https://alexpialetski.github.io/nx-terraform/) for documentation.
-- `packages/aws-infra`: Terraform project containing the actual AWS infrastructure: S3, SQS, DynamoDB, Lambda, **ECS cluster**, **ECR**, **CodeBuild** (stereocrafter-sagemaker image build), **task definitions and services** (Fargate for web-ui, media-worker, and video-worker), **inference backend** (default **SageMaker**: model, endpoint config, endpoint for iw3; or **HTTP** using a URL you provide), **ALB**. Uses **nx-terraform** with a backend dependency on `aws-infra-setup`; Nx ensures correct execution order and dependency graph.
-- `packages/reassembly-trigger`: **Python Lambda** (no separate Nx app folder required if small; can live under `packages/reassembly-trigger`). Consumes DynamoDB Streams from SegmentCompletions and sends `job_id` to the Reassembly SQS queue when the last segment is done. Depends on `shared-types`; CI bundles shared-types into the Lambda deployment package (e.g. `pip install -t . ../shared-types` then zip). Deployed via Terraform.
+- `packages/aws-infra`: Terraform project containing the actual AWS infrastructure: S3, SQS, DynamoDB, **ECS cluster**, **ECR**, **CodeBuild** (stereocrafter-sagemaker image build), **task definitions and services** (Fargate for web-ui, media-worker, and video-worker), **inference backend** (default **SageMaker**: model, endpoint config, endpoint for iw3; or **HTTP** using a URL you provide), **ALB**. Uses **nx-terraform** with a backend dependency on `aws-infra-setup`; Nx ensures correct execution order and dependency graph.
+- Reassembly trigger logic runs in **video-worker** (trigger-on-write after each SegmentCompletion put). The former `packages/reassembly-trigger` Lambda package has been removed.
 
 To add Google Cloud later, add separate packages: `packages/google-infra-setup` (state) and `packages/google-infra` (GCP resources), following the same nx-terraform pattern.
 
@@ -32,7 +32,7 @@ To add Google Cloud later, add separate packages: `packages/google-infra-setup` 
 
 📐 Shared types and library (packages/shared-types)
 
-With an all-Python app layer (FastAPI, Python workers, Python Lambda), a **single Python package** provides shared domain and message types so every component uses the same shapes and stays in sync. Terraform does not consume these types; it only outputs resource names/ARNs (queue URLs, bucket names, etc.).
+With an all-Python app layer (FastAPI, Python workers), a **single Python package** provides shared domain and message types so every component uses the same shapes and stays in sync. Terraform does not consume these types; it only outputs resource names/ARNs (queue URLs, bucket names, etc.).
 
 **Recommended approach:**
 
@@ -42,13 +42,13 @@ With an all-Python app layer (FastAPI, Python workers, Python Lambda), a **singl
   - **Job:** `job_id`, `mode` (e.g. literal `anaglyph` | `sbs`), `status` (e.g. `created`, `chunking_complete`, `completed`), optional `created_at`, `total_segments`, `completed_at` — used by web-ui (DynamoDB, API), chunking message, reassembly trigger, and job metadata lookups. "List available movies" queries Jobs with `status = completed`.
   - **Chunking message:** The chunking queue receives the **raw S3 event** (bucket, key). The media-worker parses `job_id` from the key and fetches `mode` from DynamoDB to form the logical payload: `input_s3_uri`, `job_id`, `mode` (consumed by media-worker).
   - **Segment / video-worker message:** `job_id`, `segment_index`, `total_segments`, `segment_s3_uri`, `mode` — payload for the video-worker queue. With **S3→SQS direct**, the queue receives the raw S3 event (bucket, key); the video-worker uses the **segment key parser from `shared-types`** to produce this canonical payload — no Lambda required.
-  - **SegmentCompletion:** `job_id`, `segment_index`, `output_s3_uri`, `completed_at`, optional `total_segments` — DynamoDB SegmentCompletions record (written by video-worker; read by reassembly Lambda and media-worker).
-  - **Reassembly message:** `job_id` — payload for the Reassembly SQS queue (sent by Lambda, consumed by media-worker).
+  - **SegmentCompletion:** `job_id`, `segment_index`, `output_s3_uri`, `completed_at`, optional `total_segments` — DynamoDB SegmentCompletions record (written by video-worker; read by media-worker for reassembly; video-worker triggers reassembly when it writes the last completion).
+  - **Reassembly message:** `job_id` — payload for the Reassembly SQS queue (sent by video-worker when last segment completes; consumed by media-worker).
   - **API DTOs:** e.g. `CreateJobRequest` (mode), `CreateJobResponse` (job_id, upload_url), `JobListItem`, `PresignedPlaybackResponse` — used by FastAPI for request/response validation and OpenAPI.
-- **Consumers:** `web-ui`, `media-worker`, and `video-worker` declare a dependency on `packages/shared-types` in the Nx graph (and in their Python dependency file, e.g. pyproject.toml). **Lambda functions** (e.g. reassembly trigger) are Python and use the same types: the **simplest approach** is to **bundle** `shared-types` into the Lambda deployment package in CI (e.g. `pip install -t . ../shared-types` then zip), so no separate layer is required.
+- **Consumers:** `web-ui`, `media-worker`, and `video-worker` declare a dependency on `packages/shared-types` in the Nx graph (and in their Python dependency file, e.g. pyproject.toml).
 - **Build and versioning:** The shared-types package is a normal Nx project (e.g. build target that produces a wheel or installable package). Workers and web-ui depend on it so Nx runs the shared-types build first when building or testing dependents. All apps and workers use the same version from the monorepo; no separate versioning unless you later publish it.
 
-**Summary:** One Python library, Pydantic models, consumed by FastAPI and all Python workers (and Lambda). Keeps job, segment, completion, and API contracts in one place and avoids drift across the pipeline.
+**Summary:** One Python library, Pydantic models, consumed by FastAPI and all Python workers. Keeps job, segment, completion, and API contracts in one place and avoids drift across the pipeline.
 
 ---
 
@@ -123,7 +123,6 @@ flowchart TB
             ReassTrig[(ReassemblyTriggered)]
         end
 
-        Lambda[Lambda\nreassembly trigger]
     end
 
     User -->|HTTPS| ALB
@@ -142,8 +141,8 @@ flowchart TB
     OutputBucket -->|S3 event| SegOutQ
     VideoW -->|pull| SegOutQ
     VideoW -->|write| SegCompl
-    SegCompl -->|DynamoDB Stream| Lambda
-    Lambda -->|send job_id| ReassQ
+    VideoW -->|conditional put when last segment| ReassTrig
+    VideoW -->|send job_id when last segment| ReassQ
     MediaW -->|pull| ReassQ
     MediaW -->|read/write| OutputBucket
     MediaW -->|read| SegCompl
@@ -154,13 +153,13 @@ flowchart TB
 
 - **Jobs:** PK `job_id` (String). Attributes: `mode`, `status`, `created_at`, `total_segments`, `completed_at`, etc. **GSI** `status-completed_at`: PK `status`, SK `completed_at` (Number) for list completed jobs. **GSI** `status-created_at`: PK `status`, SK `created_at` (Number) for list in-progress jobs (status in created, chunking_in_progress, chunking_complete).
 - **SegmentCompletions:** PK `job_id`, SK `segment_index`. Attributes: `output_s3_uri`, `completed_at`. Query by `job_id` returns segments in order for reassembly.
-- **ReassemblyTriggered:** PK `job_id` (String). Attributes: `triggered_at` (Number, Unix timestamp), `ttl` (Number, optional). Used for reassembly Lambda idempotency and media-worker lock (conditional write so only one worker runs reassembly per job). Enable **DynamoDB TTL** on `ttl`; set e.g. `ttl = triggered_at + (90 * 86400)` (90 days) so old rows are expired for cost and clarity.
+- **ReassemblyTriggered:** PK `job_id` (String). Attributes: `triggered_at` (Number, Unix timestamp), `ttl` (Number, optional). Used for video-worker trigger idempotency (conditional create when last segment completes) and media-worker lock (conditional write so only one worker runs reassembly per job). Enable **DynamoDB TTL** on `ttl`; set e.g. `ttl = triggered_at + (90 * 86400)` (90 days) so old rows are expired for cost and clarity.
 
 **Access patterns:** (1) List completed jobs: query GSI `status-completed_at` with `status = 'completed'`, `ScanIndexForward = false`, pagination. (2) List in-progress jobs: query GSI `status-created_at` for each of created, chunking_in_progress, chunking_complete, merge and sort by `created_at` desc. (3) Get/update job by `job_id`. (4) Query SegmentCompletions by `job_id`. (5) Conditional write to ReassemblyTriggered by `job_id`.
 
 **Job status lifecycle:** Jobs move through the following statuses. **`created`** — set by web-ui when the job is created (DynamoDB put). **`chunking_in_progress`** — set by the media-worker when it starts processing the chunking message (optional but recommended so the "chunking failure recovery" janitor can find stuck jobs). **`chunking_complete`** — set by the media-worker in a single atomic UpdateItem when chunking finishes (`total_segments` and `status: chunking_complete`). **`completed`** — set by the media-worker (reassembly) after it successfully writes `final.mp4` and updates the Job record. Only DynamoDB is authoritative for status; no separate state store.
 
-**Reassembly state:** The **Lambda** (reassembly trigger) performs a **conditional create** on **ReassemblyTriggered** (item must not exist) when `count(SegmentCompletions) == total_segments` and Job has `status: chunking_complete`; on success it sends `job_id` to the Reassembly queue. The **media-worker** (reassembly thread) uses the same table for a per-job lock: before concat it does a **conditional write** (e.g. set `reassembly_started_at` only if the item exists and that field is absent) so only one worker runs reassembly for that job; then it updates the Job to `status: completed`. So: Lambda writes "triggered" (idempotency); worker writes "started" and later Job "completed".
+**Reassembly state:** The **video-worker** (after each SegmentCompletion put) checks whether the job has `status: chunking_complete` and `count(SegmentCompletions) == total_segments`; when so, it performs a **conditional create** on **ReassemblyTriggered** (item must not exist) and on success sends `job_id` to the Reassembly queue (trigger-on-write; no DynamoDB Stream or Lambda). The **media-worker** (reassembly thread) uses the same table for a per-job lock: before concat it does a **conditional write** (e.g. set `reassembly_started_at` only if the item exists and that field is absent) so only one worker runs reassembly for that job; then it updates the Job to `status: completed`. So: video-worker writes "triggered" (idempotency); media-worker writes "started" and later Job "completed".
 
 1.  **Storage (S3) and key layout:**
     - **Input bucket** (`s3://input-bucket/`): User uploads full MP4 to `input/{job_id}/source.mp4`. **S3 event notifications** are configured for **`s3:ObjectCreated:*`** (e.g. Put, CompleteMultipartUpload). Use **two S3 event notifications** (or prefix/suffix filters) so routing is explicit: (1) **prefix `input/`**, suffix `.mp4` → **chunking SQS queue**; (2) **prefix `segments/`**, suffix `.mp4` → **video-worker SQS queue**. No Lambda. Duplicate S3 events are possible and are handled by idempotent processing (deterministic keys and overwrites). The **media-worker** uploads segment files to the **same bucket** under the **canonical segment key** `segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4` (e.g. `segments/job-abc/00042_00100_anaglyph.mp4`); those uploads trigger (2) and go to the video-worker queue (see S3 → video-worker path below).
@@ -210,11 +209,11 @@ flowchart LR
     - **Job** = one movie conversion (one input file → one output 3D file). Has `job_id`, `mode` (anaglyph | sbs), etc.
     - **Segment** = one chunk of that movie (e.g. 50MB / ~5 min), produced by the media-worker as a **segment file** in S3. S3 events (or Lambda) produce one message per segment for the video-worker queue; message or object key/metadata carries `job_id`, `segment_index`, `total_segments`, segment S3 URI, `mode`.
     - **Standard SQS** (not FIFO) for higher throughput. Ordering enforced at reassembly by `segment_index`; workers process segments in any order.
-7.  **Reassembly (DynamoDB Streams):**
-    - The **inference** side (SageMaker or HTTP server) writes segment outputs to `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4`. **S3 notifies the segment-output queue**; the **video-worker** (segment-output consumer) writes a record to the **SegmentCompletions** DynamoDB table (`job_id`, `segment_index`, `output_s3_uri`, `completed_at`). The table uses **`job_id` as partition key** and **`segment_index` as sort key**, so a Query by `job_id` returns segments in order and the media-worker can build the concat list without application-side sorting. **`total_segments`** and **`status: chunking_complete`** for a job are set by the **media-worker** (chunking) when it finishes (written to the Job record in DynamoDB). The reassembly Lambda uses both: it triggers only when the Job has **chunking_complete** (and thus `total_segments` set) and the count of SegmentCompletions for that `job_id` equals `total_segments`.
-    - **Reassembly trigger:** A **DynamoDB Stream** is attached to the SegmentCompletions table. A **Lambda** function is invoked on batches of new records. It processes each batch fully: for each distinct `job_id` in the batch, it fetches the Job record (`total_segments`, `status`) and counts SegmentCompletions for that `job_id`. It **only considers triggering when** the Job has `status: chunking_complete` and the count equals `total_segments`. When that condition holds, the Lambda performs a **conditional write** to the **ReassemblyTriggered** table (see DynamoDB tables below) only if the item does not exist; if the write succeeds, it sends `job_id` to the Reassembly SQS queue; if the condition fails (already triggered), it skips sending. **Idempotency:** DynamoDB Streams can deliver the same change more than once; the conditional write ensures at most one reassembly message per job. Set Lambda **timeout** (e.g. ≥ 30 s) and **reserved concurrency** (e.g. low) to handle batches and avoid thundering herd when many segments complete at once. **Future improvement:** Consider replacing the Lambda with an in-cluster consumer (e.g. a Deployment that reads DynamoDB Streams or polls) to reduce Lambda invocation volume and to simplify a future GCP port (e.g. Firestore change listeners or a poller).
-    - **Chunking failure recovery:** If the media-worker crashes after uploading segments but before writing `total_segments` / `chunking_complete`, reassembly would never trigger. **V1 — manual recovery:** Document the procedure: list S3 prefix `segments/{job_id}/`, derive `total_segments` from the max `segment_index` in the key pattern (or key parser in shared-types), then perform a single DynamoDB UpdateItem on the Job to set `total_segments` and `status: chunking_complete` so the existing Stream logic can trigger reassembly. **Future enhancement:** A small periodic "janitor" (e.g. Lambda on schedule or in-cluster CronJob) that finds Jobs stuck in `chunking_in_progress` (or similar) older than a threshold, lists `segments/{job_id}/` in S3, infers `total_segments` consistently, and updates the Job as above.
-    - The **media-worker** (reassembly thread, same ECS cluster, CPU-only Fargate service scaled by Application Auto Scaling on chunking and reassembly queues) pulls the message, **builds the segment list from DynamoDB**: it queries **SegmentCompletions** by `job_id` ordered by `segment_index`, and uses `output_s3_uri` (or the deterministic path `jobs/{job_id}/segments/{segment_index}.mp4`) to build the ffmpeg concat list. It does **not** discover segments by listing S3 (to avoid races). Optionally it verifies each segment object exists in S3 before concat. Output: `s3://output-bucket/jobs/{job_id}/final.mp4`. After success, the worker **updates the Job record to `status: completed`** (and optionally `final_s3_uri`, `completed_at`) so "list available movies" uses DynamoDB as source of truth. **Segment object retention:** Segment objects in the output bucket (`jobs/{job_id}/segments/`) are retained for **1 day** via an **S3 lifecycle rule** (expire after 1 day); `jobs/{job_id}/final.mp4` is not affected. **Idempotency:** Standard SQS can deliver duplicate or out-of-order messages. The reassembly worker uses the **ReassemblyTriggered** table as a lock: the Lambda has already created the item (conditional create). The worker does a **conditional update** (e.g. set `reassembly_started_at` only if the item exists and that attribute is absent) so only one worker proceeds; if the update fails (another worker started), it skips and deletes the message. On success it builds the concat list, writes `final.mp4`, updates the Job to `status: completed`, then deletes the message. It also checks if `final.mp4` already exists and skips concat if so (updating Job status if needed). Lambda is not used for the concat itself because the final file can be large—a CPU worker is simpler and more predictable.
+7.  **Reassembly (trigger-on-write in video-worker):**
+    - The **inference** side (SageMaker or HTTP server) writes segment outputs to `s3://output-bucket/jobs/{job_id}/segments/{segment_index}.mp4`. **S3 notifies the segment-output queue**; the **video-worker** (segment-output consumer) writes a record to the **SegmentCompletions** DynamoDB table (`job_id`, `segment_index`, `output_s3_uri`, `completed_at`). The table uses **`job_id` as partition key** and **`segment_index` as sort key**, so a Query by `job_id` returns segments in order and the media-worker can build the concat list without application-side sorting. **`total_segments`** and **`status: chunking_complete`** for a job are set by the **media-worker** (chunking) when it finishes (written to the Job record in DynamoDB).
+    - **Reassembly trigger:** The **video-worker** runs the trigger **after each SegmentCompletion put** (trigger-on-write): it fetches the Job (`total_segments`, `status`), counts SegmentCompletions for that `job_id`, and **only considers triggering when** the Job has `status: chunking_complete` and the count equals `total_segments`. When that condition holds, it performs a **conditional create** on **ReassemblyTriggered** (item must not exist); if the create succeeds, it sends `job_id` to the Reassembly SQS queue. **Idempotency:** The conditional create ensures at most one reassembly message per job even when multiple segment-output messages complete concurrently. No DynamoDB Stream or Lambda is used for this path.
+    - **Chunking failure recovery:** If the media-worker crashes after uploading segments but before writing `total_segments` / `chunking_complete`, reassembly would never trigger. **V1 — manual recovery:** Document the procedure: list S3 prefix `segments/{job_id}/`, derive `total_segments` from the max `segment_index` in the key pattern (or key parser in shared-types), then perform a single DynamoDB UpdateItem on the Job to set `total_segments` and `status: chunking_complete` so the video-worker will trigger reassembly when the next SegmentCompletion is written (e.g. if segment-output messages are reprocessed) or a janitor can send to the reassembly queue. **Future enhancement:** A small periodic "janitor" (e.g. Lambda on schedule or in-cluster CronJob) that finds Jobs stuck in `chunking_in_progress` (or similar) older than a threshold, lists `segments/{job_id}/` in S3, infers `total_segments` consistently, and updates the Job as above.
+    - The **media-worker** (reassembly thread, same ECS cluster, CPU-only Fargate service scaled by Application Auto Scaling on chunking and reassembly queues) pulls the message, **builds the segment list from DynamoDB**: it queries **SegmentCompletions** by `job_id` ordered by `segment_index`, and uses `output_s3_uri` (or the deterministic path `jobs/{job_id}/segments/{segment_index}.mp4`) to build the ffmpeg concat list. It does **not** discover segments by listing S3 (to avoid races). Optionally it verifies each segment object exists in S3 before concat. Output: `s3://output-bucket/jobs/{job_id}/final.mp4`. After success, the worker **updates the Job record to `status: completed`** (and optionally `final_s3_uri`, `completed_at`) so "list available movies" uses DynamoDB as source of truth. **Segment object retention:** Segment objects in the output bucket (`jobs/{job_id}/segments/`) are retained for **1 day** via an **S3 lifecycle rule** (expire after 1 day); `jobs/{job_id}/final.mp4` is not affected. **Idempotency:** Standard SQS can deliver duplicate or out-of-order messages. The reassembly worker uses the **ReassemblyTriggered** table as a lock: the video-worker has already created the item (conditional create). The worker does a **conditional update** (e.g. set `reassembly_started_at` only if the item exists and that attribute is absent) so only one worker proceeds; if the update fails (another worker started), it skips and deletes the message. On success it builds the concat list, writes `final.mp4`, updates the Job to `status: completed`, then deletes the message. It also checks if `final.mp4` already exists and skips concat if so (updating Job status if needed).
 
 ```mermaid
 flowchart LR
@@ -224,19 +223,13 @@ flowchart LR
     subgraph DDB
         SC[(SegmentCompletions)]
     end
-    subgraph Stream
-        DS[DynamoDB Stream]
-        Lambda[Lambda]
-    end
     subgraph Reassembly
         RQ[Reassembly queue]
         RW[media-worker]
     end
 
     VW -->|write record| SC
-    SC --> DS
-    DS --> Lambda
-    Lambda -->|last segment?| RQ
+    VW -->|last segment: conditional put + send job_id| RQ
     RQ --> RW
 ```
 
@@ -262,8 +255,7 @@ flowchart LR
         G -->|record| I[(SegmentCompletions)]
     end
     subgraph Reass["4. Reassembly"]
-        I -->|DynamoDB Stream| J[Lambda]
-        J -->|last segment| K[reassembly queue]
+        G -->|last segment: send job_id| K[reassembly queue]
         K --> L[media-worker]
         L -->|concat| M[final.mp4]
     end
@@ -282,7 +274,7 @@ flowchart LR
 
 📦 Build, Registry, and Deployment
 
-**Stages are split:** Terraform provisions AWS infra (S3, SQS, DynamoDB, ECR, Lambda, **ECS cluster**, **task definitions**, **services**, **ALB**). Workload updates are deployed by **building and pushing** images to ECR, then **updating ECS services** (e.g. `aws ecs update-service --force-new-deployment` or Terraform with an image tag variable).
+**Stages are split:** Terraform provisions AWS infra (S3, SQS, DynamoDB, ECR, **ECS cluster**, **task definitions**, **services**, **ALB**). Workload updates are deployed by **building and pushing** images to ECR, then **updating ECS services** (e.g. `aws ecs update-service --force-new-deployment` or Terraform with an image tag variable).
 
 **ECS workloads:**
 
@@ -310,7 +302,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Infra["Infra"]
-        Tf[Terraform apply\nS3, SQS, DDB, ECR, CodeBuild\nLambda, ECS, SageMaker, ALB]
+        Tf[Terraform apply\nS3, SQS, DDB, ECR, CodeBuild\nECS, SageMaker, ALB]
     end
     subgraph Build["Build"]
         B1[build web-ui image]
@@ -346,13 +338,13 @@ To ensure **"Very Good Error Handling"** for large video files:
 - **Atomic Uploads:** Use S3 Multipart Uploads for the final 3D file (media-worker → output bucket) to handle network flakiness during the upload of large assets.
 - **Large user uploads:** **V1:** Support only **single presigned PUT** for the source file. **Max file size for V1: ~500 MB** (S3 allows up to 5 GB single PUT, but browser and timeouts suggest this practical limit). **Later enhancement:** For larger files, the API can support **S3 multipart upload** (initiate multipart upload → presigned URLs per part → complete multipart upload); the object key remains `input/{job_id}/source.mp4`, so the same S3 event notification triggers chunking.
 - **Checkpointing and resumability (V1 — simple):** **Segment-level retry only.** If a worker is interrupted mid-segment (e.g. Spot reclaim), the message returns to the queue after visibility timeout and is **reprocessed from the start**; no frame-level checkpoint. At ~5 min per segment, losing one segment's work is acceptable and keeps the design simple. Optionally add a **metric** (e.g. segment retry or reprocess count) for visibility. Frame-level resume (checkpoint on SIGTERM, resume from `start_frame`) is **out of scope for V1**; consider as a future enhancement if needed.
-- **DynamoDB usage:** Use **separate tables** for distinct concerns: (1) **SegmentCompletions**—segment completion tracking for reassembly (`job_id`, `segment_index`, `output_s3_uri`, `completed_at`); (2) **ReassemblyTriggered**—one row per `job_id` for reassembly Lambda idempotency and media-worker lock (see DynamoDB tables below). Do not mix completion state with liveness in one table. **Future:** WorkerHeartbeats (`job_id`, `segment_index`, `worker_id`, `last_heartbeat`) for progress UI and optional frame-level resume; not required for V1.
+- **DynamoDB usage:** Use **separate tables** for distinct concerns: (1) **SegmentCompletions**—segment completion tracking for reassembly (`job_id`, `segment_index`, `output_s3_uri`, `completed_at`); (2) **ReassemblyTriggered**—one row per `job_id` for video-worker trigger idempotency and media-worker lock (see DynamoDB tables below). Do not mix completion state with liveness in one table. **Future:** WorkerHeartbeats (`job_id`, `segment_index`, `worker_id`, `last_heartbeat`) for progress UI and optional frame-level resume; not required for V1.
 
 ---
 
 💰 Cost
 
-- **Main levers:** **SageMaker** endpoint instance cost (GPU, e.g. ml.g4dn/ml.g5), S3 storage and egress, DynamoDB read/write, Lambda invocations, Fargate. Segment sizing (~50MB / ~5 min) keeps cost predictable for batch video work.
+- **Main levers:** **SageMaker** endpoint instance cost (GPU, e.g. ml.g4dn/ml.g5), S3 storage and egress, DynamoDB read/write, Fargate. Segment sizing (~50MB / ~5 min) keeps cost predictable for batch video work. (Reassembly trigger runs in the video-worker ECS task; no Lambda for this path.)
 - **Guardrails:** Set **ECS service max capacity** (e.g. max tasks for video-worker) and **SageMaker** endpoint instance count (or use Serverless) to cap scale. **SQS:** Each main queue (chunking, video-worker, reassembly) has a **Dead-Letter Queue (DLQ)** and a **max receive count** (e.g. 3–5); after that, messages move to the DLQ. Add a **CloudWatch alarm** on "number of messages in each DLQ" (e.g. > 0) so failed messages are visible and do not spin forever. Tag resources (e.g. `project=stereo-spot`) for billing visibility; optionally set **AWS Budgets** alerts.
 
 ---

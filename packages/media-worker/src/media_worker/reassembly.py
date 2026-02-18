@@ -157,7 +157,9 @@ def run_reassembly_loop(
                     job_id_ctx = json.loads(raw).get("job_id", "?") or "?"
                 except (json.JSONDecodeError, TypeError, KeyError):
                     pass
-                logger.exception("reassembly: job_id=%s failed to process message: %s", job_id_ctx, e)
+                logger.exception(
+                    "reassembly: job_id=%s failed to process message: %s", job_id_ctx, e
+                )
                 # Message returns to queue after visibility timeout for retry
         if not messages:
             time.sleep(poll_interval_sec)

@@ -17,7 +17,7 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 - **web-ui:** put (create job), get (job detail), list_completed and list_in_progress (unified jobs page), update (not typically; workers update).
 - **media-worker (chunking):** get (fetch mode), update (chunking_in_progress → chunking_complete + total_segments).
 - **media-worker (reassembly):** get (total_segments, status), update (status=completed, completed_at).
-- **reassembly-trigger (Lambda):** get (total_segments, status) to decide when to send to reassembly queue.
+- **video-worker (reassembly trigger):** get (total_segments, status) to decide when to send to reassembly queue.
 
 ---
 
@@ -30,7 +30,7 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 **Consumers:**
 
 - **video-worker:** put (after each segment is processed).
-- **reassembly-trigger (Lambda):** query_by_job + count vs total_segments to trigger reassembly when last segment completes.
+- **video-worker (reassembly trigger):** query_by_job + count vs total_segments to trigger reassembly when last segment completes.
 - **media-worker (reassembly):** query_by_job to build the concat list (no S3 list).
 
 ---
@@ -48,7 +48,7 @@ The `packages/shared-types` library defines Pydantic models and **cloud-agnostic
 - **media-worker:** QueueReceiver (chunking queue).
 - **video-worker:** QueueReceiver (video-worker queue).
 - **media-worker:** QueueReceiver (reassembly queue).
-- **reassembly-trigger (Lambda):** QueueSender (reassembly queue).
+- **video-worker (reassembly trigger):** QueueSender (reassembly queue).
 
 ---
 

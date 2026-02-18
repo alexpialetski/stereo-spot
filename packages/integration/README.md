@@ -17,7 +17,7 @@ From the repo root:
 nx run integration:test
 ```
 
-This installs shared-types, aws-adapters, web-ui, media-worker, video-worker, reassembly-trigger, and this package, then runs pytest.
+This installs shared-types, aws-adapters, web-ui, media-worker, video-worker, and this package, then runs pytest.
 
 ## Prerequisites
 

@@ -3,12 +3,12 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "packages/integration",
-  "implicitDependencies": ["shared-types", "aws-adapters", "web-ui", "media-worker", "video-worker", "reassembly-trigger"],
+  "implicitDependencies": ["shared-types", "aws-adapters", "web-ui", "media-worker", "video-worker"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e ../web-ui -q && pip install -e ../media-worker -q && pip install -e ../video-worker -q && pip install -e ../reassembly-trigger -q && pip install -e . -q && pytest -v",
+        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e ../web-ui -q && pip install -e ../media-worker -q && pip install -e ../video-worker -q && pip install -e . -q && pytest -v",
         "cwd": "{projectRoot}"
       },
       "configurations": {}

@@ -1,6 +1,5 @@
 """Tests for SageMaker async inference backend (mocked invoke_endpoint_async and S3)."""
 
-import json
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
@@ -35,12 +34,13 @@ def test_invoke_sagemaker_endpoint_calls_async_with_input_location() -> None:
     mock_client.invoke_endpoint_async.assert_called_once()
     call_kw = mock_client.invoke_endpoint_async.call_args[1]
     assert call_kw["EndpointName"] == "my-endpoint"
-    assert "s3://output-bucket/sagemaker-invocation-requests/job-1/0.json" == call_kw["InputLocation"]
+    expected = "s3://output-bucket/sagemaker-invocation-requests/job-1/0.json"
+    assert expected == call_kw["InputLocation"]
     assert call_kw["InvocationTimeoutSeconds"] <= 3600
 
 
 def test_invoke_sagemaker_endpoint_defaults_to_anaglyph_mode() -> None:
-    """When mode is omitted, payload uploaded (or InputLocation path) reflects anaglyph; async is used."""
+    """When mode omitted, InputLocation path reflects anaglyph; async is used."""
     mock_client = MagicMock()
     mock_client.invoke_endpoint_async.return_value = {
         "OutputLocation": "s3://out/resp",
@@ -53,7 +53,8 @@ def test_invoke_sagemaker_endpoint_defaults_to_anaglyph_mode() -> None:
             client=mock_client,
         )
     mock_client.invoke_endpoint_async.assert_called_once()
-    assert "sagemaker-invocation-requests/j1/0.json" in mock_client.invoke_endpoint_async.call_args[1]["InputLocation"]
+    loc = mock_client.invoke_endpoint_async.call_args[1]["InputLocation"]
+    assert "sagemaker-invocation-requests/j1/0.json" in loc
 
 
 def test_invoke_sagemaker_endpoint_uses_region_when_provided() -> None:
@@ -76,7 +77,7 @@ def test_invoke_sagemaker_endpoint_uses_region_when_provided() -> None:
 
 
 def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3_for_runtime() -> None:
-    """When client is provided, invoke_endpoint_async is called on it; S3 client still used for polling."""
+    """Provided client gets invoke_endpoint_async; S3 client still used for polling."""
     mock_client = MagicMock()
     mock_client.invoke_endpoint_async.return_value = {
         "OutputLocation": "s3://out/resp",

@@ -85,7 +85,7 @@ class TestInputKeyParser:
 
 
 class TestOutputSegmentKeyParser:
-    """Output segment key parser: jobs/{job_id}/segments/{segment_index}.mp4 -> (job_id, segment_index)."""
+    """Parse jobs/{job_id}/segments/{segment_index}.mp4 -> (job_id, segment_index)."""
 
     def test_valid_output_segment_key(self) -> None:
         assert parse_output_segment_key("out-bucket", "jobs/job-abc/segments/0.mp4") == (

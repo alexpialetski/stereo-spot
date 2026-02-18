@@ -187,3 +187,27 @@ class TestReassemblyTriggeredLock:
         )
         assert lock.try_acquire("job-2") is True
         assert lock.try_acquire("job-2") is False
+
+    def test_try_create_triggered_first_call_returns_true(
+        self, reassembly_triggered_table
+    ):
+        lock = ReassemblyTriggeredLock(
+            reassembly_triggered_table, region_name="us-east-1"
+        )
+        assert lock.try_create_triggered("job-create-1") is True
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table(
+            reassembly_triggered_table
+        )
+        item = table.get_item(Key={"job_id": "job-create-1"})["Item"]
+        assert "triggered_at" in item
+        assert "ttl" in item
+        assert item["ttl"] == item["triggered_at"] + (90 * 86400)
+
+    def test_try_create_triggered_second_call_returns_false(
+        self, reassembly_triggered_table
+    ):
+        lock = ReassemblyTriggeredLock(
+            reassembly_triggered_table, region_name="us-east-1"
+        )
+        assert lock.try_create_triggered("job-create-2") is True
+        assert lock.try_create_triggered("job-create-2") is False

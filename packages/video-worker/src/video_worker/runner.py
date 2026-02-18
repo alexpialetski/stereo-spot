@@ -4,11 +4,18 @@ import logging
 import os
 import time
 
-from stereo_spot_shared import JobStatus, SegmentCompletion, parse_output_segment_key
+from stereo_spot_aws_adapters.dynamodb_stores import ReassemblyTriggeredLock
+from stereo_spot_shared import (
+    JobStatus,
+    ReassemblyPayload,
+    SegmentCompletion,
+    parse_output_segment_key,
+)
 from stereo_spot_shared.interfaces import (
     JobStore,
     ObjectStorage,
     QueueReceiver,
+    QueueSender,
     SegmentCompletionStore,
 )
 
@@ -22,13 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 def _job_id_for_inference_body(body: str | bytes) -> str:
-    """Extract job_id from inference-queue S3 event body for logging; return '?' if not parseable."""
+    """Extract job_id from inference-queue S3 event body for logging; '?' if not parseable."""
     payload = parse_s3_event_body(body)
     return payload.job_id if payload else "?"
 
 
 def _job_id_segment_for_segment_output_body(body: str | bytes) -> tuple[str, str]:
-    """Extract (job_id, segment_index) from segment-output S3 event body for logging; return ('?', '?') if not parseable."""
+    """Extract (job_id, segment_index) from segment-output S3 event; ('?','?') if not parseable."""
     parsed = parse_s3_event_bucket_key(body)
     if parsed is None:
         return ("?", "?")
@@ -88,7 +95,9 @@ def process_one_message(
     """
     payload = parse_s3_event_body(payload_str)
     if payload is None:
-        _log_job_id_from_inference_body(payload_str, "video-worker: job_id=%s invalid S3 event body")
+        _log_job_id_from_inference_body(
+            payload_str, "video-worker: job_id=%s invalid S3 event body"
+        )
         return False
     logger.info(
         "video-worker: job_id=%s segment_index=%s/%s start",
@@ -114,7 +123,7 @@ def process_one_message(
         )
         # SegmentCompletion is written by the segment-output consumer when the file appears in S3
         logger.info(
-            "video-worker: job_id=%s segment_index=%s/%s invoked (completion via segment-output queue)",
+            "video-worker: job_id=%s segment_index=%s/%s invoked (completion via segment-output)",
             payload.job_id,
             payload.segment_index,
             payload.total_segments,
@@ -189,21 +198,81 @@ def run_loop(
                     receiver.delete(msg.receipt_handle)
             except Exception as e:
                 job_id_ctx = payload.job_id if payload else _job_id_for_inference_body(body)
-                logger.exception("video-worker: job_id=%s failed to process message: %s", job_id_ctx, e)
+                logger.exception(
+                    "video-worker: job_id=%s failed to process message: %s",
+                    job_id_ctx, e,
+                )
                 if job_store and payload:
                     try:
                         job_store.update(payload.job_id, status=JobStatus.FAILED.value)
                         logger.info("video-worker: job_id=%s marked failed", payload.job_id)
                     except Exception as update_err:
-                        logger.exception("video-worker: job_id=%s failed to mark job failed: %s", payload.job_id, update_err)
+                        logger.exception(
+                            "video-worker: job_id=%s failed to mark job failed: %s",
+                            payload.job_id, update_err,
+                        )
         if not messages:
             time.sleep(poll_interval_sec)
+
+
+def maybe_trigger_reassembly(
+    job_id: str,
+    job_store: JobStore,
+    segment_store: SegmentCompletionStore,
+    reassembly_triggered: ReassemblyTriggeredLock,
+    reassembly_sender: QueueSender,
+) -> None:
+    """
+    If job has status=chunking_complete and count(SegmentCompletions)==total_segments,
+    conditionally create ReassemblyTriggered and send job_id to reassembly queue.
+    """
+    job = job_store.get(job_id)
+    if job is None:
+        return
+    if job.status != JobStatus.CHUNKING_COMPLETE:
+        logger.debug(
+            "reassembly-trigger: job_id=%s skip (status=%s)",
+            job_id,
+            job.status.value,
+        )
+        return
+    if job.total_segments is None or job.total_segments < 1:
+        logger.warning(
+            "reassembly-trigger: job_id=%s total_segments=%s",
+            job_id,
+            job.total_segments,
+        )
+        return
+    count = len(segment_store.query_by_job(job_id))
+    if count != job.total_segments:
+        logger.debug(
+            "reassembly-trigger: job_id=%s skip (completions=%s != total_segments=%s)",
+            job_id,
+            count,
+            job.total_segments,
+        )
+        return
+    if not reassembly_triggered.try_create_triggered(job_id):
+        logger.info(
+            "reassembly-trigger: job_id=%s already triggered (idempotent skip)",
+            job_id,
+        )
+        return
+    logger.info(
+        "reassembly-trigger: job_id=%s sending to reassembly queue",
+        job_id,
+    )
+    reassembly_sender.send(ReassemblyPayload(job_id=job_id).model_dump_json())
 
 
 def process_one_segment_output_message(
     payload_str: str | bytes,
     segment_store: SegmentCompletionStore,
     output_bucket: str,
+    *,
+    job_store: JobStore | None = None,
+    reassembly_triggered: ReassemblyTriggeredLock | None = None,
+    reassembly_sender: QueueSender | None = None,
 ) -> bool:
     """
     Process a single segment-output queue message (S3 event: output bucket object created).
@@ -211,16 +280,22 @@ def process_one_segment_output_message(
     Parses the key with parse_output_segment_key; if not a segment (e.g. final.mp4),
     returns False (caller may delete message as idempotent skip). Otherwise writes
     SegmentCompletion and returns True.
+    When job_store, reassembly_triggered, and reassembly_sender are all provided,
+    calls maybe_trigger_reassembly after the put (trigger-on-write).
     """
     parsed = parse_s3_event_bucket_key(payload_str)
     if parsed is None:
         job_id, seg = _job_id_segment_for_segment_output_body(payload_str)
-        logger.warning("segment-output: job_id=%s segment_index=%s invalid S3 event body", job_id, seg)
+        logger.warning(
+            "segment-output: job_id=%s segment_index=%s invalid S3 event body",
+            job_id, seg,
+        )
         return False
     bucket, key = parsed
     result = parse_output_segment_key(bucket, key)
     if result is None:
-        job_id_from_key = key.split("/")[1] if key.startswith("jobs/") and len(key.split("/")) >= 2 else "?"
+        parts = key.split("/")
+        job_id_from_key = parts[1] if key.startswith("jobs/") and len(parts) >= 2 else "?"
         logger.debug("segment-output: job_id=%s skip non-segment key %s", job_id_from_key, key)
         return False
     job_id, segment_index = result
@@ -240,6 +315,14 @@ def process_one_segment_output_message(
         segment_index,
         output_s3_uri,
     )
+    if job_store is not None and reassembly_triggered is not None and reassembly_sender is not None:
+        maybe_trigger_reassembly(
+            job_id,
+            job_store,
+            segment_store,
+            reassembly_triggered,
+            reassembly_sender,
+        )
     return True
 
 
@@ -248,9 +331,12 @@ def run_segment_output_loop(
     segment_store: SegmentCompletionStore,
     output_bucket: str,
     *,
+    job_store: JobStore | None = None,
+    reassembly_triggered: ReassemblyTriggeredLock | None = None,
+    reassembly_sender: QueueSender | None = None,
     poll_interval_sec: float = 5.0,
 ) -> None:
-    """Long-running loop: receive segment-output messages, put SegmentCompletion, delete on success."""
+    """Loop: receive segment-output messages, put SegmentCompletion, delete on success."""
     logger.info("segment-output loop started")
     while True:
         messages = receiver.receive(max_messages=1)
@@ -262,6 +348,9 @@ def run_segment_output_loop(
                     msg.body,
                     segment_store,
                     output_bucket,
+                    job_store=job_store,
+                    reassembly_triggered=reassembly_triggered,
+                    reassembly_sender=reassembly_sender,
                 )
                 if ok:
                     receiver.delete(msg.receipt_handle)

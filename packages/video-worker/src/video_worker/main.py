@@ -10,6 +10,8 @@ from stereo_spot_aws_adapters.env_config import (
     job_store_from_env,
     object_storage_from_env,
     output_bucket_name,
+    reassembly_queue_sender_from_env,
+    reassembly_triggered_lock_from_env,
     segment_completion_store_from_env,
     segment_output_queue_receiver_from_env,
     video_worker_queue_receiver_from_env,
@@ -33,6 +35,8 @@ def main() -> None:
     output_bucket = output_bucket_name()
     inference_receiver = video_worker_queue_receiver_from_env()
     segment_output_receiver = segment_output_queue_receiver_from_env()
+    reassembly_triggered = reassembly_triggered_lock_from_env()
+    reassembly_sender = reassembly_queue_sender_from_env()
 
     def run_inference_loop() -> None:
         run_loop(
@@ -44,7 +48,14 @@ def main() -> None:
         )
 
     def run_segment_output_loop_thread() -> None:
-        run_segment_output_loop(segment_output_receiver, segment_store, output_bucket)
+        run_segment_output_loop(
+            segment_output_receiver,
+            segment_store,
+            output_bucket,
+            job_store=job_store,
+            reassembly_triggered=reassembly_triggered,
+            reassembly_sender=reassembly_sender,
+        )
 
     inference_thread = threading.Thread(target=run_inference_loop, daemon=True)
     segment_output_thread = threading.Thread(target=run_segment_output_loop_thread, daemon=True)

@@ -167,12 +167,12 @@ aws sqs get-queue-attributes --queue-url "$REASSEMBLY_QUEUE_URL" --attribute-nam
 
 - **Chunking:** Should be 0 after chunking; if messages are stuck, media-worker may be failing (check ECS/CloudWatch logs for media-worker).
 - **Video-worker:** If messages are visible, video-worker may not be running or is failing (check ECS/CloudWatch logs for video-worker). If in-flight only, wait or check for timeouts.
-- **Reassembly:** If 0 and job is still chunking_complete, the **reassembly-trigger Lambda** likely never sent a message (see step 2).
+- **Reassembly:** If 0 and job is still chunking_complete, the **video-worker** (reassembly trigger) may not have sent a message (see step 2).
 
-**2. Check SegmentCompletions and Lambda:**
+**2. Check SegmentCompletions and video-worker:**
 
-- **DynamoDB:** Query `SegmentCompletions` for the job_id. Count should equal `Job.total_segments`. If count is correct, the Lambda should have run when the last completion was written.
-- **Lambda logs:** In CloudWatch, open the log group for the reassembly-trigger Lambda (e.g. `/aws/lambda/stereo-spot-reassembly-trigger`). Look for invocations when the last segment completion was written. Logs now include `job_id`, `should trigger`, `created ReassemblyTriggered`, `sending to reassembly queue`, or reasons for skip (job not found, status not chunking_complete, count ≠ total_segments). If the Lambda was never invoked, check that the SegmentCompletions table has **DynamoDB Streams** enabled and the Lambda event source mapping is active.
+- **DynamoDB:** Query `SegmentCompletions` for the job_id. Count should equal `Job.total_segments`. If count is correct, the video-worker runs the reassembly trigger after each SegmentCompletion put (trigger-on-write) and should have sent to the reassembly queue when the last segment was written.
+- **Video-worker logs:** In CloudWatch, open the log group for the video-worker (e.g. `/ecs/stereo-spot-video-worker`). Search for `job_id=<JOB_ID>` and look for `reassembly-trigger:` lines: `sending to reassembly queue`, or reasons for skip (status not chunking_complete, completions ≠ total_segments, already triggered).
 
 **3. Check ReassemblyTriggered:**
 
@@ -180,11 +180,11 @@ aws sqs get-queue-attributes --queue-url "$REASSEMBLY_QUEUE_URL" --attribute-nam
 aws dynamodb get-item --table-name "$REASSEMBLY_TRIGGERED_TABLE_NAME" --key '{"job_id":{"S":"<JOB_ID>"}}' --region us-east-1
 ```
 
-If no item exists for the job and SegmentCompletions count equals total_segments, the Lambda either did not run or failed before the conditional put (check Lambda logs and errors).
+If no item exists for the job and SegmentCompletions count equals total_segments, the video-worker either did not run the trigger or failed before the conditional put (check video-worker logs and errors).
 
 **4. Manual reassembly trigger (one-off fix):**
 
-If you’ve confirmed SegmentCompletions count is correct and the Lambda did not send to the reassembly queue, you can send the reassembly message manually and create the lock item so only one reassembly runs:
+If you’ve confirmed SegmentCompletions count is correct and the video-worker did not send to the reassembly queue, you can send the reassembly message manually and create the lock item so only one reassembly runs:
 
 ```bash
 # Create ReassemblyTriggered (so media-worker doesn’t reject as duplicate)
@@ -201,8 +201,7 @@ Replace `<JOB_ID>` with the stuck job’s ID. Then refresh the job in the web UI
 
 **5. Where to find logs:**
 
-- **ECS tasks (media-worker, video-worker):** CloudWatch Logs, log groups `/ecs/stereo-spot-media-worker` and `/ecs/stereo-spot-video-worker` (or as set in Terraform). Stream prefix `ecs`. Workers now log job_id, segment_index, and key steps (chunking start/complete, reassembly received/completed, video-worker start/complete).
-- **Reassembly-trigger Lambda:** CloudWatch Logs, log group `/aws/lambda/<reassembly-trigger-function-name>`.
+- **ECS tasks (media-worker, video-worker):** CloudWatch Logs, log groups `/ecs/stereo-spot-media-worker` and `/ecs/stereo-spot-video-worker` (or as set in Terraform). Stream prefix `ecs`. Workers log job_id, segment_index, and key steps (chunking start/complete, reassembly trigger, reassembly received/completed, video-worker start/complete).
 
 ---
 
@@ -259,7 +258,6 @@ All services log **job_id** (and where relevant **segment_index**) so you can tr
 - Web UI: `/ecs/stereo-spot-web-ui` (or as in your ECS task definition)
 - Media-worker: `/ecs/stereo-spot-media-worker`
 - Video-worker: `/ecs/stereo-spot-video-worker`
-- Reassembly-trigger Lambda: `/aws/lambda/<reassembly-trigger-function-name>`
 - SageMaker endpoint: `/aws/sagemaker/Endpoints/<endpoint-name>` (when `inference_backend=sagemaker` and endpoint logging is enabled)
 
 **CloudWatch Logs Insights – one job across all services:**

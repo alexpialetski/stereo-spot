@@ -231,3 +231,26 @@ class ReassemblyTriggeredLock:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 return False
             raise
+
+    def try_create_triggered(self, job_id: str) -> bool:
+        """
+        Create ReassemblyTriggered item only if job_id does not exist (conditional create).
+        Sets triggered_at (Unix now) and ttl (now + 90 days) for TTL cleanup.
+        Returns True if put succeeded, False if item already exists (idempotent).
+        """
+        now = int(time.time())
+        ttl = now + (90 * 86400)
+        try:
+            self._table.put_item(
+                Item={
+                    "job_id": job_id,
+                    "triggered_at": now,
+                    "ttl": ttl,
+                },
+                ConditionExpression="attribute_not_exists(job_id)",
+            )
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return False
+            raise

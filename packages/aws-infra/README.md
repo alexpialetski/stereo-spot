@@ -52,7 +52,7 @@ Queue policies allow the input bucket to send messages to the chunking and video
 One event flow is configured on the **output bucket**:
 
 - **Segment output → segment-output queue**  
-  Prefix `jobs/`, suffix `.mp4` → **segment-output queue**. When the inference side (SageMaker or HTTP server) writes a segment to `jobs/{job_id}/segments/{segment_index}.mp4`, S3 sends the event to the segment-output queue; the video-worker (segment-output consumer) writes the SegmentCompletion record to DynamoDB. Keys like `jobs/{job_id}/final.mp4` are ignored by the consumer (parser returns None).
+  Prefix `jobs/`, suffix `.mp4` → **segment-output queue**. When the inference side (SageMaker or HTTP server) writes a segment to `jobs/{job_id}/segments/{segment_index}.mp4`, S3 sends the event to the segment-output queue; the video-worker (segment-output consumer) writes the SegmentCompletion record to DynamoDB and, when it is the last segment for the job, conditionally creates ReassemblyTriggered and sends `job_id` to the reassembly queue (reassembly trigger runs in the video-worker ECS task; no Lambda). Keys like `jobs/{job_id}/final.mp4` are ignored by the consumer (parser returns None).
 
 ### SQS
 
@@ -69,7 +69,7 @@ The video-worker task receives **SEGMENT_OUTPUT_QUEUE_URL** (Terraform output `s
 
 - **Jobs**: PK `job_id` (String). GSI `status-completed_at`: PK `status`, SK `completed_at` (Number) for list completed jobs. GSI `status-created_at`: PK `status`, SK `created_at` (Number) for list in-progress jobs.
 - **SegmentCompletions**: PK `job_id`, SK `segment_index`. Query by `job_id` returns segments in order for reassembly.
-- **ReassemblyTriggered**: PK `job_id`. TTL enabled on attribute `ttl` (e.g. set to `triggered_at + 90 days` by Lambda/worker).
+- **ReassemblyTriggered**: PK `job_id`. TTL enabled on attribute `ttl` (e.g. set to `triggered_at + 90 days` by video-worker when it creates the item). Video-worker has IAM permission to PutItem (conditional create); media-worker uses the same table for the reassembly lock.
 
 ### CloudWatch
 
@@ -88,7 +88,7 @@ The video-worker task receives **SEGMENT_OUTPUT_QUEUE_URL** (Terraform output `s
 - **VPC**: Private and public subnets; Fargate tasks run in private subnets, ALB in public subnets.
 - **ECS cluster**: Single cluster (`stereo-spot`) with Fargate and EC2 capacity.
 - **ECR**: One repository per image: `stereo-spot-web-ui`, `stereo-spot-media-worker`, `stereo-spot-video-worker`, `stereo-spot-stereocrafter-sagemaker`.
-- **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_REGION`, `VIDEO_WORKER_QUEUE_URL`, and **`SEGMENT_OUTPUT_QUEUE_URL`** set by Terraform (consumes both queues in two threads).
+- **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_REGION`, `VIDEO_WORKER_QUEUE_URL`, **`SEGMENT_OUTPUT_QUEUE_URL`**, **`REASSEMBLY_TRIGGERED_TABLE_NAME`**, and **`REASSEMBLY_QUEUE_URL`** set by Terraform (consumes both queues in two threads; performs reassembly trigger on each SegmentCompletion put). Video-worker task role includes DynamoDB PutItem on ReassemblyTriggered and SQS SendMessage on the reassembly queue.
 - **Task roles**: One IAM role per workload. Video-worker role includes **sagemaker:InvokeEndpoint** on the StereoCrafter endpoint. A shared **execution role** is used for image pull and CloudWatch Logs.
 - **Services**: **web-ui** (Fargate, 1 task, ALB); **media-worker** (Fargate, scale on chunking queue); **video-worker** (Fargate, scale on video-worker queue).
 - **CodeBuild**: Project `stereo-spot-stereocrafter-build` clones the public repo, builds the stereocrafter-sagemaker Docker image, and pushes to ECR. Trigger via `nx run stereocrafter-sagemaker:sagemaker-build`.

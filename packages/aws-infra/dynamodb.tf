@@ -44,8 +44,7 @@ resource "aws_dynamodb_table" "jobs" {
   })
 }
 
-# SegmentCompletions: PK job_id, SK segment_index; video-worker writes; reassembly Lambda/worker read
-# Stream enabled for reassembly-trigger Lambda (invoked when new segment completion is written)
+# SegmentCompletions: PK job_id, SK segment_index; video-worker writes and triggers reassembly (trigger-on-write); media-worker reads for concat
 resource "aws_dynamodb_table" "segment_completions" {
   name         = "${local.name}-segment-completions"
   billing_mode = "PAY_PER_REQUEST"

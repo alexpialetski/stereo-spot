@@ -144,6 +144,16 @@ resource "aws_iam_role_policy" "video_worker_task" {
           Effect   = "Allow"
           Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
           Resource = [aws_sqs_queue.video_worker.arn, aws_sqs_queue.segment_output.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:PutItem"]
+          Resource = aws_dynamodb_table.reassembly_triggered.arn
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:SendMessage"]
+          Resource = aws_sqs_queue.reassembly.arn
         }
       ],
       var.inference_backend == "sagemaker" ? [{
@@ -295,6 +305,8 @@ locals {
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
     { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url },
     { name = "SEGMENT_OUTPUT_QUEUE_URL", value = aws_sqs_queue.segment_output.url },
+    { name = "REASSEMBLY_TRIGGERED_TABLE_NAME", value = aws_dynamodb_table.reassembly_triggered.name },
+    { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
   ], local.video_worker_inference_env)
 }
 
