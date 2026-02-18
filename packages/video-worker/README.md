@@ -2,6 +2,8 @@
 
 Consumes **two SQS queues**: (1) **video-worker queue** — S3 events when segments are uploaded to the input bucket; (2) **segment-output queue** — S3 events when the inference side writes a segment to the output bucket. Acts as coordinator: invokes inference (SageMaker async, HTTP, or stub); SegmentCompletion is written when the output-bucket S3 event is received, not by polling for the file.
 
+**Module layout:** Logic is split by responsibility. **`inference`** — inference-queue consumer: parse S3 event, run model (SageMaker/HTTP/stub), delete message on success. **`segment_output`** — segment-output-queue consumer: parse output-bucket S3 event, put SegmentCompletion, optionally trigger reassembly, delete message. **`reassembly_trigger`** — when all segments are complete for a chunking_complete job, conditionally create ReassemblyTriggered and send job_id to the reassembly queue. **`main`** wires env and runs both loops in two threads.
+
 ## Behaviour
 
 **Inference path (video-worker queue):**

@@ -5,11 +5,9 @@ from unittest.mock import MagicMock, patch
 
 from stereo_spot_shared import Job, JobStatus, ReassemblyPayload, SegmentCompletion, StereoMode
 
-from video_worker.runner import (
-    maybe_trigger_reassembly,
-    process_one_message,
-    process_one_segment_output_message,
-)
+from video_worker.inference import process_one_message
+from video_worker.reassembly_trigger import maybe_trigger_reassembly
+from video_worker.segment_output import process_one_segment_output_message
 
 
 def _make_s3_event_body(bucket: str, key: str) -> str:
@@ -77,7 +75,7 @@ def test_process_one_message_sagemaker_backend_no_download_upload() -> None:
     )
     env = {"INFERENCE_BACKEND": "sagemaker", "SAGEMAKER_ENDPOINT_NAME": "my-ep"}
     with patch.dict("os.environ", env):
-        with patch("video_worker.runner.invoke_sagemaker_endpoint") as mock_invoke:
+        with patch("video_worker.inference.invoke_sagemaker_endpoint") as mock_invoke:
             result = process_one_message(
                 body,
                 storage,

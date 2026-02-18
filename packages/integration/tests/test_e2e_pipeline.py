@@ -26,7 +26,8 @@ from stereo_spot_aws_adapters.env_config import (
 )
 from stereo_spot_shared import JobStatus, build_segment_key
 from stereo_spot_web_ui.main import app
-from video_worker.runner import maybe_trigger_reassembly, process_one_message
+from video_worker.inference import process_one_message
+from video_worker.reassembly_trigger import maybe_trigger_reassembly
 
 
 def _make_s3_event_body(bucket: str, key: str) -> str:

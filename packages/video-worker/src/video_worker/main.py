@@ -17,7 +17,8 @@ from stereo_spot_aws_adapters.env_config import (
     video_worker_queue_receiver_from_env,
 )
 
-from .runner import run_loop, run_segment_output_loop
+from .inference import run_loop
+from .segment_output import run_segment_output_loop
 
 logging.basicConfig(
     level=logging.INFO,
