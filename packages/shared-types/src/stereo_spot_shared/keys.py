@@ -6,6 +6,7 @@ using only these functions. No duplicate parsing logic elsewhere.
 
 Segment key format: segments/{job_id}/{segment_index:05d}_{total_segments:05d}_{mode}.mp4
 Input key format:   input/{job_id}/source.mp4
+Output segment key: jobs/{job_id}/segments/{segment_index}.mp4
 
 Parser behaviour: Invalid keys return None. Callers must check and handle accordingly.
 """
@@ -15,6 +16,8 @@ import re
 from .models import StereoMode, VideoWorkerPayload
 
 _SEGMENT_KEY_PREFIX = "segments/"
+_OUTPUT_SEGMENT_KEY_PREFIX = "jobs/"
+_OUTPUT_SEGMENT_KEY_SUFFIX_RE = re.compile(r"^segments/(\d+)\.mp4$")
 _SEGMENT_KEY_FILENAME_RE = re.compile(
     r"^(\d{5})_(\d{5})_(anaglyph|sbs)\.mp4$"
 )
@@ -103,3 +106,34 @@ def parse_input_key(key: str) -> str | None:
     if not job_id:
         return None
     return job_id
+
+
+def parse_output_segment_key(bucket: str, key: str) -> tuple[str, int] | None:
+    """
+    Parse an output-bucket segment object key into job_id and segment_index.
+
+    Expected format: jobs/{job_id}/segments/{segment_index}.mp4
+
+    Args:
+        bucket: S3 bucket name.
+        key: Object key (e.g. jobs/job-abc/segments/0.mp4).
+
+    Returns:
+        (job_id, segment_index) if the key is valid, otherwise None.
+        Returns None for keys like jobs/{job_id}/final.mp4 (not a segment).
+    """
+    if not key.startswith(_OUTPUT_SEGMENT_KEY_PREFIX):
+        return None
+    rest = key[len(_OUTPUT_SEGMENT_KEY_PREFIX) :]
+    if "/" not in rest:
+        return None
+    job_id, remainder = rest.split("/", 1)
+    if not job_id:
+        return None
+    match = _OUTPUT_SEGMENT_KEY_SUFFIX_RE.match(remainder)
+    if not match:
+        return None
+    segment_index = int(match.group(1))
+    if segment_index < 0:
+        return None
+    return (job_id, segment_index)

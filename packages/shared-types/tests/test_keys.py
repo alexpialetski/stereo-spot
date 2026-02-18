@@ -4,6 +4,7 @@ from stereo_spot_shared import (
     StereoMode,
     build_segment_key,
     parse_input_key,
+    parse_output_segment_key,
     parse_segment_key,
 )
 
@@ -81,3 +82,28 @@ class TestInputKeyParser:
         assert parse_input_key("input//source.mp4") is None
         assert parse_input_key("input/source.mp4") is None
         assert parse_input_key("input/job-abc/source.mp4/extra") is None
+
+
+class TestOutputSegmentKeyParser:
+    """Output segment key parser: jobs/{job_id}/segments/{segment_index}.mp4 -> (job_id, segment_index)."""
+
+    def test_valid_output_segment_key(self) -> None:
+        assert parse_output_segment_key("out-bucket", "jobs/job-abc/segments/0.mp4") == (
+            "job-abc",
+            0,
+        )
+        assert parse_output_segment_key("b", "jobs/xyz-123/segments/42.mp4") == (
+            "xyz-123",
+            42,
+        )
+
+    def test_final_mp4_returns_none(self) -> None:
+        assert parse_output_segment_key("b", "jobs/job-abc/final.mp4") is None
+
+    def test_invalid_patterns_return_none(self) -> None:
+        assert parse_output_segment_key("b", "input/job/source.mp4") is None
+        assert parse_output_segment_key("b", "jobs/") is None
+        assert parse_output_segment_key("b", "jobs/job-abc/segments/") is None
+        assert parse_output_segment_key("b", "jobs/job-abc/segments/foo.mp4") is None
+        assert parse_output_segment_key("b", "jobs/job-abc/segments/-1.mp4") is None
+        assert parse_output_segment_key("b", "jobs//segments/0.mp4") is None

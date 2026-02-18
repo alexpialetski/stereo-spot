@@ -28,6 +28,11 @@ output "reassembly_queue_url" {
   value       = aws_sqs_queue.reassembly.url
 }
 
+output "segment_output_queue_url" {
+  description = "URL of the segment-output SQS queue (output bucket S3 events)"
+  value       = aws_sqs_queue.segment_output.url
+}
+
 output "jobs_table_name" {
   description = "Name of the DynamoDB Jobs table"
   value       = aws_dynamodb_table.jobs.name

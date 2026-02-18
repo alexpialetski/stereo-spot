@@ -91,3 +91,13 @@ input/{job_id}/source.mp4
 ```
 
 - **`parse_input_key(key)`** → `job_id` string or `None` if the key is invalid. Used by the chunking worker to get `job_id` from the S3 event.
+
+**Output segment key format (output bucket, segment results):**
+
+```
+jobs/{job_id}/segments/{segment_index}.mp4
+```
+
+Example: `jobs/job-abc/segments/0.mp4`. Used when the inference side (SageMaker or HTTP) writes a segment result; S3 events on the output bucket are parsed to record SegmentCompletion. Keys like `jobs/{job_id}/final.mp4` are not segment outputs and the parser returns `None`.
+
+- **`parse_output_segment_key(bucket, key)`** → `(job_id, segment_index)` or `None` if the key is invalid. Single source of truth for output segment keys; consumed by the video-worker segment-output handler.

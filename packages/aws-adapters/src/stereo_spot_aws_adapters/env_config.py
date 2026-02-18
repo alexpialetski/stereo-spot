@@ -13,6 +13,7 @@ Required env vars (match Terraform output names, uppercased with underscores):
 - REASSEMBLY_TRIGGERED_TABLE_NAME
 - CHUNKING_QUEUE_URL
 - VIDEO_WORKER_QUEUE_URL
+- SEGMENT_OUTPUT_QUEUE_URL (video-worker segment-output queue)
 - REASSEMBLY_QUEUE_URL
 
 Optional:
@@ -100,6 +101,17 @@ def video_worker_queue_sender_from_env() -> SQSQueueSender:
 def video_worker_queue_receiver_from_env() -> SQSQueueReceiver:
     """Build SQSQueueReceiver for video-worker queue from VIDEO_WORKER_QUEUE_URL."""
     url = os.environ["VIDEO_WORKER_QUEUE_URL"]
+    return SQSQueueReceiver(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
+    )
+
+
+def segment_output_queue_receiver_from_env() -> SQSQueueReceiver:
+    """Build SQSQueueReceiver for segment-output queue from SEGMENT_OUTPUT_QUEUE_URL."""
+    url = os.environ["SEGMENT_OUTPUT_QUEUE_URL"]
     return SQSQueueReceiver(
         url,
         region_name=_get_region(),

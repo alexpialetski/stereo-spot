@@ -1,18 +1,21 @@
 """
-Entrypoint for the video worker. Wires AWS adapters from env and runs the loop.
+Entrypoint for the video worker. Wires AWS adapters from env and runs two loops:
+inference queue (invoke SageMaker/HTTP/stub) and segment-output queue (write SegmentCompletion).
 """
 
 import logging
+import threading
 
 from stereo_spot_aws_adapters.env_config import (
     job_store_from_env,
     object_storage_from_env,
     output_bucket_name,
     segment_completion_store_from_env,
+    segment_output_queue_receiver_from_env,
     video_worker_queue_receiver_from_env,
 )
 
-from .runner import run_loop
+from .runner import run_loop, run_segment_output_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,8 +31,27 @@ def main() -> None:
     segment_store = segment_completion_store_from_env()
     job_store = job_store_from_env()
     output_bucket = output_bucket_name()
-    receiver = video_worker_queue_receiver_from_env()
-    run_loop(receiver, storage, segment_store, output_bucket, job_store=job_store)
+    inference_receiver = video_worker_queue_receiver_from_env()
+    segment_output_receiver = segment_output_queue_receiver_from_env()
+
+    def run_inference_loop() -> None:
+        run_loop(
+            inference_receiver,
+            storage,
+            segment_store,
+            output_bucket,
+            job_store=job_store,
+        )
+
+    def run_segment_output_loop_thread() -> None:
+        run_segment_output_loop(segment_output_receiver, segment_store, output_bucket)
+
+    inference_thread = threading.Thread(target=run_inference_loop, daemon=True)
+    segment_output_thread = threading.Thread(target=run_segment_output_loop_thread, daemon=True)
+    inference_thread.start()
+    segment_output_thread.start()
+    inference_thread.join()
+    segment_output_thread.join()
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from stereo_spot_shared import SegmentCompletion
 
-from video_worker.runner import process_one_message
+from video_worker.runner import process_one_message, process_one_segment_output_message
 
 
 def _make_s3_event_body(bucket: str, key: str) -> str:
@@ -64,7 +64,7 @@ def test_process_one_message_invalid_body_returns_false() -> None:
 
 
 def test_process_one_message_sagemaker_backend_no_download_upload() -> None:
-    """Sagemaker backend: invokes endpoint and puts completion only (no download/upload)."""
+    """SageMaker backend: invokes endpoint only; SegmentCompletion is written by segment-output consumer."""
     storage = MagicMock()
     segment_store = MagicMock()
     body = _make_s3_event_body(
@@ -90,8 +90,35 @@ def test_process_one_message_sagemaker_backend_no_download_upload() -> None:
         mode="sbs",
         region_name=None,
     )
+    segment_store.put.assert_not_called()
+
+
+def test_process_one_segment_output_message_valid_key_puts_completion() -> None:
+    """Segment-output: valid jobs/{job_id}/segments/{i}.mp4 key -> put SegmentCompletion."""
+    segment_store = MagicMock()
+    body = _make_s3_event_body("output-bucket", "jobs/job-abc/segments/3.mp4")
+    result = process_one_segment_output_message(body, segment_store, "output-bucket")
+    assert result is True
     segment_store.put.assert_called_once()
     completion: SegmentCompletion = segment_store.put.call_args[0][0]
-    assert completion.job_id == "job-xyz"
-    assert completion.segment_index == 1
-    assert completion.output_s3_uri == "s3://output-bucket/jobs/job-xyz/segments/1.mp4"
+    assert completion.job_id == "job-abc"
+    assert completion.segment_index == 3
+    assert completion.output_s3_uri == "s3://output-bucket/jobs/job-abc/segments/3.mp4"
+    assert completion.total_segments is None
+
+
+def test_process_one_segment_output_message_final_mp4_returns_false() -> None:
+    """Segment-output: final.mp4 key is not a segment -> return False, no put."""
+    segment_store = MagicMock()
+    body = _make_s3_event_body("output-bucket", "jobs/job-abc/final.mp4")
+    result = process_one_segment_output_message(body, segment_store, "output-bucket")
+    assert result is False
+    segment_store.put.assert_not_called()
+
+
+def test_process_one_segment_output_message_invalid_body_returns_false() -> None:
+    """Segment-output: invalid JSON -> return False, no put."""
+    segment_store = MagicMock()
+    result = process_one_segment_output_message("not json", segment_store, "output-bucket")
+    assert result is False
+    segment_store.put.assert_not_called()

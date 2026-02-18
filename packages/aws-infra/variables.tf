@@ -77,7 +77,7 @@ variable "ecs_video_worker_max_capacity" {
 variable "inference_backend" {
   description = "Inference backend: sagemaker (managed endpoint) or http (e.g. EC2 running same container)"
   type        = string
-  default     = "http"
+  default     = "sagemaker"
 
   validation {
     condition     = contains(["sagemaker", "http"], var.inference_backend)

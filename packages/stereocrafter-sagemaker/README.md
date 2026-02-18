@@ -32,7 +32,7 @@ nx run stereocrafter-sagemaker:sagemaker-deploy
 ```
 
 - **sagemaker-build**: CodeBuild clones the public repo, runs `docker build`, and pushes to ECR. No local Docker build required.
-- **sagemaker-deploy**: Creates a new SageMaker model and endpoint config pointing at the ECR image (`:latest`), then updates the endpoint. Requires `terraform-output` so `.env` includes `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_ENDPOINT_ROLE_ARN`, `SAGEMAKER_INSTANCE_TYPE`, `SAGEMAKER_INSTANCE_COUNT`, `ECR_STEREOCRAFTER_SAGEMAKER_URL`, `REGION`.
+- **sagemaker-deploy**: Creates a new SageMaker model and endpoint config pointing at the ECR image (`:latest`), then updates the endpoint. The config includes async inference (same as Terraform) so the update is accepted. Requires `terraform-output` so `.env` includes `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_ENDPOINT_ROLE_ARN`, `SAGEMAKER_INSTANCE_TYPE`, `SAGEMAKER_INSTANCE_COUNT`, `ECR_STEREOCRAFTER_SAGEMAKER_URL`, `REGION`, and `OUTPUT_BUCKET_NAME` (or `output_bucket_name`) for async response paths.
 
 Terraform expects the image at the ECR repository URL with tag from `ecs_image_tag` (e.g. `latest`). When Terraform is set to `inference_backend=http`, the video-worker uses `inference_http_url` (you run the inference service yourself).
 

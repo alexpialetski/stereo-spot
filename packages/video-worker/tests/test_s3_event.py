@@ -4,7 +4,7 @@ import json
 
 from stereo_spot_shared import StereoMode
 
-from video_worker.s3_event import parse_s3_event_body
+from video_worker.s3_event import parse_s3_event_body, parse_s3_event_bucket_key
 
 
 def test_parse_valid_s3_event_segment_key() -> None:
@@ -68,3 +68,24 @@ def test_parse_s3_event_accepts_url_encoded_key() -> None:
     assert payload.segment_index == 0
     assert payload.total_segments == 1
     assert payload.segment_s3_uri == "s3://input-bucket/segments/job-xyz/00000_00001_sbs.mp4"
+
+
+def test_parse_s3_event_bucket_key_valid() -> None:
+    """parse_s3_event_bucket_key returns (bucket, key) for valid S3 event."""
+    body = json.dumps({
+        "Records": [
+            {
+                "s3": {
+                    "bucket": {"name": "output-bucket"},
+                    "object": {"key": "jobs/job-abc/segments/2.mp4"},
+                }
+            }
+        ]
+    })
+    result = parse_s3_event_bucket_key(body)
+    assert result == ("output-bucket", "jobs/job-abc/segments/2.mp4")
+
+
+def test_parse_s3_event_bucket_key_invalid_returns_none() -> None:
+    assert parse_s3_event_bucket_key("not json") is None
+    assert parse_s3_event_bucket_key(json.dumps({"Records": []})) is None

@@ -1,76 +1,114 @@
-"""Tests for SageMaker inference backend (mocked invoke_endpoint)."""
+"""Tests for SageMaker async inference backend (mocked invoke_endpoint_async and S3)."""
 
 import json
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from video_worker.model_sagemaker import invoke_sagemaker_endpoint
 
 
-def test_invoke_sagemaker_endpoint_calls_client_with_correct_body() -> None:
-    """invoke_sagemaker_endpoint sends JSON with s3_input_uri, s3_output_uri, and mode."""
+def _make_s3_mock_success():
+    """S3 client mock: get_object returns container success body."""
+    s3 = MagicMock()
+    s3.get_object.return_value = {"Body": BytesIO(b'{"status":"ok"}')}
+    return s3
+
+
+def test_invoke_sagemaker_endpoint_calls_async_with_input_location() -> None:
+    """invoke_sagemaker_endpoint_async is called with InputLocation derived from output_uri."""
     mock_client = MagicMock()
+    mock_client.invoke_endpoint_async.return_value = {
+        "OutputLocation": "s3://output-bucket/sagemaker-async-responses/req-123",
+    }
     segment_uri = "s3://input-bucket/segments/job-1/00000_00010_sbs.mp4"
     output_uri = "s3://output-bucket/jobs/job-1/segments/0.mp4"
 
-    invoke_sagemaker_endpoint(
-        segment_uri,
-        output_uri,
-        "my-endpoint",
-        mode="sbs",
-        client=mock_client,
-    )
+    with patch("boto3.client", return_value=_make_s3_mock_success()):
+        invoke_sagemaker_endpoint(
+            segment_uri,
+            output_uri,
+            "my-endpoint",
+            mode="sbs",
+            client=mock_client,
+        )
 
-    mock_client.invoke_endpoint.assert_called_once()
-    call_kw = mock_client.invoke_endpoint.call_args[1]
+    mock_client.invoke_endpoint_async.assert_called_once()
+    call_kw = mock_client.invoke_endpoint_async.call_args[1]
     assert call_kw["EndpointName"] == "my-endpoint"
-    assert call_kw["ContentType"] == "application/json"
-    body = json.loads(call_kw["Body"].decode("utf-8"))
-    assert body["s3_input_uri"] == segment_uri
-    assert body["s3_output_uri"] == output_uri
-    assert body["mode"] == "sbs"
+    assert "s3://output-bucket/sagemaker-invocation-requests/job-1/0.json" == call_kw["InputLocation"]
+    assert call_kw["InvocationTimeoutSeconds"] <= 3600
 
 
 def test_invoke_sagemaker_endpoint_defaults_to_anaglyph_mode() -> None:
-    """When mode is omitted, defaults to anaglyph."""
+    """When mode is omitted, payload uploaded (or InputLocation path) reflects anaglyph; async is used."""
     mock_client = MagicMock()
-    invoke_sagemaker_endpoint(
-        "s3://in/seg.mp4",
-        "s3://out/seg.mp4",
-        "ep",
-        client=mock_client,
-    )
-    body = json.loads(mock_client.invoke_endpoint.call_args[1]["Body"].decode("utf-8"))
-    assert body["mode"] == "anaglyph"
+    mock_client.invoke_endpoint_async.return_value = {
+        "OutputLocation": "s3://out/resp",
+    }
+    with patch("boto3.client", return_value=_make_s3_mock_success()):
+        invoke_sagemaker_endpoint(
+            "s3://in/seg.mp4",
+            "s3://out/jobs/j1/segments/0.mp4",
+            "ep",
+            client=mock_client,
+        )
+    mock_client.invoke_endpoint_async.assert_called_once()
+    assert "sagemaker-invocation-requests/j1/0.json" in mock_client.invoke_endpoint_async.call_args[1]["InputLocation"]
 
 
 def test_invoke_sagemaker_endpoint_uses_region_when_provided() -> None:
     """When region_name is passed and client is None, boto3.client gets region_name."""
-    with patch("boto3.client") as mock_boto3_client:
-        mock_client = MagicMock()
-        mock_boto3_client.return_value = mock_client
-
+    sagemaker_mock = MagicMock()
+    sagemaker_mock.invoke_endpoint_async.return_value = {
+        "OutputLocation": "s3://out/resp",
+    }
+    s3_mock = _make_s3_mock_success()
+    with patch("boto3.client", side_effect=[sagemaker_mock, s3_mock]) as mock_boto3_client:
         invoke_sagemaker_endpoint(
             "s3://in/seg.mp4",
-            "s3://out/seg.mp4",
+            "s3://out/jobs/j1/segments/0.mp4",
             "ep",
             region_name="us-west-2",
         )
-
-        mock_boto3_client.assert_called_once_with(
-            "sagemaker-runtime",
-            region_name="us-west-2",
-        )
+        assert mock_boto3_client.call_count >= 2
+        first_kw = mock_boto3_client.call_args_list[0][1]
+        assert first_kw.get("region_name") == "us-west-2"
 
 
-def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3() -> None:
-    """When client is provided, boto3.client is not used."""
+def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3_for_runtime() -> None:
+    """When client is provided, invoke_endpoint_async is called on it; S3 client still used for polling."""
     mock_client = MagicMock()
-    with patch("boto3.client") as mock_boto3_client:
+    mock_client.invoke_endpoint_async.return_value = {
+        "OutputLocation": "s3://out/resp",
+    }
+    with patch("boto3.client", return_value=_make_s3_mock_success()) as mock_boto3_client:
         invoke_sagemaker_endpoint(
             "s3://in/seg.mp4",
-            "s3://out/seg.mp4",
+            "s3://out/jobs/j1/segments/0.mp4",
             "ep",
             client=mock_client,
         )
-        mock_boto3_client.assert_not_called()
-    mock_client.invoke_endpoint.assert_called_once()
+        mock_client.invoke_endpoint_async.assert_called_once()
+        mock_boto3_client.assert_called_with("s3", region_name=None)
+
+
+def test_invoke_sagemaker_endpoint_raises_on_container_error_in_response() -> None:
+    """When async response body contains error, RuntimeError is raised."""
+    mock_client = MagicMock()
+    mock_client.invoke_endpoint_async.return_value = {
+        "OutputLocation": "s3://out/resp",
+    }
+    s3_mock = MagicMock()
+    s3_mock.get_object.return_value = {"Body": BytesIO(b'{"error":"out of memory"}')}
+    with patch("boto3.client", return_value=s3_mock):
+        try:
+            invoke_sagemaker_endpoint(
+                "s3://in/seg.mp4",
+                "s3://out/jobs/j1/segments/0.mp4",
+                "ep",
+                client=mock_client,
+            )
+        except RuntimeError as e:
+            assert "out of memory" in str(e)
+            return
+    assert False, "expected RuntimeError"

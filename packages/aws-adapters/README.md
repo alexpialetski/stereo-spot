@@ -25,6 +25,7 @@ When running against AWS (or LocalStack), set the following. Names align with Te
 | `SEGMENT_COMPLETIONS_TABLE_NAME` | DynamoDB SegmentCompletions table | `segment_completions_table_name` |
 | `CHUNKING_QUEUE_URL` | SQS chunking queue URL | `chunking_queue_url` |
 | `VIDEO_WORKER_QUEUE_URL` | SQS video-worker queue URL | `video_worker_queue_url` |
+| `SEGMENT_OUTPUT_QUEUE_URL` | SQS segment-output queue URL (output bucket S3 events; video-worker) | `segment_output_queue_url` |
 | `REASSEMBLY_QUEUE_URL` | SQS reassembly queue URL | `reassembly_queue_url` |
 | `AWS_REGION` | (Optional) AWS region | — |
 | `AWS_ENDPOINT_URL` | (Optional) Override endpoint (e.g. LocalStack) | — |

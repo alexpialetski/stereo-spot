@@ -4,7 +4,7 @@ import logging
 import os
 import time
 
-from stereo_spot_shared import JobStatus, SegmentCompletion
+from stereo_spot_shared import JobStatus, SegmentCompletion, parse_output_segment_key
 from stereo_spot_shared.interfaces import (
     JobStore,
     ObjectStorage,
@@ -16,7 +16,7 @@ from .model_http import invoke_http_endpoint
 from .model_sagemaker import invoke_sagemaker_endpoint
 from .model_stub import process_segment
 from .output_key import build_output_segment_key
-from .s3_event import parse_s3_event_body
+from .s3_event import parse_s3_event_body, parse_s3_event_bucket_key
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,14 @@ def process_one_message(
             mode=payload.mode.value,
             region_name=region_name or None,
         )
+        # SegmentCompletion is written by the segment-output consumer when the file appears in S3
+        logger.info(
+            "video-worker: job_id=%s segment_index=%s/%s invoked (completion via segment-output queue)",
+            payload.job_id,
+            payload.segment_index,
+            payload.total_segments,
+        )
+        return True
     elif _use_http_backend():
         http_url = os.environ.get("INFERENCE_HTTP_URL")
         if not http_url:
@@ -158,5 +166,77 @@ def run_loop(
                         logger.info("video-worker: job_id=%s marked failed", payload.job_id)
                     except Exception as update_err:
                         logger.exception("video-worker: failed to mark job failed: %s", update_err)
+        if not messages:
+            time.sleep(poll_interval_sec)
+
+
+def process_one_segment_output_message(
+    payload_str: str | bytes,
+    segment_store: SegmentCompletionStore,
+    output_bucket: str,
+) -> bool:
+    """
+    Process a single segment-output queue message (S3 event: output bucket object created).
+
+    Parses the key with parse_output_segment_key; if not a segment (e.g. final.mp4),
+    returns False (caller may delete message as idempotent skip). Otherwise writes
+    SegmentCompletion and returns True.
+    """
+    parsed = parse_s3_event_bucket_key(payload_str)
+    if parsed is None:
+        logger.warning("segment-output: invalid S3 event body")
+        return False
+    bucket, key = parsed
+    result = parse_output_segment_key(bucket, key)
+    if result is None:
+        logger.debug("segment-output: skip non-segment key %s", key)
+        return False
+    job_id, segment_index = result
+    output_s3_uri = f"s3://{output_bucket}/{key}"
+    completed_at = int(time.time())
+    completion = SegmentCompletion(
+        job_id=job_id,
+        segment_index=segment_index,
+        output_s3_uri=output_s3_uri,
+        completed_at=completed_at,
+        total_segments=None,
+    )
+    segment_store.put(completion)
+    logger.info(
+        "segment-output: job_id=%s segment_index=%s -> %s",
+        job_id,
+        segment_index,
+        output_s3_uri,
+    )
+    return True
+
+
+def run_segment_output_loop(
+    receiver: QueueReceiver,
+    segment_store: SegmentCompletionStore,
+    output_bucket: str,
+    *,
+    poll_interval_sec: float = 5.0,
+) -> None:
+    """Long-running loop: receive segment-output messages, put SegmentCompletion, delete on success."""
+    logger.info("segment-output loop started")
+    while True:
+        messages = receiver.receive(max_messages=1)
+        if messages:
+            logger.debug("segment-output: received %s message(s)", len(messages))
+        for msg in messages:
+            try:
+                ok = process_one_segment_output_message(
+                    msg.body,
+                    segment_store,
+                    output_bucket,
+                )
+                if ok:
+                    receiver.delete(msg.receipt_handle)
+                else:
+                    # Invalid or non-segment key; delete to avoid reprocessing
+                    receiver.delete(msg.receipt_handle)
+            except Exception as e:
+                logger.exception("segment-output: failed to process message: %s", e)
         if not messages:
             time.sleep(poll_interval_sec)

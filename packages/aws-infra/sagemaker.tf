@@ -81,7 +81,8 @@ resource "aws_sagemaker_model" "stereocrafter" {
   tags = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })
 }
 
-# --- Endpoint configuration and endpoint ---
+# --- Endpoint configuration and endpoint (async inference for long-running segments) ---
+# Real-time endpoints have a 60s invocation timeout; async allows up to 1 hour.
 resource "aws_sagemaker_endpoint_configuration" "stereocrafter" {
   count = var.inference_backend == "sagemaker" ? 1 : 0
 
@@ -93,6 +94,13 @@ resource "aws_sagemaker_endpoint_configuration" "stereocrafter" {
     instance_type           = var.sagemaker_instance_type
     initial_instance_count  = var.sagemaker_instance_count
     initial_variant_weight  = 1
+  }
+
+  async_inference_config {
+    output_config {
+      s3_output_path  = "s3://${aws_s3_bucket.output.id}/sagemaker-async-responses/"
+      s3_failure_path  = "s3://${aws_s3_bucket.output.id}/sagemaker-async-failures/"
+    }
   }
 
   tags = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })

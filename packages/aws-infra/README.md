@@ -33,7 +33,7 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 ### S3
 
 - **Input bucket** (`stereo-spot-input-<account_id>`): User uploads to `input/{job_id}/source.mp4`; media-worker writes segments to `segments/{job_id}/...`. No lifecycle rule on this bucket.
-- **Output bucket** (`stereo-spot-output-<account_id>`): Video-worker writes `jobs/{job_id}/segments/{segment_index}.mp4`; media-worker writes `jobs/{job_id}/final.mp4`. **Lifecycle rule**: objects under prefix `jobs/` that are **tagged** with `stereo-spot-lifecycle = expire-segments` expire after **1 day**. The video-worker must tag segment outputs with this tag; `final.mp4` is not tagged and is retained.
+- **Output bucket** (`stereo-spot-output-<account_id>`): The inference side (SageMaker or HTTP server) writes segment outputs to `jobs/{job_id}/segments/{segment_index}.mp4`; S3 notifies the segment-output queue and the video-worker writes SegmentCompletion. Media-worker writes `jobs/{job_id}/final.mp4`. **Lifecycle rule**: objects under prefix `jobs/` that are **tagged** with `stereo-spot-lifecycle = expire-segments` expire after **1 day**. Segment outputs should be tagged by the inference container; `final.mp4` is not tagged and is retained.
 
 ### S3 event notifications (input bucket → SQS)
 
@@ -47,13 +47,23 @@ Two event flows are configured on the **input bucket** (S3 → SQS direct, no La
 
 Queue policies allow the input bucket to send messages to the chunking and video-worker queues. Workers consume raw S3 events and use **SQS long polling** (default 20s wait) for responsive pickup; optional env `SQS_LONG_POLL_WAIT_SECONDS` (0–20) can be set in the task definition if needed.
 
+### S3 event notifications (output bucket → SQS)
+
+One event flow is configured on the **output bucket**:
+
+- **Segment output → segment-output queue**  
+  Prefix `jobs/`, suffix `.mp4` → **segment-output queue**. When the inference side (SageMaker or HTTP server) writes a segment to `jobs/{job_id}/segments/{segment_index}.mp4`, S3 sends the event to the segment-output queue; the video-worker (segment-output consumer) writes the SegmentCompletion record to DynamoDB. Keys like `jobs/{job_id}/final.mp4` are ignored by the consumer (parser returns None).
+
 ### SQS
 
 - **Chunking queue** + **chunking DLQ** (redrive after `dlq_max_receive_count`).
 - **Video-worker queue** + **video-worker DLQ**.
+- **Segment-output queue** + **segment-output DLQ** (output bucket S3 events; video-worker consumes and writes SegmentCompletion).
 - **Reassembly queue** + **reassembly DLQ**.
 
-Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
+Visibility timeouts: chunking 15 min, video-worker 10 min (worker only invokes async and polls for response), segment-output 2 min, reassembly 10 min.
+
+The video-worker task receives **SEGMENT_OUTPUT_QUEUE_URL** (Terraform output `segment_output_queue_url`) and consumes both the video-worker queue and the segment-output queue in two threads.
 
 ### DynamoDB
 
@@ -63,7 +73,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 
 ### CloudWatch
 
-- **DLQ alarms**: One alarm per DLQ (`ApproximateNumberOfMessagesVisible > 0`, 1 evaluation period). Alarms are named so the queue is identifiable (chunking-dlq, video-worker-dlq, reassembly-dlq). When any message is in a DLQ, the alarm fires for failed-message visibility. Optional: add an SNS topic for notifications (follow-up).
+- **DLQ alarms**: One alarm per DLQ (`ApproximateNumberOfMessagesVisible > 0`, 1 evaluation period). Alarms are named so the queue is identifiable (chunking-dlq, video-worker-dlq, segment-output-dlq, reassembly-dlq). When any message is in a DLQ, the alarm fires for failed-message visibility. Optional: add an SNS topic for notifications (follow-up).
 
 ## Access patterns
 
@@ -78,7 +88,7 @@ Visibility timeouts: chunking 15 min, video-worker 20 min, reassembly 10 min.
 - **VPC**: Private and public subnets; Fargate tasks run in private subnets, ALB in public subnets.
 - **ECS cluster**: Single cluster (`stereo-spot`) with Fargate and EC2 capacity.
 - **ECR**: One repository per image: `stereo-spot-web-ui`, `stereo-spot-media-worker`, `stereo-spot-video-worker`, `stereo-spot-stereocrafter-sagemaker`.
-- **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, and `SAGEMAKER_REGION` set by Terraform.
+- **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_REGION`, `VIDEO_WORKER_QUEUE_URL`, and **`SEGMENT_OUTPUT_QUEUE_URL`** set by Terraform (consumes both queues in two threads).
 - **Task roles**: One IAM role per workload. Video-worker role includes **sagemaker:InvokeEndpoint** on the StereoCrafter endpoint. A shared **execution role** is used for image pull and CloudWatch Logs.
 - **Services**: **web-ui** (Fargate, 1 task, ALB); **media-worker** (Fargate, scale on chunking queue); **video-worker** (Fargate, scale on video-worker queue).
 - **CodeBuild**: Project `stereo-spot-stereocrafter-build` clones the public repo, builds the stereocrafter-sagemaker Docker image, and pushes to ECR. Trigger via `nx run stereocrafter-sagemaker:sagemaker-build`.

@@ -11,6 +11,7 @@ from .interfaces import (
 from .keys import (
     build_segment_key,
     parse_input_key,
+    parse_output_segment_key,
     parse_segment_key,
 )
 from .models import (
@@ -38,6 +39,7 @@ __all__ = [
     "SegmentCompletionStore",
     "build_segment_key",
     "parse_input_key",
+    "parse_output_segment_key",
     "parse_segment_key",
     "ChunkingPayload",
     "CreateJobRequest",
