@@ -23,9 +23,9 @@ Or run the CLI directly (e.g. after `pip install -e packages/analytics`):
 python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env [--output path] [--period-hours 24]
 ```
 
-The script loads env from `--env-file`, reads `METRICS_ADAPTER` (aws | gcp), and calls the corresponding adapter’s `get_conversion_metrics`. Output is written to `docs/analytics/latest.json` by default.
+The script loads env from `--env-file`, reads `METRICS_ADAPTER` (aws | gcp), and calls the corresponding adapter’s `get_conversion_metrics`. Output is written to `packages/analytics/latest.json` by default.
 
-**History table:** Maintain `packages/analytics/analytics_history.md` (past runs by cloud, backend, instance type, etc.). Use **docs/prompts/analyze_analytics.md** with an LLM to compare latest output with history and suggest infra changes.
+**History table:** Maintain `packages/analytics/analytics_history.md` (past runs by cloud, backend, instance type, etc.). Use **analyze_analytics.md** (in this package) with an LLM to compare latest output with history and suggest infra changes.
 
 ## Dependencies
 

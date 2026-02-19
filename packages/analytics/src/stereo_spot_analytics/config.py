@@ -45,7 +45,7 @@ class AnalyticsGatherSettings(BaseSettings):
         description="Path to .env to load (ANALYTICS_ENV_FILE or --env-file)",
     )
     output: Path = Field(
-        default=Path("docs/analytics/latest.json"),
+        default=Path("packages/analytics/latest.json"),
         description="Output JSON path (ANALYTICS_OUTPUT)",
     )
     period_hours: float = Field(

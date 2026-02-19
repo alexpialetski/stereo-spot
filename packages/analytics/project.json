@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "packages/analytics",
-  "implicitDependencies": ["shared-types", "aws-adapters"],
+  "implicitDependencies": ["shared-types", "aws-adapters", "aws-infra"],
   "targets": {
     "gather": {
       "executor": "nx:run-commands",
@@ -24,7 +24,7 @@
           "env": { "METRICS_ADAPTER": "gcp" }
         }
       },
-      "dependsOn": ["shared-types:build", "aws-adapters:build"],
+      "dependsOn": ["^terraform-output"],
       "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     },
     "lint": {

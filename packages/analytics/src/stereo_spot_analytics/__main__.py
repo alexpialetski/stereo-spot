@@ -72,7 +72,7 @@ def main() -> int:
         "--output",
         type=Path,
         default=None,
-        help="Output JSON path (default: docs/analytics/latest.json under cwd)",
+        help="Output JSON path (default: packages/analytics/latest.json under cwd)",
     )
     parser.add_argument(
         "--period-hours",
