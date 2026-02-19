@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from stereo_spot_shared import AnalyticsSnapshot
 
-# Must match stereocrafter-sagemaker serve._segment_size_bucket buckets
+# Must match stereo-inference metrics_aws segment size buckets
 SEGMENT_SIZE_BUCKETS = ["0-5", "5-20", "20-50", "50+"]
 
 
@@ -25,7 +25,8 @@ def _to_json_safe(obj: object) -> object:
 
 
 def _weighted_avg_from_datapoints(datapoints: list[dict]) -> float | None:
-    """Compute weighted average from get_metric_statistics Datapoints (Average * SampleCount / sum(SampleCount)). Returns None if no data."""
+    """Weighted avg from get_metric_statistics Datapoints (Average*SampleCount/sum(SampleCount)).
+    Returns None if no data."""
     total_weight = 0.0
     weighted_sum = 0.0
     for dp in datapoints:
@@ -93,7 +94,8 @@ def get_conversion_metrics(
             except Exception as e:
                 metrics[metric_name] = {"error": str(e)}
 
-    # Legacy: SegmentConversionDurationSeconds with Cloud only (fallback when endpoint has no SegmentSizeBucket)
+    # Legacy: SegmentConversionDurationSeconds with Cloud only
+    # (fallback when endpoint has no SegmentSizeBucket)
     try:
         r = cw.get_metric_statistics(
             Namespace="StereoSpot/Conversion",
@@ -131,8 +133,9 @@ def get_conversion_metrics(
                     Statistics=["Average", "SampleCount", "Maximum", "Minimum"],
                 )
                 out_key[bucket] = _to_json_safe(r)
-                if metric_name == "ConversionSecondsPerMb" and isinstance(r.get("Datapoints"), list):
-                    all_conversion_datapoints.extend(r["Datapoints"])
+                dps = r.get("Datapoints")
+                if metric_name == "ConversionSecondsPerMb" and isinstance(dps, list):
+                    all_conversion_datapoints.extend(dps)
             except Exception as e:
                 out_key[bucket] = {"error": str(e)}
 
