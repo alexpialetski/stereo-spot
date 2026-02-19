@@ -118,7 +118,7 @@ variable "eta_seconds_per_mb_by_instance_type" {
   description = "Conversion time per MB of source video by SageMaker instance type (for UI ETA). Update from analytics when tuning."
   type        = map(number)
   default = {
-    "ml.g4dn.xlarge" = 5.0
+    "ml.g4dn.xlarge" = 1.6
   }
 }
 
