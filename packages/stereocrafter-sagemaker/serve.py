@@ -43,24 +43,54 @@ def get_cloudwatch_client():
     return boto3.client("cloudwatch", region_name=region) if region else boto3.client("cloudwatch")
 
 
-def put_segment_conversion_duration_metric(duration_seconds: float) -> None:
-    """Emit CloudWatch custom metric for segment conversion duration (StereoSpot/Conversion)."""
+def _segment_size_bucket(size_mb: float) -> str:
+    """Map segment size (MB) to bucket label for CloudWatch dimension. Must match aws-adapters SEGMENT_SIZE_BUCKETS."""
+    if size_mb <= 0:
+        return "0-5"
+    if size_mb < 5:
+        return "0-5"
+    if size_mb < 20:
+        return "5-20"
+    if size_mb < 50:
+        return "20-50"
+    return "50+"
+
+
+def put_segment_conversion_metrics(duration_seconds: float, size_bytes: int) -> None:
+    """Emit CloudWatch metrics for segment conversion (StereoSpot/Conversion): duration and seconds-per-MB, with Cloud + SegmentSizeBucket dimensions."""
     try:
         namespace = os.environ.get("METRICS_NAMESPACE", "StereoSpot/Conversion")
         cloud_name = os.environ.get("ETA_CLOUD_NAME", "aws")
+        size_mb = size_bytes / 1e6
+        bucket = _segment_size_bucket(size_mb)
+        dimensions = [
+            {"Name": "Cloud", "Value": cloud_name},
+            {"Name": "SegmentSizeBucket", "Value": bucket},
+        ]
+        metric_data = [
+            {
+                "MetricName": "SegmentConversionDurationSeconds",
+                "Value": duration_seconds,
+                "Unit": "Seconds",
+                "Dimensions": dimensions,
+            },
+        ]
+        if size_mb > 0:
+            conversion_seconds_per_mb = duration_seconds / size_mb
+            metric_data.append(
+                {
+                    "MetricName": "ConversionSecondsPerMb",
+                    "Value": conversion_seconds_per_mb,
+                    "Unit": "None",
+                    "Dimensions": dimensions,
+                }
+            )
         get_cloudwatch_client().put_metric_data(
             Namespace=namespace,
-            MetricData=[
-                {
-                    "MetricName": "SegmentConversionDurationSeconds",
-                    "Value": duration_seconds,
-                    "Unit": "Seconds",
-                    "Dimensions": [{"Name": "Cloud", "Value": cloud_name}],
-                }
-            ],
+            MetricData=metric_data,
         )
     except Exception as e:
-        logger.warning("Failed to put CloudWatch metric: %s", e)
+        logger.warning("Failed to put CloudWatch metrics: %s", e)
 
 
 def download_from_s3(s3_uri: str, path: str) -> None:
@@ -196,6 +226,7 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
         output_path = tmp_out.name
     try:
         download_from_s3(s3_input_uri, input_path)
+        size_bytes = os.path.getsize(input_path)
         run_iw3_pipeline(
             input_path,
             output_path,
@@ -211,7 +242,7 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
             segment_index or "?",
             duration_seconds,
         )
-        put_segment_conversion_duration_metric(duration_seconds)
+        put_segment_conversion_metrics(duration_seconds, size_bytes)
         return json.dumps({"status": "ok"}), 200
     except Exception as e:
         logger.exception("job_id=%s segment_index=%s invocations failed: %s", job_id or "?", segment_index or "?", e)
