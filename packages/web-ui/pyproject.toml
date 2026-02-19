@@ -12,6 +12,7 @@ dependencies = [
     "stereo-spot-shared",
     "stereo-spot-aws-adapters",
     "fastapi>=0.100",
+    "pydantic-settings>=2.0",
     "python-dotenv>=1.0",
     "jinja2>=3.1",
     "python-multipart>=0.0.6",

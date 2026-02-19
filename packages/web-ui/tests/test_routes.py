@@ -1,5 +1,7 @@
 """Unit tests for web-ui routes: create job, list, play URL."""
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 from stereo_spot_shared import Job, JobStatus, StereoMode
@@ -152,6 +154,28 @@ def test_job_detail_completed_shows_video_and_download(client: TestClient) -> No
     assert response.status_code == 200
     assert '<video' in response.text
     assert "Download" in response.text
+
+
+def test_job_detail_passes_eta_when_configured(client: TestClient) -> None:
+    """Job detail includes ETA data attributes and message when ETA_SECONDS_PER_MB set."""
+    store = app.state.job_store
+    job_id = "eta-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CREATED,
+            created_at=100,
+        )
+    )
+    with patch.dict("os.environ", {"ETA_SECONDS_PER_MB": "5", "ETA_CLOUD_NAME": "aws"}):
+        response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert "data-eta-seconds-per-mb" in response.text
+    assert "data-eta-cloud" in response.text
+    assert "eta-message" in response.text
+    assert "5" in response.text
+    assert "aws" in response.text
 
 
 def test_job_progress_events_stream(client: TestClient) -> None:

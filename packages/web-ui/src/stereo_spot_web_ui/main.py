@@ -4,12 +4,10 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import time
 import uuid
 from pathlib import Path
 
-import dotenv
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +21,7 @@ from stereo_spot_shared import (
     StereoMode,
 )
 
+from .config import bootstrap_env, get_settings
 from .deps import (
     get_input_bucket,
     get_job_store,
@@ -31,11 +30,8 @@ from .deps import (
     get_segment_completion_store,
 )
 
-# When STEREOSPOT_ENV_FILE is set (e.g. by nx run web-ui:serve), load env from that path
-# so the app has JOBS_TABLE_NAME etc. without relying on shell sourcing. Unset in ECS.
-_env_file = os.environ.get("STEREOSPOT_ENV_FILE")
-if _env_file:
-    dotenv.load_dotenv(Path(_env_file).resolve())
+# Load .env from STEREOSPOT_ENV_FILE if set (e.g. by nx run web-ui:serve). Unset in ECS.
+bootstrap_env()
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +233,7 @@ async def job_detail(
             "download_url": download_url,
             "progress_percent": progress_percent,
             "stage_label": stage_label,
+            "settings": get_settings(),
         },
     )
 

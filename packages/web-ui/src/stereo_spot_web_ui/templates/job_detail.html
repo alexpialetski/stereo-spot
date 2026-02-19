@@ -7,11 +7,14 @@
 {% if upload_url %}
 <article>
   <h2>Upload your video</h2>
-  <div id="upload-area" data-upload-url="{{ upload_url }}">
+  <div id="upload-area" data-upload-url="{{ upload_url }}"{% if settings.show_eta %} data-eta-seconds-per-mb="{{ settings.eta_seconds_per_mb }}" data-eta-cloud="{{ settings.eta_cloud_name }}"{% endif %}>
     <label for="source-file">Choose an MP4 file:</label>
     <input type="file" id="source-file" name="source" accept=".mp4,video/mp4">
     <button type="button" id="upload-btn" disabled>Upload file</button>
     <p id="upload-status" aria-live="polite"></p>
+    {% if settings.show_eta %}
+    <p id="eta-message" aria-live="polite" style="display: none;"></p>
+    {% endif %}
   </div>
   <p>After uploading, the chunking worker will process the file automatically. Progress will update below.</p>
 </article>
@@ -45,6 +48,22 @@
   fileInput.addEventListener('change', function () {
     uploadBtn.disabled = !fileInput.files.length;
     statusEl.textContent = '';
+    var etaEl = document.getElementById('eta-message');
+    if (etaEl) {
+      var etaPerMb = parseFloat(area.getAttribute('data-eta-seconds-per-mb') || '0');
+      var etaCloud = area.getAttribute('data-eta-cloud') || '';
+      var file = fileInput.files[0];
+      if (file && etaPerMb > 0) {
+        var estimatedSeconds = (file.size / 1e6) * etaPerMb;
+        var minutes = Math.round(estimatedSeconds / 60);
+        var label = etaCloud ? 'Estimated time (' + etaCloud + '): ' : 'Estimated conversion time: ';
+        etaEl.textContent = minutes < 1 ? label + '~1 min' : label + '~' + minutes + ' min';
+        etaEl.style.display = 'block';
+      } else {
+        etaEl.textContent = '';
+        etaEl.style.display = 'none';
+      }
+    }
   });
 
   uploadBtn.addEventListener('click', function () {
