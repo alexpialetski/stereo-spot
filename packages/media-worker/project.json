@@ -30,6 +30,7 @@
         "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && pytest -v",
         "cwd": "{projectRoot}"
       },
+      "dependsOn": ["^build"],
       "configurations": {}
     },
     "lint": {

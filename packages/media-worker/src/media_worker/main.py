@@ -4,7 +4,6 @@ and reassembly loops in two threads (one process, both queues).
 """
 
 import logging
-import os
 import threading
 
 from stereo_spot_aws_adapters.env_config import (
@@ -19,6 +18,7 @@ from stereo_spot_aws_adapters.env_config import (
 )
 
 from .chunking import run_chunking_loop
+from .config import get_settings
 from .reassembly import run_reassembly_loop
 
 logging.basicConfig(
@@ -26,8 +26,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
-
-SEGMENT_DURATION_SEC = int(os.environ.get("CHUNK_SEGMENT_DURATION_SEC", "300"))
 
 
 def main() -> None:
@@ -42,13 +40,15 @@ def main() -> None:
     chunking_receiver = chunking_queue_receiver_from_env()
     reassembly_receiver = reassembly_queue_receiver_from_env()
 
+    settings = get_settings()
+
     def chunking_thread() -> None:
         run_chunking_loop(
             chunking_receiver,
             job_store,
             storage,
             input_bucket,
-            segment_duration_sec=SEGMENT_DURATION_SEC,
+            segment_duration_sec=settings.chunk_segment_duration_sec,
         )
 
     def reassembly_thread() -> None:
