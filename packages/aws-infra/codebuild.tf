@@ -1,4 +1,4 @@
-# CodeBuild: Build and push stereocrafter-sagemaker Docker image to ECR.
+# CodeBuild: Build and push stereo-inference Docker image to ECR.
 # Source: clone from public repo (no CodeStar connection). Trigger manually via deploy target.
 
 # --- IAM: CodeBuild service role ---
@@ -13,15 +13,15 @@ data "aws_iam_policy_document" "codebuild_assume" {
   }
 }
 
-resource "aws_iam_role" "codebuild_stereocrafter" {
-  name               = "${local.name}-codebuild-stereocrafter"
+resource "aws_iam_role" "codebuild_inference" {
+  name               = "${local.name}-codebuild-inference"
   assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
-  tags               = merge(local.common_tags, { Name = "${local.name}-codebuild-stereocrafter" })
+  tags               = merge(local.common_tags, { Name = "${local.name}-codebuild-inference" })
 }
 
-resource "aws_iam_role_policy" "codebuild_stereocrafter" {
-  name = "codebuild-stereocrafter"
-  role = aws_iam_role.codebuild_stereocrafter.id
+resource "aws_iam_role_policy" "codebuild_inference" {
+  name = "codebuild-inference"
+  role = aws_iam_role.codebuild_inference.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -46,17 +46,17 @@ resource "aws_iam_role_policy" "codebuild_stereocrafter" {
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload"
         ]
-        Resource = aws_ecr_repository.stereocrafter_sagemaker.arn
+        Resource = aws_ecr_repository.inference.arn
       }
     ]
   })
 }
 
 # --- CodeBuild project ---
-resource "aws_codebuild_project" "stereocrafter" {
-  name          = "${local.name}-stereocrafter-build"
-  description   = "Build and push stereocrafter-sagemaker Docker image to ECR"
-  service_role  = aws_iam_role.codebuild_stereocrafter.arn
+resource "aws_codebuild_project" "inference" {
+  name          = "${local.name}-inference-build"
+  description   = "Build and push stereo-inference Docker image to ECR"
+  service_role  = aws_iam_role.codebuild_inference.arn
   build_timeout = 60 # minutes for large Docker build
 
   source {
@@ -65,8 +65,8 @@ resource "aws_codebuild_project" "stereocrafter" {
       version: 0.2
       env:
         variables:
-          ECR_URI: "${aws_ecr_repository.stereocrafter_sagemaker.repository_url}:${var.ecs_image_tag}"
-          REPO_URL: "${var.codebuild_stereocrafter_repo_url}"
+          ECR_URI: "${aws_ecr_repository.inference.repository_url}:${var.ecs_image_tag}"
+          REPO_URL: "${var.codebuild_inference_repo_url}"
       phases:
         build:
           commands:
@@ -77,7 +77,7 @@ resource "aws_codebuild_project" "stereocrafter" {
             # - echo "Pulling previous image for cache (ignore failure on first build)..."
             # - docker pull $ECR_URI || true
             - echo "Building Docker image..."
-            - docker build --cache-from $ECR_URI -f packages/stereocrafter-sagemaker/Dockerfile -t $ECR_URI .
+            - docker build --cache-from $ECR_URI -f packages/stereo-inference/Dockerfile -t $ECR_URI .
             - echo "Pushing to ECR..."
             - docker push $ECR_URI
       BUILDSPEC
@@ -97,10 +97,10 @@ resource "aws_codebuild_project" "stereocrafter" {
 
   logs_config {
     cloudwatch_logs {
-      group_name  = "/aws/codebuild/${local.name}-stereocrafter-build"
+      group_name  = "/aws/codebuild/${local.name}-inference-build"
       stream_name = "build"
     }
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-stereocrafter-build" })
+  tags = merge(local.common_tags, { Name = "${local.name}-inference-build" })
 }

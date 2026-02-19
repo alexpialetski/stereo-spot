@@ -85,20 +85,20 @@ output "ecr_video_worker_url" {
   value       = aws_ecr_repository.video_worker.repository_url
 }
 
-output "ecr_stereocrafter_sagemaker_url" {
-  description = "ECR repository URL for SageMaker inference (StereoCrafter) image"
-  value       = aws_ecr_repository.stereocrafter_sagemaker.repository_url
+output "ecr_inference_url" {
+  description = "ECR repository URL for stereo-inference image"
+  value       = aws_ecr_repository.inference.repository_url
 }
 
 # --- SageMaker (only when inference_backend=sagemaker) ---
 
 output "sagemaker_endpoint_name" {
   description = "SageMaker endpoint name (for video-worker SAGEMAKER_ENDPOINT_NAME)"
-  value       = var.inference_backend == "sagemaker" ? aws_sagemaker_endpoint.stereocrafter[0].name : null
+  value       = var.inference_backend == "sagemaker" ? aws_sagemaker_endpoint.inference[0].name : null
 }
 
 output "sagemaker_endpoint_role_arn" {
-  description = "IAM role ARN for SageMaker endpoint (for stereocrafter-sagemaker:sagemaker-deploy)"
+  description = "IAM role ARN for SageMaker endpoint (for stereo-inference:sagemaker-deploy)"
   value       = var.inference_backend == "sagemaker" ? aws_iam_role.sagemaker_endpoint[0].arn : null
 }
 
@@ -127,6 +127,6 @@ output "hf_token_secret_arn" {
 # --- CodeBuild ---
 
 output "codebuild_project_name" {
-  description = "Name of the CodeBuild project for stereocrafter-sagemaker (for nx run stereocrafter-sagemaker:sagemaker-build)"
-  value       = aws_codebuild_project.stereocrafter.name
+  description = "Name of the CodeBuild project for stereo-inference (for nx run stereo-inference:sagemaker-build)"
+  value       = aws_codebuild_project.inference.name
 }

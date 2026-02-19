@@ -159,7 +159,7 @@ resource "aws_iam_role_policy" "video_worker_task" {
       var.inference_backend == "sagemaker" ? [{
         Effect   = "Allow"
         Action   = ["sagemaker:InvokeEndpoint", "sagemaker:InvokeEndpointAsync"]
-        Resource = [aws_sagemaker_endpoint.stereocrafter[0].arn]
+        Resource = [aws_sagemaker_endpoint.inference[0].arn]
       }] : []
     )
   })
@@ -294,7 +294,7 @@ locals {
   inference_http_url = var.inference_backend == "http" ? var.inference_http_url : ""
   video_worker_inference_env = var.inference_backend == "sagemaker" ? [
     { name = "INFERENCE_BACKEND", value = "sagemaker" },
-    { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.stereocrafter[0].name },
+    { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.inference[0].name },
     { name = "SAGEMAKER_REGION", value = local.region },
     { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.inference_max_in_flight) }
   ] : [

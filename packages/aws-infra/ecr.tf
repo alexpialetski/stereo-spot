@@ -41,9 +41,9 @@ resource "aws_ecr_repository" "video_worker" {
   })
 }
 
-# SageMaker inference container (StereoCrafter). Push image here; SageMaker model references it.
-resource "aws_ecr_repository" "stereocrafter_sagemaker" {
-  name                 = "${local.name}-stereocrafter-sagemaker"
+# Stereo-inference container. Push image here; SageMaker model references it.
+resource "aws_ecr_repository" "inference" {
+  name                 = "${local.name}-inference"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
@@ -52,6 +52,6 @@ resource "aws_ecr_repository" "stereocrafter_sagemaker" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${local.name}-stereocrafter-sagemaker"
+    Name = "${local.name}-inference"
   })
 }

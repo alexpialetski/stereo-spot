@@ -122,10 +122,10 @@ variable "eta_seconds_per_mb_by_instance_type" {
   }
 }
 
-# --- CodeBuild (stereocrafter-sagemaker image) ---
+# --- CodeBuild (stereo-inference image) ---
 
-variable "codebuild_stereocrafter_repo_url" {
-  description = "Git repository URL to clone for stereocrafter-sagemaker build (e.g. https://github.com/user/stereo-spot.git)"
+variable "codebuild_inference_repo_url" {
+  description = "Git repository URL to clone for stereo-inference build (e.g. https://github.com/user/stereo-spot.git)"
   type        = string
   default     = "https://github.com/alexpialetski/stereo-spot.git"
 }

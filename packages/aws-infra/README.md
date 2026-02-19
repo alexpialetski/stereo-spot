@@ -1,6 +1,6 @@
 # Terraform Module: aws-infra
 
-This module provisions the **data plane** and **compute plane** for stereo-spot: S3 buckets, SQS queues (with DLQs), DynamoDB tables, CloudWatch alarms, **S3 event notifications** (S3 → SQS), **ECS cluster**, **ECR** repositories, **task definitions** and **ECS services** (Fargate for web-ui, media-worker, and video-worker), **CodeBuild** (stereocrafter-sagemaker image build), **SageMaker** (model, endpoint config, endpoint for StereoCrafter), **Secrets Manager** (Hugging Face token for SageMaker), **ALB** for web-ui, and **IAM task roles**. It uses the AWS S3 backend from the `aws-infra-setup` project.
+This module provisions the **data plane** and **compute plane** for stereo-spot: S3 buckets, SQS queues (with DLQs), DynamoDB tables, CloudWatch alarms, **S3 event notifications** (S3 → SQS), **ECS cluster**, **ECR** repositories, **task definitions** and **ECS services** (Fargate for web-ui, media-worker, and video-worker), **CodeBuild** (stereo-inference image build), **SageMaker** (model, endpoint config, endpoint for stereo-inference), **Secrets Manager** (Hugging Face token for SageMaker), **ALB** for web-ui, and **IAM task roles**. It uses the AWS S3 backend from the `aws-infra-setup` project.
 
 ## Backend Configuration
 
@@ -26,7 +26,7 @@ This module uses the `backend.config` file from the `aws-infra-setup` project. R
 | `inference_http_url` | When `inference_backend=http`, URL of your inference server (e.g. `http://10.0.1.5:8080`). You run the inference service yourself (SageMaker, your own EC2, etc.). | (empty) |
 | `sagemaker_instance_type` | SageMaker endpoint instance type (e.g. ml.g4dn.xlarge) | `ml.g4dn.xlarge` |
 | `sagemaker_instance_count` | Number of instances for the SageMaker endpoint | `1` |
-| `codebuild_stereocrafter_repo_url` | Git repo URL for CodeBuild to clone (stereocrafter-sagemaker) | `https://github.com/alexpialetski/stereo-spot.git` |
+| `codebuild_inference_repo_url` | Git repo URL for CodeBuild to clone (stereo-inference) | `https://github.com/alexpialetski/stereo-spot.git` |
 
 ## Resources
 
@@ -87,12 +87,12 @@ The video-worker task receives **SEGMENT_OUTPUT_QUEUE_URL** (Terraform output `s
 
 - **VPC**: Private and public subnets; Fargate tasks run in private subnets, ALB in public subnets.
 - **ECS cluster**: Single cluster (`stereo-spot`) with Fargate and EC2 capacity.
-- **ECR**: One repository per image: `stereo-spot-web-ui`, `stereo-spot-media-worker`, `stereo-spot-video-worker`, `stereo-spot-stereocrafter-sagemaker`.
+- **ECR**: One repository per image: `stereo-spot-web-ui`, `stereo-spot-media-worker`, `stereo-spot-video-worker`, `stereo-spot-inference`.
 - **Task definitions**: `web-ui`, `media-worker`, `video-worker`. Each has container definition with image (ECR URL + `ecs_image_tag`), environment variables from Terraform, and IAM **task role**. Web-ui exposes port 8000. **Video-worker** runs on Fargate (no GPU); it has `INFERENCE_BACKEND=sagemaker`, `SAGEMAKER_ENDPOINT_NAME`, `SAGEMAKER_REGION`, `VIDEO_WORKER_QUEUE_URL`, **`SEGMENT_OUTPUT_QUEUE_URL`**, **`REASSEMBLY_TRIGGERED_TABLE_NAME`**, and **`REASSEMBLY_QUEUE_URL`** set by Terraform (consumes both queues in two threads; performs reassembly trigger on each SegmentCompletion put). Video-worker task role includes DynamoDB PutItem on ReassemblyTriggered and SQS SendMessage on the reassembly queue.
-- **Task roles**: One IAM role per workload. Video-worker role includes **sagemaker:InvokeEndpoint** on the StereoCrafter endpoint. A shared **execution role** is used for image pull and CloudWatch Logs.
+- **Task roles**: One IAM role per workload. Video-worker role includes **sagemaker:InvokeEndpoint** on the stereo-inference endpoint. A shared **execution role** is used for image pull and CloudWatch Logs.
 - **Services**: **web-ui** (Fargate, 1 task, ALB); **media-worker** (Fargate, scale on chunking queue); **video-worker** (Fargate, scale on video-worker queue).
-- **CodeBuild**: Project `stereo-spot-stereocrafter-build` clones the public repo, builds the stereocrafter-sagemaker Docker image, and pushes to ECR. Trigger via `nx run stereocrafter-sagemaker:sagemaker-build`.
-- **SageMaker**: Model (custom container from ECR stereocrafter-sagemaker image), endpoint configuration (GPU instance type), endpoint. The container receives `HF_TOKEN_ARN` (Secrets Manager) and downloads weights from Hugging Face at startup.
+- **CodeBuild**: Project `stereo-spot-inference-build` clones the public repo, builds the stereo-inference Docker image, and pushes to ECR. Trigger via `nx run stereo-inference:sagemaker-build`.
+- **SageMaker**: Model (custom container from ECR stereo-inference image), endpoint configuration (GPU instance type), endpoint. The container receives `HF_TOKEN_ARN` (Secrets Manager) and downloads weights from Hugging Face at startup.
 - **Secrets Manager**: Secret `stereo-spot/hf-token` for the Hugging Face token; set the value manually after first apply.
 - **ALB**: Application Load Balancer in public subnets; listener HTTP 80 forwards to web-ui target group.
 
@@ -100,7 +100,7 @@ The video-worker task receives **SEGMENT_OUTPUT_QUEUE_URL** (Terraform output `s
 
 1. **Create Hugging Face token secret (one-time)** — Terraform creates a Secrets Manager secret `stereo-spot/hf-token` with a placeholder. Set your real Hugging Face token: `aws secretsmanager put-secret-value --secret-id <secret_id_from_output> --secret-string '{"token":"hf_xxx"}'`. See output `hf_token_secret_arn`.
 2. **Terraform apply** — Provisions data plane (S3, SQS, DynamoDB, Lambda, S3 events), compute (VPC, ECS cluster, task definitions, services, ALB, ECR, task roles), **SageMaker** (model, endpoint config, endpoint), and **Secrets Manager** secret. Video-worker runs on **Fargate** and uses the SageMaker endpoint for inference.
-3. **Build and push images** — Build web-ui, media-worker, video-worker, and push to ECR. For **stereocrafter-sagemaker**: `nx run stereocrafter-sagemaker:sagemaker-build` triggers AWS CodeBuild to build the image and push to ECR; `nx run stereocrafter-sagemaker:sagemaker-deploy` updates the SageMaker endpoint to use it (run only when you want to roll the endpoint). For web-ui, media-worker, video-worker: `nx run-many -t deploy` (requires `nx run aws-infra:ecr-login` first). The SageMaker endpoint will pull the inference image from the `stereocrafter-sagemaker` ECR repo. If the inference image does not exist yet, the endpoint may show Failed until CodeBuild pushes it.
+3. **Build and push images** — Build web-ui, media-worker, video-worker, and push to ECR. For **stereo-inference**: `nx run stereo-inference:sagemaker-build` triggers AWS CodeBuild to build the image and push to ECR; `nx run stereo-inference:sagemaker-deploy` updates the SageMaker endpoint to use it (run only when you want to roll the endpoint). For web-ui, media-worker, video-worker: `nx run-many -t deploy` (requires `nx run aws-infra:ecr-login` first). The SageMaker endpoint will pull the inference image from the `stereo-spot-inference` ECR repo. If the inference image does not exist yet, the endpoint may show Failed until CodeBuild pushes it.
 4. **Deploy ECS** — `nx run aws-infra:ecr-login` (if needed), then `nx run-many -t deploy` to build, push, and force new deployment for web-ui, media-worker, video-worker.
 
 **Verification:** After apply: `aws ecs list-services --cluster <ecs_cluster_name>`, `aws ecs describe-services --cluster <ecs_cluster_name> --services web-ui media-worker video-worker`. Access web-ui via the ALB DNS name (output `web_ui_url` or `web_ui_alb_dns_name`). SageMaker endpoint name is in output `sagemaker_endpoint_name` (video-worker task env is set by Terraform).
@@ -113,7 +113,7 @@ The video-worker task receives **SEGMENT_OUTPUT_QUEUE_URL** (Terraform output `s
 
 ## Outputs
 
-See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_stereocrafter_sagemaker_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`, `sagemaker_endpoint_role_arn`, `sagemaker_instance_type`, `sagemaker_instance_count`), **HTTP inference** when `inference_backend=http` (`inference_http_url`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
+See `outputs.tf`. Outputs expose: data plane (buckets, queue URLs, table names), ECS/ECR (`ecr_web_ui_url`, `ecr_media_worker_url`, `ecr_video_worker_url`, `ecr_inference_url`), **CodeBuild** (`codebuild_project_name`), **SageMaker** (`sagemaker_endpoint_name`, `sagemaker_endpoint_role_arn`, `sagemaker_instance_type`, `sagemaker_instance_count`), **HTTP inference** when `inference_backend=http` (`inference_http_url`), **Secrets Manager** (`hf_token_secret_arn`), and **region** (`region`). Use `nx run aws-infra:terraform-output` to write them to `packages/aws-infra/.env`.
 
 ## Running Terraform
 

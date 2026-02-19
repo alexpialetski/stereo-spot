@@ -1,4 +1,4 @@
-# SageMaker: StereoCrafter inference endpoint. Only when inference_backend=sagemaker.
+# SageMaker: stereo-inference endpoint. Only when inference_backend=sagemaker.
 
 # --- IAM: SageMaker endpoint execution role ---
 data "aws_iam_policy_document" "sagemaker_endpoint_assume" {
@@ -38,7 +38,7 @@ resource "aws_iam_role_policy" "sagemaker_endpoint" {
       {
         Effect   = "Allow"
         Action   = ["ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:BatchCheckLayerAvailability"]
-        Resource = aws_ecr_repository.stereocrafter_sagemaker.arn
+        Resource = aws_ecr_repository.inference.arn
       },
       {
         Effect   = "Allow"
@@ -66,13 +66,13 @@ resource "aws_iam_role_policy" "sagemaker_endpoint" {
 
 # --- SageMaker model (custom container from ECR) ---
 locals {
-  sagemaker_image = "${aws_ecr_repository.stereocrafter_sagemaker.repository_url}:${var.ecs_image_tag}"
+  sagemaker_image = "${aws_ecr_repository.inference.repository_url}:${var.ecs_image_tag}"
 }
 
-resource "aws_sagemaker_model" "stereocrafter" {
+resource "aws_sagemaker_model" "inference" {
   count = var.inference_backend == "sagemaker" ? 1 : 0
 
-  name               = "${local.name}-stereocrafter"
+  name               = "${local.name}-inference"
   execution_role_arn = aws_iam_role.sagemaker_endpoint[0].arn
 
   primary_container {
@@ -83,19 +83,19 @@ resource "aws_sagemaker_model" "stereocrafter" {
     }
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })
+  tags = merge(local.common_tags, { Name = "${local.name}-inference" })
 }
 
 # --- Endpoint configuration and endpoint (async inference for long-running segments) ---
 # Real-time endpoints have a 60s invocation timeout; async allows up to 1 hour.
-resource "aws_sagemaker_endpoint_configuration" "stereocrafter" {
+resource "aws_sagemaker_endpoint_configuration" "inference" {
   count = var.inference_backend == "sagemaker" ? 1 : 0
 
-  name = "${local.name}-stereocrafter"
+  name = "${local.name}-inference"
 
   production_variants {
     variant_name           = "AllTraffic"
-    model_name             = aws_sagemaker_model.stereocrafter[0].name
+    model_name             = aws_sagemaker_model.inference[0].name
     instance_type           = var.sagemaker_instance_type
     initial_instance_count  = var.sagemaker_instance_count
     initial_variant_weight  = 1
@@ -108,22 +108,22 @@ resource "aws_sagemaker_endpoint_configuration" "stereocrafter" {
     }
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })
+  tags = merge(local.common_tags, { Name = "${local.name}-inference" })
 }
 
-resource "aws_sagemaker_endpoint" "stereocrafter" {
+resource "aws_sagemaker_endpoint" "inference" {
   count = var.inference_backend == "sagemaker" ? 1 : 0
 
-  name                 = "${local.name}-stereocrafter"
-  endpoint_config_name  = aws_sagemaker_endpoint_configuration.stereocrafter[0].name
-  tags                  = merge(local.common_tags, { Name = "${local.name}-stereocrafter" })
+  name                 = "${local.name}-inference"
+  endpoint_config_name  = aws_sagemaker_endpoint_configuration.inference[0].name
+  tags                  = merge(local.common_tags, { Name = "${local.name}-inference" })
 }
 
 # --- CloudWatch log group for SageMaker endpoint container logs ---
 resource "aws_cloudwatch_log_group" "sagemaker_endpoint" {
   count = var.inference_backend == "sagemaker" ? 1 : 0
 
-  name              = "/aws/sagemaker/Endpoints/${local.name}-stereocrafter"
+  name              = "/aws/sagemaker/Endpoints/${local.name}-inference"
   retention_in_days = 7
   tags              = merge(local.common_tags, { Name = "${local.name}-sagemaker-endpoint-logs" })
 }
