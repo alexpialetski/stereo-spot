@@ -8,20 +8,22 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e ../shared-types -q && pip install -e . -q && pytest -v",
-        "cwd": "{projectRoot}"
-      },
-      "configurations": {}
+      "command": "pytest -v",
+      "cwd": "{projectRoot}"
     },
-    "smoke-test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pip install -e ../shared-types -q && pip install -e . -q && SMOKE_TEST_ENV_FILE=../aws-infra/terraform-outputs.env python scripts/smoke_test.py",
-        "cwd": "{projectRoot}"
-      },
-      "configurations": {}
+    "configurations": {},
+    "dependsOn": ["stereo-spot:install-deps"]
+  },
+  "smoke-test": {
+    "executor": "nx:run-commands",
+    "options": {
+"command": "SMOKE_TEST_ENV_FILE=../aws-infra/terraform-outputs.env python scripts/smoke_test.py",
+      "cwd": "{projectRoot}"
     },
-    "lint": {
+    "configurations": {},
+    "dependsOn": ["stereo-spot:install-deps"]
+  },
+  "lint": {
       "executor": "nx:run-commands",
       "options": {
         "command": "ruff check src tests",

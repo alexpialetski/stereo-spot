@@ -2,10 +2,21 @@
 
 This document describes how to run unit tests, the data-plane smoke test, and integration tests.
 
+## Python editable deps (install once)
+
+All Python test and run targets that use monorepo packages depend on **`stereo-spot:install-deps`**. That target installs shared-types, aws-adapters, web-ui, media-worker, video-worker, analytics, and integration in editable mode from the workspace root. Nx runs it automatically before any dependent target (e.g. when you run a test), so you do not need to run it manually unless you want to refresh the env (e.g. after pulling or changing dependencies). To run it explicitly:
+
+```bash
+nx run stereo-spot:install-deps
+```
+
+Then run tests or other targets as below.
+
 ## Unit tests
 
-- **shared-types:** `nx run shared-types:test` (pytest)
+- **shared-types:** `nx run shared-types:test` (pytest; no monorepo deps)
 - **aws-adapters:** `nx run aws-adapters:test` (pytest with moto; no real AWS)
+- **stereo-inference:** `nx run stereo-inference:test` (pytest; storage/metrics/serve facades and adapters; no real AWS)
 - **web-ui, media-worker, video-worker:** `nx run <project>:test`
 - Run all tests: `nx run-many -t test`
 
@@ -70,20 +81,3 @@ SMOKE_TEST_ENV_FILE=/path/to/terraform-outputs.env nx run aws-adapters:smoke-tes
 **LocalStack:**
 
 Point the adapters at LocalStack by setting `AWS_ENDPOINT_URL` (e.g. `http://localhost:4566`) and ensure the env file contains LocalStack resource names/URLs. Run the smoke test the same way.
-
-## Troubleshooting
-
-**`nx run-many -t test` fails with `OSError: No such file or directory: .../__editable__.stereo_spot_shared-0.1.0.pth`**
-
-This happens when pip’s editable install metadata for the monorepo packages is broken (e.g. after a cache restore or parallel installs). Fix it by uninstalling the local packages and re-running tests:
-
-```bash
-pip uninstall stereo-spot-shared stereo-spot-aws-adapters -y
-nx run-many -t test
-```
-
-If failures persist when running all tests in parallel, run tests serially so only one `pip install -e` runs at a time:
-
-```bash
-nx run-many -t test --parallel=1
-```

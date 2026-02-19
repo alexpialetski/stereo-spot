@@ -1,0 +1,27 @@
+{
+  "name": "stereo-spot",
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "root": ".",
+  "sourceRoot": ".",
+  "targets": {
+    "install-deps": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install -e packages/shared-types -e packages/aws-adapters -e packages/web-ui -e packages/media-worker -e packages/video-worker -e packages/analytics -e packages/integration -q",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/packages/shared-types/pyproject.toml",
+        "{workspaceRoot}/packages/aws-adapters/pyproject.toml",
+        "{workspaceRoot}/packages/web-ui/pyproject.toml",
+        "{workspaceRoot}/packages/media-worker/pyproject.toml",
+        "{workspaceRoot}/packages/video-worker/pyproject.toml",
+        "{workspaceRoot}/packages/analytics/pyproject.toml",
+        "{workspaceRoot}/packages/integration/pyproject.toml"
+      ]
+    }
+  }
+}

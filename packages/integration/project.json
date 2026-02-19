@@ -14,10 +14,11 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e ../web-ui -q && pip install -e ../media-worker -q && pip install -e ../video-worker -q && pip install -e . -q && pytest -v",
+        "command": "pytest -v",
         "cwd": "{projectRoot}"
       },
-      "configurations": {}
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
     },
     "lint": {
       "executor": "nx:run-commands",

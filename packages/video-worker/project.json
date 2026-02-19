@@ -27,11 +27,11 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e . -q && pytest -v",
+        "command": "pytest -v",
         "cwd": "{projectRoot}"
       },
-      "dependsOn": ["^build"],
-      "configurations": {}
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
     },
     "lint": {
       "executor": "nx:run-commands",

@@ -16,7 +16,7 @@ A script in the repo lists S3 segments for the job, derives `total_segments` usi
 
 **Prerequisites:**
 
-- From repo root: `pip install -e packages/shared-types`
+- From repo root: `nx run stereo-spot:install-deps` (or `pip install -e packages/shared-types` if you only need shared-types)
 - AWS credentials (env or profile) with access to the input bucket and Jobs table
 - `INPUT_BUCKET_NAME` and `JOBS_TABLE_NAME` in the environment, or load `packages/aws-infra/.env` (e.g. from `nx run aws-infra:terraform-output`)
 
@@ -211,7 +211,7 @@ Inference is **backend-switchable** (Terraform `inference_backend`: `sagemaker` 
 
 ### Updating the SageMaker inference image (when `inference_backend=sagemaker`)
 
-The **stereocrafter-sagemaker** image (iw3/nunif: 2D→stereo SBS/anaglyph) is built and pushed by **AWS CodeBuild**. Run `nx run stereocrafter-sagemaker:sagemaker-build` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR. Then run `nx run stereocrafter-sagemaker:sagemaker-deploy` to update the SageMaker endpoint to use the new image.
+The **stereo-inference** image (iw3/nunif: 2D→stereo SBS/anaglyph) is built and pushed by **AWS CodeBuild**. Run `nx run stereo-inference:sagemaker-build` (after committing and pushing your changes); it triggers CodeBuild to clone the repo, build the image, and push to ECR. Then run `nx run stereo-inference:sagemaker-deploy` to update the SageMaker endpoint to use the new image.
 
 After the image is in ECR (or if you build and push locally):
 
@@ -245,7 +245,7 @@ The **current** iw3 inference image bakes pre-trained models into the image and 
    ```bash
    aws secretsmanager put-secret-value --secret-id <hf_token_secret_arn> --secret-string '{"token":"hf_NEW_TOKEN"}'
    ```
-2. **Redeploy the SageMaker endpoint** so new instances pull the updated secret: run `nx run stereocrafter-sagemaker:sagemaker-deploy` (creates new model/endpoint config and updates the endpoint). Existing instances keep the old value until replaced.
+2. **Redeploy the SageMaker endpoint** so new instances pull the updated secret: run `nx run stereo-inference:sagemaker-deploy` (creates new model/endpoint config and updates the endpoint). Existing instances keep the old value until replaced.
 
 ---
 
@@ -284,7 +284,7 @@ All pipeline steps for that job (web create/detail/play, chunking, video-worker,
 
 - **Async vs real-time:** The endpoint uses **asynchronous inference**. The console "Monitoring" / "Analytics" view can show "no data" or a limited set because some widgets are built for real-time invocation metrics. Async endpoints still publish metrics to CloudWatch under the **AWS/SageMaker** namespace.
 - **Delay:** After creating or updating an endpoint, CloudWatch metrics can take **up to 20 minutes** to appear.
-- **Dimensions:** Metrics are scoped by `EndpointName` and `VariantName` (e.g. `AllTraffic`). Ensure the console or CLI is using the correct endpoint name (e.g. `stereo-spot-stereocrafter`).
+- **Dimensions:** Metrics are scoped by `EndpointName` and `VariantName` (e.g. `AllTraffic`). Ensure the console or CLI is using the correct endpoint name (e.g. `stereo-spot-inference`).
 
 ### Where to find CloudWatch metrics for the async endpoint
 
@@ -302,14 +302,14 @@ All pipeline steps for that job (web create/detail/play, chunking, video-worker,
 # List metrics for the endpoint (replace ENDPOINT_NAME and region)
 aws cloudwatch list-metrics \
   --namespace AWS/SageMaker \
-  --dimensions Name=EndpointName,Value=stereo-spot-stereocrafter Name=VariantName,Value=AllTraffic \
+  --dimensions Name=EndpointName,Value=stereo-spot-inference Name=VariantName,Value=AllTraffic \
   --region us-east-1
 
 # Get ModelLatency (e.g. last hour, average per 5 min)
 aws cloudwatch get-metric-statistics \
   --namespace AWS/SageMaker \
   --metric-name ModelLatency \
-  --dimensions Name=EndpointName,Value=stereo-spot-stereocrafter Name=VariantName,Value=AllTraffic \
+  --dimensions Name=EndpointName,Value=stereo-spot-inference Name=VariantName,Value=AllTraffic \
   --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \

@@ -8,23 +8,23 @@
     "gather": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e packages/shared-types -q && pip install -e packages/aws-adapters -q && pip install -e packages/analytics -q && python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env",
+        "command": "python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env",
         "cwd": "{workspaceRoot}"
       },
       "defaultConfiguration": "aws",
       "configurations": {
         "aws": {
-          "command": "pip install -e packages/shared-types -q && pip install -e packages/aws-adapters -q && pip install -e packages/analytics -q && python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env",
+          "command": "python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env",
           "cwd": "{workspaceRoot}",
           "env": { "METRICS_ADAPTER": "aws" }
         },
         "gcp": {
-          "command": "pip install -e packages/shared-types -q && pip install -e packages/aws-adapters -q && pip install -e packages/analytics -q && python -m stereo_spot_analytics gather --env-file packages/gcp-infra/.env",
+          "command": "python -m stereo_spot_analytics gather --env-file packages/gcp-infra/.env",
           "cwd": "{workspaceRoot}",
           "env": { "METRICS_ADAPTER": "gcp" }
         }
       },
-      "dependsOn": ["^terraform-output"],
+      "dependsOn": ["stereo-spot:install-deps", "^terraform-output"],
       "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     },
     "lint": {
