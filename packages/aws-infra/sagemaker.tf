@@ -54,6 +54,11 @@ resource "aws_iam_role_policy" "sagemaker_endpoint" {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "${aws_cloudwatch_log_group.sagemaker_endpoint[0].arn}:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricData"]
+        Resource = "*"
       }
     ]
   })

@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from urllib.parse import urlparse
 
 import boto3
@@ -35,6 +36,31 @@ NUNIF_ROOT = "/opt/nunif"
 
 def get_s3_client():
     return boto3.client("s3")
+
+
+def get_cloudwatch_client():
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    return boto3.client("cloudwatch", region_name=region) if region else boto3.client("cloudwatch")
+
+
+def put_segment_conversion_duration_metric(duration_seconds: float) -> None:
+    """Emit CloudWatch custom metric for segment conversion duration (StereoSpot/Conversion)."""
+    try:
+        namespace = os.environ.get("METRICS_NAMESPACE", "StereoSpot/Conversion")
+        cloud_name = os.environ.get("ETA_CLOUD_NAME", "aws")
+        get_cloudwatch_client().put_metric_data(
+            Namespace=namespace,
+            MetricData=[
+                {
+                    "MetricName": "SegmentConversionDurationSeconds",
+                    "Value": duration_seconds,
+                    "Unit": "Seconds",
+                    "Dimensions": [{"Name": "Cloud", "Value": cloud_name}],
+                }
+            ],
+        )
+    except Exception as e:
+        logger.warning("Failed to put CloudWatch metric: %s", e)
 
 
 def download_from_s3(s3_uri: str, path: str) -> None:
@@ -157,6 +183,7 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
         return json.dumps({"error": "mode must be anaglyph or sbs"}), 400
 
     job_id, segment_index = _job_id_segment_from_output_uri(s3_output_uri)
+    start_wall = time.perf_counter()
     logger.info(
         "job_id=%s segment_index=%s mode=%s invocations start",
         job_id or "?",
@@ -177,7 +204,14 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
             segment_index=segment_index,
         )
         upload_to_s3(output_path, s3_output_uri)
-        logger.info("job_id=%s segment_index=%s invocations complete", job_id or "?", segment_index or "?")
+        duration_seconds = time.perf_counter() - start_wall
+        logger.info(
+            "job_id=%s segment_index=%s invocations complete duration_seconds=%.2f",
+            job_id or "?",
+            segment_index or "?",
+            duration_seconds,
+        )
+        put_segment_conversion_duration_metric(duration_seconds)
         return json.dumps({"status": "ok"}), 200
     except Exception as e:
         logger.exception("job_id=%s segment_index=%s invocations failed: %s", job_id or "?", segment_index or "?", e)
