@@ -1,9 +1,9 @@
 {
-  "name": "stereocrafter-sagemaker",
+  "name": "stereo-inference",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "packages/stereocrafter-sagemaker",
-  "targets": {
+  "sourceRoot": "packages/stereo-inference",
+  "targets":{"test":{"executor":"nx:run-commands","options":{"command":"pip install pytest -q && pytest -v","cwd":"{projectRoot}"},"configurations":{}},"lint":{"executor":"nx:run-commands","options":{"command":"ruff check . tests","cwd":"{projectRoot}"},"configurations":{}},
     "sagemaker-build": {
       "executor": "nx:run-commands",
       "options": {
@@ -17,7 +17,7 @@
     "sagemaker-deploy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash packages/stereocrafter-sagemaker/scripts/deploy-sagemaker.sh packages/aws-infra/.env",
+        "command": "bash packages/stereo-inference/scripts/deploy-sagemaker.sh packages/aws-infra/.env",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},

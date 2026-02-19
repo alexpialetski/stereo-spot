@@ -1,5 +1,5 @@
-# SageMaker inference container for iw3 (nunif): 2D video to stereo SBS/anaglyph.
-# Contract: GET /ping, POST /invocations with JSON {s3_input_uri, s3_output_uri, mode?}.
+# Inference container for iw3 (nunif): 2D video to stereo SBS/anaglyph. Storage/metrics via adapters (AWS/GCP).
+# Contract: GET /ping, POST /invocations with JSON {input_uri|s3_input_uri, output_uri|s3_output_uri, mode?}.
 # See https://github.com/nagadomi/nunif (INSTALL-ubuntu.md, iw3/README.md).
 
 FROM nvcr.io/nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
@@ -30,14 +30,14 @@ RUN pip install --no-cache-dir torch==2.7.1+cu128 torchvision==0.22.1+cu128 \
 RUN pip install --no-cache-dir \
     requests tqdm scipy waitress bottle==0.12.25 diskcache psutil pyyaml platformdirs packaging filelock \
     timm "av==15.0.0" truststore pillow_heif safetensors einops omegaconf addict \
-    boto3 gunicorn
+    boto3 gunicorn google-cloud-storage
 
 # Pre-trained models for iw3 (ZoeDepth, Depth-Anything, etc.). Baked in so no network at startup.
 ENV NUNIF_HOME=/opt/nunif_data
 RUN mkdir -p "$NUNIF_HOME" && python -m iw3.download_models
 
 WORKDIR /opt/ml/code
-COPY packages/stereocrafter-sagemaker/serve.py .
+COPY packages/stereo-inference/*.py .
 
 # Optional: set IW3_LOW_VRAM=1 for smaller GPU instances (e.g. g5.xlarge) to reduce OOM risk (iw3.md)
 ENV SAGEMAKER_BIND_TO_PORT=8080

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Deploy the stereocrafter-sagemaker ECR image to the SageMaker endpoint.
+# Deploy the stereo-inference ECR image to the SageMaker endpoint.
 # Creates a new model and endpoint config, then updates the endpoint so it pulls the latest image.
 # The endpoint is async inference (same as Terraform); the config must include AsyncInferenceConfig
 # or AWS will reject the update (cannot remove AsyncInferenceConfig from an existing endpoint).
 #
 # Usage: deploy-sagemaker.sh <path-to-env-file>
-#   <path-to-env-file>: path to aws-infra .env (from terraform-output). Sourced to get SAGEMAKER_*, ECR_*, REGION, OUTPUT_BUCKET_NAME, HF_TOKEN_SECRET_ARN.
+#   <path-to-env-file>: path to aws-infra .env (from terraform-output). Sourced to get SAGEMAKER_*, ECR_INFERENCE_URL, REGION, OUTPUT_BUCKET_NAME, HF_TOKEN_SECRET_ARN.
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ if [[ -z "$OUTPUT_BUCKET_NAME" ]]; then
   exit 1
 fi
 
-IMAGE_URI="${ECR_STEREOCRAFTER_SAGEMAKER_URL}:latest"
+IMAGE_URI="${ECR_INFERENCE_URL}:latest"
 SUFFIX=$(date +%s)
 MODEL_NAME="${SAGEMAKER_ENDPOINT_NAME}-${SUFFIX}"
 CONFIG_NAME="${SAGEMAKER_ENDPOINT_NAME}-config-${SUFFIX}"
