@@ -278,7 +278,9 @@ locals {
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
-    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name }
+    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
+    { name = "ETA_SECONDS_PER_MB", value = tostring(lookup(var.eta_seconds_per_mb_by_instance_type, var.sagemaker_instance_type, 5)) },
+    { name = "ETA_CLOUD_NAME", value = "aws" }
   ])
   media_worker_env = concat(local.ecs_env_common, [
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
@@ -293,7 +295,8 @@ locals {
   video_worker_inference_env = var.inference_backend == "sagemaker" ? [
     { name = "INFERENCE_BACKEND", value = "sagemaker" },
     { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.stereocrafter[0].name },
-    { name = "SAGEMAKER_REGION", value = local.region }
+    { name = "SAGEMAKER_REGION", value = local.region },
+    { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.inference_max_in_flight) }
   ] : [
     { name = "INFERENCE_BACKEND", value = "http" },
     { name = "INFERENCE_HTTP_URL", value = local.inference_http_url }

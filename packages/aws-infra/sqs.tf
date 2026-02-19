@@ -48,7 +48,7 @@ resource "aws_sqs_queue" "chunking" {
 
 resource "aws_sqs_queue" "video_worker" {
   name                       = "${local.name}-video-worker"
-  visibility_timeout_seconds = 600 # 10 min; worker only invokes async then polls for response, not full inference
+  visibility_timeout_seconds = 2400 # 40 min; keep message hidden while in-flight (2× max segment duration)
   message_retention_seconds  = 1209600
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.video_worker_dlq.arn

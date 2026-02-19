@@ -72,6 +72,12 @@ variable "ecs_video_worker_max_capacity" {
   default     = 8
 }
 
+variable "inference_max_in_flight" {
+  description = "Max concurrent SageMaker async invocations per video-worker task (1–20)."
+  type        = number
+  default     = 5
+}
+
 # --- Inference backend: SageMaker vs HTTP (e.g. EC2 for dev) ---
 
 variable "inference_backend" {
@@ -103,6 +109,17 @@ variable "sagemaker_instance_count" {
   description = "Number of instances for the SageMaker endpoint"
   type        = number
   default     = 1
+}
+
+# --- ETA (web-ui: estimated conversion time from file size, per MB) ---
+# Keyed by SageMaker instance type; lookup in ecs.tf. GCP would use its own infra package.
+
+variable "eta_seconds_per_mb_by_instance_type" {
+  description = "Conversion time per MB of source video by SageMaker instance type (for UI ETA). Update from analytics when tuning."
+  type        = map(number)
+  default = {
+    "ml.g4dn.xlarge" = 5.0
+  }
 }
 
 # --- CodeBuild (stereocrafter-sagemaker image) ---
