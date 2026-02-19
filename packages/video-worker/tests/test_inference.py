@@ -2,8 +2,15 @@
 
 from unittest.mock import MagicMock, patch
 
+from stereo_spot_shared import QueueMessage
+
 from tests.helpers import make_s3_event_body
-from video_worker.inference import process_one_message
+from video_worker.inference import (
+    _invocation_timeout_sec,
+    _max_in_flight,
+    process_one_message,
+    run_loop,
+)
 
 
 def test_process_one_message_mock_pipeline() -> None:
@@ -57,3 +64,77 @@ def test_process_one_message_sagemaker_backend_no_download_upload() -> None:
         region_name=None,
     )
     segment_store.put.assert_not_called()
+
+
+def test_max_in_flight_default_and_clamp() -> None:
+    """_max_in_flight returns env value clamped to 1–20."""
+    with patch.dict("os.environ", {}, clear=False):
+        if "INFERENCE_MAX_IN_FLIGHT" in __import__("os").environ:
+            del __import__("os").environ["INFERENCE_MAX_IN_FLIGHT"]
+        assert _max_in_flight() == 5
+    with patch.dict("os.environ", {"INFERENCE_MAX_IN_FLIGHT": "10"}):
+        assert _max_in_flight() == 10
+    with patch.dict("os.environ", {"INFERENCE_MAX_IN_FLIGHT": "1"}):
+        assert _max_in_flight() == 1
+    with patch.dict("os.environ", {"INFERENCE_MAX_IN_FLIGHT": "25"}):
+        assert _max_in_flight() == 20
+    with patch.dict("os.environ", {"INFERENCE_MAX_IN_FLIGHT": "0"}):
+        assert _max_in_flight() == 1
+    with patch.dict("os.environ", {"INFERENCE_MAX_IN_FLIGHT": "x"}):
+        assert _max_in_flight() == 5
+
+
+def test_invocation_timeout_sec() -> None:
+    """_invocation_timeout_sec reads env or defaults to 1200."""
+    with patch.dict("os.environ", {}, clear=False):
+        try:
+            del __import__("os").environ["SAGEMAKER_INVOKE_TIMEOUT_SECONDS"]
+        except KeyError:
+            pass
+        assert _invocation_timeout_sec() == 1200.0
+    with patch.dict("os.environ", {"SAGEMAKER_INVOKE_TIMEOUT_SECONDS": "600"}):
+        assert _invocation_timeout_sec() == 600.0
+
+
+def test_run_loop_sagemaker_in_flight_deletes_only_on_success() -> None:
+    """In-flight loop: one msg, success on poll -> delete called; exit via sleep raise."""
+    body = make_s3_event_body("input-bucket", "segments/job-xyz/00001_00005_sbs.mp4")
+    msg = QueueMessage(receipt_handle="rh1", body=body)
+    receiver = MagicMock()
+    receiver.receive.side_effect = [[msg], []]  # first call one message, then empty
+    segment_store = MagicMock()
+    s3_mock = MagicMock()
+    sagemaker_mock = MagicMock()
+    sagemaker_mock.invoke_endpoint_async.return_value = {"OutputLocation": "s3://out/k"}
+
+    with patch.dict(
+        "os.environ",
+        {
+            "INFERENCE_BACKEND": "sagemaker",
+            "SAGEMAKER_ENDPOINT_NAME": "ep",
+            "SAGEMAKER_REGION": "us-east-1",
+            "INFERENCE_MAX_IN_FLIGHT": "5",
+        },
+    ):
+        with patch("boto3.client", side_effect=[s3_mock, sagemaker_mock]):
+            with patch(
+                "video_worker.inference.invoke_sagemaker_async",
+                return_value="s3://bucket/response.json",
+            ):
+                with patch(
+                    "video_worker.inference.check_async_response_once",
+                    return_value="success",
+                ):
+                    with patch("video_worker.inference.time.monotonic", return_value=0.0):
+                        with patch("video_worker.inference.time.sleep", side_effect=StopIteration):
+                            try:
+                                run_loop(
+                                    receiver,
+                                    MagicMock(),
+                                    segment_store,
+                                    "output-bucket",
+                                    poll_interval_sec=1.0,
+                                )
+                            except StopIteration:
+                                pass
+    receiver.delete.assert_called_once_with("rh1")

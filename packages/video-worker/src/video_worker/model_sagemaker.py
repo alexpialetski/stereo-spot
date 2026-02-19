@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from urllib.parse import urlparse
+
+from .config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def _job_id_segment_from_output_uri(output_s3_uri: str) -> tuple[str, str]:
     raise ValueError(f"Cannot parse job_id/segment_index from output URI: {output_s3_uri}")
 
 
-def invoke_sagemaker_endpoint(
+def invoke_sagemaker_async(
     segment_s3_uri: str,
     output_s3_uri: str,
     endpoint_name: str,
@@ -48,12 +49,11 @@ def invoke_sagemaker_endpoint(
     mode: str = "anaglyph",
     region_name: str | None = None,
     client: object | None = None,
-) -> None:
+) -> str:
     """
-    Call SageMaker InvokeEndpointAsync: upload request to S3, invoke, poll for response.
+    Upload request to S3 and call InvokeEndpointAsync. Returns the OutputLocation (S3 URI).
 
-    The endpoint reads the segment from segment_s3_uri, runs inference, and writes
-    the result to output_s3_uri. Async allows inference to run up to 1 hour.
+    Does not poll; use poll_async_response() to wait for the result.
 
     Args:
         segment_s3_uri: S3 URI of the input segment.
@@ -63,8 +63,8 @@ def invoke_sagemaker_endpoint(
         region_name: AWS region; if None, uses default.
         client: Optional boto3 sagemaker-runtime client (for testing).
 
-    Raises:
-        Exception: On invoke failure, timeout, or container error.
+    Returns:
+        OutputLocation S3 URI where the async response will appear.
     """
     job_id, segment_index = _job_id_segment_from_output_uri(output_s3_uri)
     output_bucket, _ = _parse_s3_uri(output_s3_uri)
@@ -90,7 +90,6 @@ def invoke_sagemaker_endpoint(
         sagemaker_runtime = boto3.client("sagemaker-runtime", **kwargs)
         s3_client = boto3.client("s3", **kwargs)
 
-    # Upload request payload to S3 (required for InvokeEndpointAsync input)
     if s3_client is not None:
         s3_client.put_object(
             Bucket=output_bucket,
@@ -103,39 +102,53 @@ def invoke_sagemaker_endpoint(
             job_id, segment_index, request_s3_uri,
         )
 
-    invocation_timeout = DEFAULT_ASYNC_POLL_TIMEOUT
-    env_timeout = os.environ.get("SAGEMAKER_INVOKE_TIMEOUT_SECONDS")
-    if env_timeout is not None:
-        try:
-            invocation_timeout = int(env_timeout)
-        except ValueError:
-            pass
+    invocation_timeout = min(
+        get_settings().sagemaker_invoke_timeout_seconds,
+        3600,
+    )
 
     response = sagemaker_runtime.invoke_endpoint_async(
         EndpointName=endpoint_name,
         InputLocation=request_s3_uri,
         InvocationTimeoutSeconds=min(invocation_timeout, 3600),
     )
-    output_location = response["OutputLocation"]
-    out_bucket, out_key = _parse_s3_uri(output_location)
+    return response["OutputLocation"]
 
-    # Poll for response object (container writes success/error here)
-    poll_timeout = invocation_timeout
-    poll_interval = DEFAULT_ASYNC_POLL_INTERVAL
-    env_interval = os.environ.get("SAGEMAKER_ASYNC_POLL_INTERVAL_SECONDS")
-    if env_interval is not None:
-        try:
-            poll_interval = int(env_interval)
-        except ValueError:
-            pass
+
+def poll_async_response(
+    output_location: str,
+    *,
+    timeout: float | None = None,
+    interval: float | None = None,
+    s3_client: object | None = None,
+) -> None:
+    """
+    Poll the async response S3 path until success JSON (return) or error JSON (raise).
+
+    Args:
+        output_location: S3 URI of the async response object.
+        timeout: Max seconds to wait; default from env or DEFAULT_ASYNC_POLL_TIMEOUT.
+        interval: Seconds between checks; default from env or DEFAULT_ASYNC_POLL_INTERVAL.
+        s3_client: Optional boto3 S3 client (for testing); if None, one is created.
+
+    Raises:
+        RuntimeError: If container returned an error in the response JSON.
+        TimeoutError: If no response object within timeout.
+    """
+    out_bucket, out_key = _parse_s3_uri(output_location)
+    s = get_settings()
+    poll_timeout = timeout if timeout is not None else float(s.sagemaker_invoke_timeout_seconds)
+    poll_interval = (
+        interval if interval is not None else float(s.sagemaker_async_poll_interval_seconds)
+    )
+
+    if s3_client is not None:
+        s3_poll = s3_client
+    else:
+        import boto3
+        s3_poll = boto3.client("s3")
 
     deadline = time.monotonic() + poll_timeout
-    if s3_client is None:
-        import boto3
-        s3_poll = boto3.client("s3", region_name=region_name)
-    else:
-        s3_poll = s3_client
-
     while time.monotonic() < deadline:
         try:
             obj = s3_poll.get_object(Bucket=out_bucket, Key=out_key)
@@ -158,3 +171,65 @@ def invoke_sagemaker_endpoint(
     raise TimeoutError(
         f"Async inference did not produce output at {output_location} within {poll_timeout}s"
     )
+
+
+def check_async_response_once(
+    output_location: str,
+    s3_client: object,
+) -> str:
+    """
+    Non-blocking check of the async response S3 object.
+    Returns "success", "error", or "pending".
+    """
+    out_bucket, out_key = _parse_s3_uri(output_location)
+    try:
+        obj = s3_client.get_object(Bucket=out_bucket, Key=out_key)
+        body = obj["Body"].read().decode("utf-8")
+        data = json.loads(body)
+        if data.get("error"):
+            return "error"
+        return "success"
+    except Exception as e:
+        try:
+            err_code = e.response["Error"]["Code"]
+        except (KeyError, TypeError, AttributeError):
+            err_code = ""
+        if err_code in ("NoSuchKey", "404"):
+            return "pending"
+        raise
+
+
+def invoke_sagemaker_endpoint(
+    segment_s3_uri: str,
+    output_s3_uri: str,
+    endpoint_name: str,
+    *,
+    mode: str = "anaglyph",
+    region_name: str | None = None,
+    client: object | None = None,
+) -> None:
+    """
+    Call SageMaker InvokeEndpointAsync: upload request to S3, invoke, poll for response.
+
+    The endpoint reads the segment from segment_s3_uri, runs inference, and writes
+    the result to output_s3_uri. Async allows inference to run up to 1 hour.
+
+    Kept for backward compatibility; implemented as invoke_sagemaker_async + poll_async_response.
+    """
+    output_location = invoke_sagemaker_async(
+        segment_s3_uri,
+        output_s3_uri,
+        endpoint_name,
+        mode=mode,
+        region_name=region_name,
+        client=client,
+    )
+    if client is not None:
+        s3_client = None
+    else:
+        import boto3
+        kwargs = {}
+        if region_name:
+            kwargs["region_name"] = region_name
+        s3_client = boto3.client("s3", **kwargs)
+    poll_async_response(output_location, s3_client=s3_client)

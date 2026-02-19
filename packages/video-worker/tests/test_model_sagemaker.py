@@ -64,7 +64,8 @@ def test_invoke_sagemaker_endpoint_uses_region_when_provided() -> None:
         "OutputLocation": "s3://out/resp",
     }
     s3_mock = _make_s3_mock_success()
-    with patch("boto3.client", side_effect=[sagemaker_mock, s3_mock]) as mock_boto3_client:
+    # invoke_async creates sagemaker+s3; invoke_sagemaker_endpoint creates s3 again for poll
+    with patch("boto3.client", side_effect=[sagemaker_mock, s3_mock, s3_mock]) as mock_boto3_client:
         invoke_sagemaker_endpoint(
             "s3://in/seg.mp4",
             "s3://out/jobs/j1/segments/0.mp4",
@@ -90,7 +91,8 @@ def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3_for_runtime() 
             client=mock_client,
         )
         mock_client.invoke_endpoint_async.assert_called_once()
-        mock_boto3_client.assert_called_with("s3", region_name=None)
+        # Only S3 client is created (for polling); no region_name when not provided
+        mock_boto3_client.assert_called_once_with("s3")
 
 
 def test_invoke_sagemaker_endpoint_raises_on_container_error_in_response() -> None:
