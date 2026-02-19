@@ -1,6 +1,7 @@
 """Shared types and conventions for the stereo-spot video processing pipeline."""
 
 from .interfaces import (
+    ConversionMetricsProvider,
     JobStore,
     ObjectStorage,
     QueueMessage,
@@ -15,6 +16,7 @@ from .keys import (
     parse_segment_key,
 )
 from .models import (
+    AnalyticsSnapshot,
     ChunkingPayload,
     CreateJobRequest,
     CreateJobResponse,
@@ -31,6 +33,8 @@ from .models import (
 
 __version__ = "0.1.0"
 __all__ = [
+    "AnalyticsSnapshot",
+    "ConversionMetricsProvider",
     "JobStore",
     "ObjectStorage",
     "QueueMessage",

@@ -1,0 +1,39 @@
+{
+  "name": "analytics",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "packages/analytics",
+  "implicitDependencies": ["shared-types", "aws-adapters"],
+  "targets": {
+    "gather": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install -e packages/shared-types -q && pip install -e packages/aws-adapters -q && pip install -e packages/analytics -q && python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env",
+        "cwd": "{workspaceRoot}"
+      },
+      "defaultConfiguration": "aws",
+      "configurations": {
+        "aws": {
+          "command": "pip install -e packages/shared-types -q && pip install -e packages/aws-adapters -q && pip install -e packages/analytics -q && python -m stereo_spot_analytics gather --env-file packages/aws-infra/.env",
+          "cwd": "{workspaceRoot}",
+          "env": { "METRICS_ADAPTER": "aws" }
+        },
+        "gcp": {
+          "command": "pip install -e packages/shared-types -q && pip install -e packages/aws-adapters -q && pip install -e packages/analytics -q && python -m stereo_spot_analytics gather --env-file packages/gcp-infra/.env",
+          "cwd": "{workspaceRoot}",
+          "env": { "METRICS_ADAPTER": "gcp" }
+        }
+      },
+      "dependsOn": ["shared-types:build", "aws-adapters:build"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ruff check src",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {}
+    }
+  }
+}
