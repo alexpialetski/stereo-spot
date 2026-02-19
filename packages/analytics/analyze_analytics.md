@@ -5,18 +5,19 @@
 **Inputs:**
 
 1. **History table:** `packages/analytics/analytics_history.md` — table of past runs (cloud, backend, instance type, avg_duration_sec, eta_seconds_per_mb, date, notes).
-2. **Latest analytics:** Output of the gather target, e.g. `docs/analytics/latest.json` (or paste the JSON here).
+2. **Latest analytics:** Output of the gather target, e.g. `packages/analytics/latest.json` (or paste the JSON here).
 
 **Task:**
 
 - Compare the latest run with the history table.
-- Suggest infra changes (instance type, segment size, `eta_seconds_per_mb`) and whether the last change was worth it.
+- Compute **eta_seconds_per_mb** as `avg_duration_sec / segment_size_mb`. Segment size is ~50MB (see ARCHITECTURE) unless config says otherwise.
+- Suggest infra changes (instance type, segment size, `eta_seconds_per_mb_by_instance_type`) and whether the last change was worth it.
 - Suggest adding a new row to `packages/analytics/analytics_history.md` with the new numbers.
 
 **Output (concise):**
 
 1. Short summary of how the latest run compares to history.
-2. Suggested Terraform variable changes (if any): e.g. `eta_seconds_per_mb`, `sagemaker_instance_type`, etc.
+2. Suggested Terraform variable changes (if any): e.g. `eta_seconds_per_mb_by_instance_type` (map in `packages/aws-infra/variables.tf`), `sagemaker_instance_type`, etc.
 3. The new row to append to the history table (same columns: Cloud | Backend | InstanceType | avg_duration_sec | eta_seconds_per_mb | date | notes).
 
 User will paste this prompt plus the latest analytics JSON and current history table into Cursor/LLM when they run the gather target after a change.
