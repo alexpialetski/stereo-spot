@@ -8,7 +8,7 @@ Procedures for common operations: chunking failure recovery, DLQ handling, and s
 
 **When to use:** The media-worker uploaded segment files to S3 (prefix `segments/{job_id}/`) but crashed or was killed before updating the Job in DynamoDB (e.g. before setting `total_segments` and `status=chunking_complete`). The job stays in `created` or `chunking_in_progress`, so the video-worker and reassembly pipeline never see it as ready.
 
-**Goal:** Set the Job’s `total_segments` and `status=chunking_complete` in DynamoDB so that when the video-worker finishes all segments, the reassembly trigger Lambda can run.
+**Goal:** Set the Job’s `total_segments` and `status=chunking_complete` in DynamoDB so that when the video-worker finishes all segments, the reassembly trigger (in video-worker) can run.
 
 ### Option A: Recovery script (recommended)
 
@@ -154,7 +154,7 @@ So **0 running tasks is normal when the queues are empty or have few messages**.
 
 ### Job stuck at chunking_complete
 
-When a job shows **status = chunking_complete** but never moves to **completed**, the pipeline after chunking is failing. Flow: segments → S3 events → video-worker queue → video-worker (writes SegmentCompletions) → **Lambda** (DynamoDB Stream on SegmentCompletions) → reassembly queue → media-worker (reassembly) → final.mp4 and Job completed.
+When a job shows **status = chunking_complete** but never moves to **completed**, the pipeline after chunking is failing. Flow: segments → S3 events → video-worker queue → video-worker (writes SegmentCompletions) → **video-worker** (trigger-on-write after each SegmentCompletion put) → reassembly queue → media-worker (reassembly) → final.mp4 and Job completed.
 
 **1. Check queues (load `packages/aws-infra/.env` first):**
 
@@ -274,4 +274,72 @@ fields @timestamp, @logStream, @message
 
 4. Optional: narrow to one service by selecting only that log group, or add `| filter @logStream like /media-worker/` (etc.) to the query.
 
-All pipeline steps for that job (web create/detail/play, chunking, video-worker, Lambda trigger, reassembly, SageMaker invocations) will appear in time order when they include `job_id=<JOB_ID>` in the message.
+All pipeline steps for that job (web create/detail/play, chunking, video-worker, reassembly, SageMaker invocations) will appear in time order when they include `job_id=<JOB_ID>` in the message.
+
+---
+
+## 6. SageMaker endpoint monitoring and segment timing
+
+### Why "no data" in SageMaker console Analytics
+
+- **Async vs real-time:** The endpoint uses **asynchronous inference**. The console "Monitoring" / "Analytics" view can show "no data" or a limited set because some widgets are built for real-time invocation metrics. Async endpoints still publish metrics to CloudWatch under the **AWS/SageMaker** namespace.
+- **Delay:** After creating or updating an endpoint, CloudWatch metrics can take **up to 20 minutes** to appear.
+- **Dimensions:** Metrics are scoped by `EndpointName` and `VariantName` (e.g. `AllTraffic`). Ensure the console or CLI is using the correct endpoint name (e.g. `stereo-spot-stereocrafter`).
+
+### Where to find CloudWatch metrics for the async endpoint
+
+1. **Console:** CloudWatch → Metrics → All metrics → **AWS/SageMaker** → select your **EndpointName** (and **VariantName** if needed).
+2. **Useful async metrics:**
+   - **ModelLatency** – time the model container takes to process (microseconds). Use Average/Max to see per-segment cost.
+   - **TotalProcessingTime** – request received to finished, including queue time (milliseconds).
+   - **TimeInBacklog** – time the request waited in the queue before processing.
+   - **InvocationsProcessed** – count of completed async invocations.
+   - **RequestDownloadLatency** / **ResponseUploadLatency** – S3 download/upload time (microseconds).
+
+3. **AWS CLI** (use your region and endpoint name from Terraform/outputs):
+
+```bash
+# List metrics for the endpoint (replace ENDPOINT_NAME and region)
+aws cloudwatch list-metrics \
+  --namespace AWS/SageMaker \
+  --dimensions Name=EndpointName,Value=stereo-spot-stereocrafter Name=VariantName,Value=AllTraffic \
+  --region us-east-1
+
+# Get ModelLatency (e.g. last hour, average per 5 min)
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/SageMaker \
+  --metric-name ModelLatency \
+  --dimensions Name=EndpointName,Value=stereo-spot-stereocrafter Name=VariantName,Value=AllTraffic \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+  --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --period 300 \
+  --statistics Average Maximum SampleCount \
+  --region us-east-1
+```
+
+### Segment conversion time (duration_seconds) for tuning and ETA
+
+The SageMaker container logs **duration_seconds** on each successful invocation so you can correlate conversion time with segment length and instance type, and later drive an ETA in the UI.
+
+**Log format:** `job_id=... segment_index=... invocations complete duration_seconds=76.30`
+
+**CloudWatch Logs Insights – average/max duration (SageMaker endpoint log group):**
+
+```
+# All completion lines with duration (last 24h)
+fields @timestamp, @message
+| filter @message like /invocations complete duration_seconds=/
+| parse @message "duration_seconds=*" as duration_seconds
+| stats avg(duration_seconds), max(duration_seconds), count() by bin(1h)
+```
+
+```
+# Per job: durations for one job (replace JOB_ID)
+fields @timestamp, @message
+| filter @message like /job_id=955b0a06-8a3d-4e47-b1b1-9ecb5be051d6/
+| filter @message like /duration_seconds=/
+| parse @message "duration_seconds=*" as duration_seconds
+| sort @timestamp asc
+```
+
+Use these to decide whether a larger instance type, smaller segments, or different segment count is better, and to estimate total job time (e.g. sum of segment durations or `avg_duration * total_segments`).
