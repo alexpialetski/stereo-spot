@@ -43,14 +43,15 @@ nx run shared-types:lint
 # or: ruff check src tests
 ```
 
-## Build (sdist/wheel)
+## Build (optional)
+
+Other packages consume shared-types via editable installs (`pip install -e ../shared-types`). To produce a wheel/sdist locally (e.g. for publishing), run:
 
 ```bash
-nx run shared-types:build
-# or: python -m build
+python -m build
 ```
 
-Build artifacts appear in `dist/`. Other packages can depend on the built wheel in CI.
+Artifacts appear in `dist/`.
 
 ---
 

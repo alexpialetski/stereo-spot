@@ -17,8 +17,7 @@
         "command": "pip install -e ../shared-types -q && pip install -e ../aws-adapters -q && pip install -e ../web-ui -q && pip install -e ../media-worker -q && pip install -e ../video-worker -q && pip install -e . -q && pytest -v",
         "cwd": "{projectRoot}"
       },
-      "configurations": {},
-      "dependsOn": ["shared-types:build", "aws-adapters:build"]
+      "configurations": {}
     },
     "lint": {
       "executor": "nx:run-commands",
