@@ -44,12 +44,13 @@ RUN git clone https://github.com/nagadomi/nunif.git
 
 WORKDIR /opt/nunif
 
-# PyTorch per nunif requirements-torch.txt (CUDA 12.8; works on 12.x drivers)
-RUN pip install --no-cache-dir torch==2.7.1+cu128 torchvision==0.22.1+cu128 \
+# PyTorch per nunif requirements-torch.txt (CUDA 12.8; works on 12.x drivers). Use venv explicitly so cache sees same env.
+RUN . /opt/venv/bin/activate && pip install --no-cache-dir torch==2.7.1+cu128 torchvision==0.22.1+cu128 \
     --extra-index-url https://download.pytorch.org/whl/cu128
 
 # Pip packages per requirements.txt (omit flake8, GUI, dev). Install av from source so it links to our FFmpeg (NVENC 11.1).
-RUN pip install --no-cache-dir \
+# Activate venv in this RUN so PyAV's setup.py sees VIRTUAL_ENV (av 15.0.0 requires it when building from source).
+RUN . /opt/venv/bin/activate && pip install --no-cache-dir \
     requests tqdm scipy waitress bottle==0.12.25 diskcache psutil pyyaml platformdirs packaging filelock \
     timm truststore pillow_heif safetensors einops omegaconf addict \
     boto3 gunicorn google-cloud-storage \
