@@ -14,7 +14,6 @@ dependencies = [
     "stereo-spot-web-ui",
     "stereo-spot-media-worker",
     "stereo-spot-video-worker",
-    "stereo-spot-reassembly-trigger",
     "httpx>=0.24",
 ]
 

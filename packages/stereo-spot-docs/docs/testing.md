@@ -8,7 +8,7 @@ Unit tests, integration tests, and a data-plane smoke test. The smoke test runs 
 
 ## Install dependencies (once)
 
-All Python test and run targets depend on **`stereo-spot:install-deps`**. Nx runs it automatically before any dependent target. To run it explicitly:
+All Python lint, test, and run targets depend on **`stereo-spot:install-deps`**. Nx runs it automatically before any dependent target. To run it explicitly:
 
 ```bash
 nx run stereo-spot:install-deps

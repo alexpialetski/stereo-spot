@@ -26,7 +26,8 @@
         "command": "ruff check src tests",
         "cwd": "{projectRoot}"
       },
-      "configurations": {}
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
     }
   }
 }

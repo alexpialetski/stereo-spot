@@ -8,7 +8,7 @@ StereoSpot is designed for **high-throughput, cost-optimized video processing** 
 
 ## Nx monorepo structure
 
-All packages live under **`packages/`**. The **root project** `stereo-spot` provides **`install-deps`**: a single editable install of all Python monorepo packages. Test, smoke-test, serve, and gather targets depend on it.
+All packages live under **`packages/`**. The **root project** `stereo-spot` provides **`install-deps`**: a single editable install of all Python monorepo packages. Lint, test, smoke-test, serve, and gather targets depend on it.
 
 | Package | Role (short) |
 |--------|---------------|

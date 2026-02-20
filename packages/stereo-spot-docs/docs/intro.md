@@ -14,7 +14,7 @@ To work with the repo (tests, lint, docs) you need:
 |------|---------|
 | **Node.js** (v20+) and **npm** | Monorepo, Nx, and docs. Run `npm ci` from the workspace root. |
 | **Nx** | Comes with the repo; use `npx nx` or `nx` (after install). No global install required. |
-| **Python** (3.12) | Required for Python packages (workers, inference, shared-types). Nx runs `install-deps` when needed for test/serve. |
+| **Python** (3.12) | Required for Python packages (workers, inference, shared-types). Nx runs `install-deps` when needed for lint, test, or serve. |
 
 To **deploy and operate on AWS** you also need:
 
@@ -70,7 +70,7 @@ From the workspace root:
 npm ci
 ```
 
-Nx runs **install-deps** automatically when you run a target that needs it (e.g. test, serve). Run it yourself only to refresh the env (e.g. after pulling or changing dependencies).
+Nx runs **install-deps** automatically when you run a target that needs it (e.g. lint, test, serve). Run it yourself only to refresh the env (e.g. after pulling or changing dependencies).
 
 **Run tests:**
 

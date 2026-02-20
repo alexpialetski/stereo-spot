@@ -33,7 +33,8 @@
         "command": "ruff check src",
         "cwd": "{projectRoot}"
       },
-      "configurations": {}
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
     }
   }
 }
