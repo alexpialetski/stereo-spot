@@ -52,7 +52,16 @@ def run_iw3_pipeline(
             "-o", out_dir,
             "--scene-detect",
             "--ema-normalize",
+            "--video-codec", "h264_nvenc",
+            "--method", "row_flow_v3_sym",
+            "--max-fps", "30",
         ]
+        batch_size = os.environ.get("IW3_BATCH_SIZE", "8")
+        try:
+            if 1 <= int(batch_size) <= 32:
+                cmd.extend(["--batch-size", batch_size])
+        except ValueError:
+            pass
         if mode == "anaglyph":
             cmd.extend([
                 "--anaglyph",

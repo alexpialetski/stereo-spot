@@ -100,9 +100,9 @@ variable "inference_http_url" {
 # --- SageMaker (StereoCrafter endpoint; only when inference_backend=sagemaker) ---
 
 variable "sagemaker_instance_type" {
-  description = "SageMaker endpoint instance type (GPU, e.g. ml.g4dn.xlarge)"
+  description = "SageMaker endpoint instance type (GPU, e.g. ml.g4dn.2xlarge)"
   type        = string
-  default     = "ml.g4dn.xlarge"
+  default     = "ml.g4dn.2xlarge"
 }
 
 variable "sagemaker_instance_count" {
@@ -118,7 +118,8 @@ variable "eta_seconds_per_mb_by_instance_type" {
   description = "Conversion time per MB of source video by SageMaker instance type (for UI ETA). Update from analytics when tuning."
   type        = map(number)
   default = {
-    "ml.g4dn.xlarge" = 1.6
+    "ml.g4dn.xlarge"  = 1.6
+    "ml.g4dn.2xlarge" = 1.0
   }
 }
 

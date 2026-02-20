@@ -76,7 +76,11 @@ def process_one_chunking_message(
     job_store.update(job_id, status=JobStatus.CHUNKING_IN_PROGRESS.value)
     try:
         source_bytes = storage.download(payload.bucket, payload.key)
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "chunking: job_id=%s download failed (key=%s): %s",
+            job_id, payload.key, e,
+        )
         job_store.update(job_id, status=JobStatus.CREATED.value)
         raise
     with tempfile.NamedTemporaryFile(

@@ -92,7 +92,7 @@ def process_one_reassembly_message(
         return False
     if job.total_segments is not None and len(completions) != job.total_segments:
         logger.warning(
-            "reassembly: job_id=%s completions=%s != total_segments=%s",
+            "reassembly: job_id=%s completions=%s != total_segments=%s (message left for retry)",
             job_id,
             len(completions),
             job.total_segments,

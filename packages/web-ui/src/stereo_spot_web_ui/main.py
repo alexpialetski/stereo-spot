@@ -164,8 +164,9 @@ async def job_progress_events(
         last_percent = -1
         last_label = ""
         while (time.monotonic() - start) < PROGRESS_STREAM_TIMEOUT_SEC:
-            job = job_store.get(job_id)
+            job = job_store.get(job_id, consistent_read=True)
             if job is None:
+                logger.warning("job_id=%s events stream: job not found", job_id)
                 yield f"data: {json.dumps({'progress_percent': 0, 'stage_label': 'Not found'})}\n\n"
                 return
             percent, label = _compute_progress(job, segment_store)
@@ -176,6 +177,10 @@ async def job_progress_events(
                 payload = {"progress_percent": percent, "stage_label": label}
                 yield f"data: {json.dumps(payload)}\n\n"
             if job.status == JobStatus.COMPLETED:
+                if last_percent != 100 or last_label != "Completed":
+                    payload = {"progress_percent": 100, "stage_label": "Completed"}
+                    yield f"data: {json.dumps(payload)}\n\n"
+                logger.info("job_id=%s events stream ended (completed)", job_id)
                 return
             await asyncio.sleep(PROGRESS_POLL_SEC)
 

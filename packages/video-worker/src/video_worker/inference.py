@@ -22,8 +22,9 @@ from .model_sagemaker import (
     invoke_sagemaker_endpoint,
 )
 from .model_stub import process_segment
-from .output_key import build_output_segment_key
+from .output_key import build_output_segment_key, build_output_segment_uri
 from .s3_event import parse_s3_event_body
+from .s3_uri import parse_s3_uri
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +41,22 @@ def _log_job_id_from_inference_body(body: str | bytes, fmt: str) -> None:
     logger.warning(fmt, job_id)
 
 
-def _parse_s3_uri(s3_uri: str) -> tuple[str, str] | None:
-    """Extract (bucket, key) from s3://bucket/key."""
-    if not s3_uri.startswith("s3://"):
-        return None
-    rest = s3_uri[5:]
-    if "/" not in rest:
-        return None
-    bucket, _, key = rest.partition("/")
-    return bucket, key
+def _mark_job_failed(
+    job_store: JobStore | None,
+    payload: VideoWorkerPayload | None,
+) -> None:
+    """Update job status to FAILED and log; no-op if store or payload missing."""
+    if job_store is None or payload is None:
+        return
+    try:
+        job_store.update(payload.job_id, status=JobStatus.FAILED.value)
+        logger.info("video-worker: job_id=%s marked failed", payload.job_id)
+    except Exception as e:
+        logger.exception(
+            "video-worker: job_id=%s failed to mark job failed: %s",
+            payload.job_id,
+            e,
+        )
 
 
 def _use_sagemaker_backend() -> bool:
@@ -88,8 +96,9 @@ def process_one_message(
         payload.segment_index,
         payload.total_segments,
     )
-    output_key = build_output_segment_key(payload.job_id, payload.segment_index)
-    output_s3_uri = f"s3://{output_bucket}/{output_key}"
+    output_s3_uri = build_output_segment_uri(
+        output_bucket, payload.job_id, payload.segment_index
+    )
     completed_at = int(time.time())
 
     if _use_sagemaker_backend():
@@ -123,12 +132,13 @@ def process_one_message(
             mode=payload.mode.value,
         )
     else:
-        parsed = _parse_s3_uri(payload.segment_s3_uri)
+        parsed = parse_s3_uri(payload.segment_s3_uri)
         if parsed is None:
             return False
         input_bucket, input_key = parsed
         segment_bytes = storage.download(input_bucket, input_key)
         output_bytes = process_segment(segment_bytes)
+        output_key = build_output_segment_key(payload.job_id, payload.segment_index)
         storage.upload(output_bucket, output_key, output_bytes)
 
     completion = SegmentCompletion(
@@ -208,15 +218,7 @@ def run_loop(
                     "video-worker: job_id=%s failed to process message: %s",
                     job_id_ctx, e,
                 )
-                if job_store and payload:
-                    try:
-                        job_store.update(payload.job_id, status=JobStatus.FAILED.value)
-                        logger.info("video-worker: job_id=%s marked failed", payload.job_id)
-                    except Exception as update_err:
-                        logger.exception(
-                            "video-worker: job_id=%s failed to mark job failed: %s",
-                            payload.job_id, update_err,
-                        )
+                _mark_job_failed(job_store, payload)
         if not messages:
             time.sleep(poll_interval_sec)
 
@@ -261,8 +263,15 @@ def _run_loop_sagemaker_in_flight(
                         body, "video-worker: job_id=%s invalid S3 event body"
                     )
                     continue
-                output_key = build_output_segment_key(payload.job_id, payload.segment_index)
-                output_s3_uri = f"s3://{output_bucket}/{output_key}"
+                logger.info(
+                    "video-worker: job_id=%s segment_index=%s/%s invoking SageMaker async",
+                    payload.job_id,
+                    payload.segment_index,
+                    payload.total_segments,
+                )
+                output_s3_uri = build_output_segment_uri(
+                    output_bucket, payload.job_id, payload.segment_index
+                )
                 try:
                     output_location = invoke_sagemaker_async(
                         payload.segment_s3_uri,
@@ -277,11 +286,7 @@ def _run_loop_sagemaker_in_flight(
                         "video-worker: job_id=%s segment_index=%s invoke_async failed: %s",
                         payload.job_id, payload.segment_index, e,
                     )
-                    if job_store:
-                        try:
-                            job_store.update(payload.job_id, status=JobStatus.FAILED.value)
-                        except Exception:
-                            pass
+                    _mark_job_failed(job_store, payload)
                     continue
                 deadline = time.monotonic() + timeout_sec
                 in_flight.append((msg.receipt_handle, body, payload, output_location, deadline))

@@ -17,6 +17,7 @@ from stereo_spot_aws_adapters.env_config import (
     video_worker_queue_receiver_from_env,
 )
 
+from .config import get_settings
 from .inference import run_loop
 from .segment_output import run_segment_output_loop
 
@@ -29,7 +30,10 @@ logging.basicConfig(
 
 def main() -> None:
     logger = logging.getLogger(__name__)
-    logger.info("video-worker starting")
+    logger.info(
+        "video-worker starting (backend=%s)",
+        get_settings().inference_backend,
+    )
     storage = object_storage_from_env()
     segment_store = segment_completion_store_from_env()
     job_store = job_store_from_env()

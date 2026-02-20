@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from urllib.parse import urlparse
 
 from .config import get_settings
+from .s3_uri import parse_s3_uri_or_raise
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,9 @@ DEFAULT_ASYNC_POLL_TIMEOUT = 1200  # 20 minutes
 DEFAULT_ASYNC_POLL_INTERVAL = 15   # seconds between HeadObject checks
 
 
-def _parse_s3_uri(s3_uri: str) -> tuple[str, str]:
-    parsed = urlparse(s3_uri)
-    if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.lstrip("/"):
-        raise ValueError(f"Invalid S3 URI: {s3_uri}")
-    return parsed.netloc, parsed.path.lstrip("/")
-
-
 def _job_id_segment_from_output_uri(output_s3_uri: str) -> tuple[str, str]:
     """Extract job_id and segment_index from output_s3_uri (e.g. s3://b/jobs/jid/segments/0.mp4)."""
-    _, key = _parse_s3_uri(output_s3_uri)
+    _, key = parse_s3_uri_or_raise(output_s3_uri)
     parts = key.split("/")
     if len(parts) >= 4 and parts[0] == "jobs" and parts[2] == "segments":
         seg = parts[3]
@@ -67,7 +60,7 @@ def invoke_sagemaker_async(
         OutputLocation S3 URI where the async response will appear.
     """
     job_id, segment_index = _job_id_segment_from_output_uri(output_s3_uri)
-    output_bucket, _ = _parse_s3_uri(output_s3_uri)
+    output_bucket, _ = parse_s3_uri_or_raise(output_s3_uri)
     request_key = f"sagemaker-invocation-requests/{job_id}/{segment_index}.json"
     request_s3_uri = f"s3://{output_bucket}/{request_key}"
 
@@ -78,29 +71,28 @@ def invoke_sagemaker_async(
     }
     payload_bytes = json.dumps(payload).encode("utf-8")
 
+    import boto3
+
+    kwargs = {}
+    if region_name:
+        kwargs["region_name"] = region_name
     if client is not None:
         sagemaker_runtime = client
-        s3_client = None
+        s3_client = boto3.client("s3", **kwargs)
     else:
-        import boto3
-
-        kwargs = {}
-        if region_name:
-            kwargs["region_name"] = region_name
         sagemaker_runtime = boto3.client("sagemaker-runtime", **kwargs)
         s3_client = boto3.client("s3", **kwargs)
 
-    if s3_client is not None:
-        s3_client.put_object(
-            Bucket=output_bucket,
-            Key=request_key,
-            Body=payload_bytes,
-            ContentType="application/json",
-        )
-        logger.debug(
-            "job_id=%s segment_index=%s uploaded invocation request to %s",
-            job_id, segment_index, request_s3_uri,
-        )
+    s3_client.put_object(
+        Bucket=output_bucket,
+        Key=request_key,
+        Body=payload_bytes,
+        ContentType="application/json",
+    )
+    logger.info(
+        "job_id=%s segment_index=%s uploaded invocation request to %s",
+        job_id, segment_index, request_s3_uri,
+    )
 
     invocation_timeout = min(
         get_settings().sagemaker_invoke_timeout_seconds,
@@ -135,7 +127,7 @@ def poll_async_response(
         RuntimeError: If container returned an error in the response JSON.
         TimeoutError: If no response object within timeout.
     """
-    out_bucket, out_key = _parse_s3_uri(output_location)
+    out_bucket, out_key = parse_s3_uri_or_raise(output_location)
     s = get_settings()
     poll_timeout = timeout if timeout is not None else float(s.sagemaker_invoke_timeout_seconds)
     poll_interval = (
@@ -181,7 +173,7 @@ def check_async_response_once(
     Non-blocking check of the async response S3 object.
     Returns "success", "error", or "pending".
     """
-    out_bucket, out_key = _parse_s3_uri(output_location)
+    out_bucket, out_key = parse_s3_uri_or_raise(output_location)
     try:
         obj = s3_client.get_object(Bucket=out_bucket, Key=out_key)
         body = obj["Body"].read().decode("utf-8")

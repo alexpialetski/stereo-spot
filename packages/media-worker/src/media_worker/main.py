@@ -30,7 +30,11 @@ logging.basicConfig(
 
 def main() -> None:
     logger = logging.getLogger(__name__)
-    logger.info("media-worker starting (chunking + reassembly)")
+    logger.info(
+        "media-worker starting (chunking + reassembly); input_bucket=%s output_bucket=%s",
+        input_bucket_name(),
+        output_bucket_name(),
+    )
     job_store = job_store_from_env()
     storage = object_storage_from_env()
     input_bucket = input_bucket_name()

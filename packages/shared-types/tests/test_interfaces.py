@@ -21,7 +21,7 @@ class MockJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
 
-    def get(self, job_id: str) -> Job | None:
+    def get(self, job_id: str, *, consistent_read: bool = False) -> Job | None:
         return self._jobs.get(job_id)
 
     def put(self, job: Job) -> None:

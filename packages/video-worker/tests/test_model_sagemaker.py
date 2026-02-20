@@ -3,7 +3,7 @@
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-from video_worker.model_sagemaker import invoke_sagemaker_endpoint
+from video_worker.model_sagemaker import invoke_sagemaker_async, invoke_sagemaker_endpoint
 
 
 def _make_s3_mock_success():
@@ -78,12 +78,13 @@ def test_invoke_sagemaker_endpoint_uses_region_when_provided() -> None:
 
 
 def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3_for_runtime() -> None:
-    """Provided client gets invoke_endpoint_async; S3 client still used for polling."""
+    """Provided client gets invoke_endpoint_async; S3 client created for upload and for polling."""
     mock_client = MagicMock()
     mock_client.invoke_endpoint_async.return_value = {
         "OutputLocation": "s3://out/resp",
     }
-    with patch("boto3.client", return_value=_make_s3_mock_success()) as mock_boto3_client:
+    s3_mock = _make_s3_mock_success()
+    with patch("boto3.client", return_value=s3_mock) as mock_boto3_client:
         invoke_sagemaker_endpoint(
             "s3://in/seg.mp4",
             "s3://out/jobs/j1/segments/0.mp4",
@@ -91,8 +92,41 @@ def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3_for_runtime() 
             client=mock_client,
         )
         mock_client.invoke_endpoint_async.assert_called_once()
-        # Only S3 client is created (for polling); no region_name when not provided
-        mock_boto3_client.assert_called_once_with("s3")
+        # S3 client created in invoke_sagemaker_async (upload) and in invoke_sagemaker_endpoint (poll)
+        assert mock_boto3_client.call_count >= 2
+        assert all(c[0][0] == "s3" for c in mock_boto3_client.call_args_list)
+
+
+def test_invoke_sagemaker_async_uploads_request_when_client_passed() -> None:
+    """When client (sagemaker-runtime) is passed, S3 put_object must still be called.
+
+    This test would have caught the bug where s3_client was set to None when client
+    was provided, so the invocation request was never uploaded and SageMaker failed
+    to download it.
+    """
+    sagemaker_mock = MagicMock()
+    sagemaker_mock.invoke_endpoint_async.return_value = {
+        "OutputLocation": "s3://out-bucket/sagemaker-async-responses/req-1",
+    }
+    s3_mock = MagicMock()
+    with patch("boto3.client", return_value=s3_mock):
+        invoke_sagemaker_async(
+            "s3://input/segments/job-1/00000_00001_anaglyph.mp4",
+            "s3://output-bucket/jobs/job-1/segments/0.mp4",
+            "my-endpoint",
+            mode="anaglyph",
+            client=sagemaker_mock,
+        )
+    s3_mock.put_object.assert_called_once()
+    call_kw = s3_mock.put_object.call_args[1]
+    assert call_kw["Bucket"] == "output-bucket"
+    assert call_kw["Key"] == "sagemaker-invocation-requests/job-1/0.json"
+    assert call_kw["ContentType"] == "application/json"
+    sagemaker_mock.invoke_endpoint_async.assert_called_once()
+    assert (
+        sagemaker_mock.invoke_endpoint_async.call_args[1]["InputLocation"]
+        == "s3://output-bucket/sagemaker-invocation-requests/job-1/0.json"
+    )
 
 
 def test_invoke_sagemaker_endpoint_raises_on_container_error_in_response() -> None:

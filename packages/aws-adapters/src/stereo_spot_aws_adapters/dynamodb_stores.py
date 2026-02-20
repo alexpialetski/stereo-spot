@@ -57,9 +57,12 @@ class DynamoDBJobStore:
         )
         self._table = self._resource.Table(table_name)
 
-    def get(self, job_id: str) -> Job | None:
-        """Return the job if it exists, otherwise None."""
-        resp = self._table.get_item(Key={"job_id": job_id})
+    def get(self, job_id: str, *, consistent_read: bool = False) -> Job | None:
+        """Return the job if it exists, otherwise None. Use consistent_read=True for progress/SSE so completion is seen promptly."""
+        resp = self._table.get_item(
+            Key={"job_id": job_id},
+            ConsistentRead=consistent_read,
+        )
         item = resp.get("Item")
         if not item:
             return None
