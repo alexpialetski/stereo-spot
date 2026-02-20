@@ -45,6 +45,9 @@ def run_iw3_pipeline(
     Run iw3 (nunif): 2D video -> stereo SBS or anaglyph.
     iw3 writes to -o directory as {original_filename}_LRF_Full_SBS.mp4 or anaglyph variant.
     """
+    # Prefer libx264 unless NVENC is explicitly requested (requires NVIDIA GPU + driver).
+    # Set IW3_VIDEO_CODEC=h264_nvenc on GPU instances (e.g. ml.g4dn) for faster encoding.
+    video_codec = os.environ.get("IW3_VIDEO_CODEC", "libx264")
     with tempfile.TemporaryDirectory() as out_dir:
         cmd = [
             "python", "-m", "iw3",
@@ -52,7 +55,7 @@ def run_iw3_pipeline(
             "-o", out_dir,
             "--scene-detect",
             "--ema-normalize",
-            "--video-codec", "h264_nvenc",
+            "--video-codec", video_codec,
             "--method", "row_flow_v3_sym",
             "--max-fps", "30",
         ]

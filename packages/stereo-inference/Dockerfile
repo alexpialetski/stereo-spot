@@ -8,13 +8,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Dependencies per installation_ubuntu.md (git-core, libmagickwand-dev, libraqm-dev, python3-dev)
 # + Python 3.10 explicit + headless runtime libs for imaging
+# + libnvidia-encode-470 for NVENC (h264_nvenc) on SageMaker ml.g4dn (driver 470); host may not mount it
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 python3.10-dev python3.10-venv python3-pip \
     git-core libmagickwand-dev libraqm-dev \
     libgl1-mesa-glx libglib2.0-0 \
+    libnvidia-encode-470 \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.10 /usr/bin/python \
     && ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# Request full driver capabilities (including video/NVENC) so host runtime may mount libnvidia-encode
+ENV NVIDIA_DRIVER_CAPABILITIES=all,video
 
 # Clone nunif (iw3: 2D video to side-by-side 3D / anaglyph)
 WORKDIR /opt
@@ -44,4 +49,5 @@ ENV SAGEMAKER_BIND_TO_PORT=8080
 ENV NUNIF_HOME=/opt/nunif_data
 EXPOSE 8080
 
-ENTRYPOINT ["/bin/sh", "-c", "exec gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 3600 serve:application"]
+# Prepend host-mounted NVIDIA lib path so libnvidia-encode is found if mounted but not on default path
+ENTRYPOINT ["/bin/sh", "-c", "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}/usr/local/nvidia/lib64 && exec gunicorn --bind 0.0.0.0:8080 --workers 1 --timeout 3600 serve:application"]

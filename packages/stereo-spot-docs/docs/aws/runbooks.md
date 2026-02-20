@@ -67,7 +67,7 @@ Or manually: create/update endpoint config with new image, then `aws sagemaker u
 
 ## 5. SageMaker performance tuning
 
-Default stereo-inference settings (in code) use **GPU encoding** (`--video-codec h264_nvenc`), **faster stereo method** (`--method row_flow_v3_sym`), **max 30 FPS** (`--max-fps 30`), and **batch size** from env `IW3_BATCH_SIZE` (default 8). Default instance type is **ml.g4dn.2xlarge** (Terraform variable `sagemaker_instance_type`).
+Default stereo-inference settings use **software encoding** (`--video-codec libx264`) so the endpoint works on CPU or instances without NVENC. On **GPU instances** (e.g. **ml.g4dn.2xlarge**), set env **`IW3_VIDEO_CODEC=h264_nvenc`** in the SageMaker model for faster encoding. Other defaults: **stereo method** `row_flow_v3_sym`, **max 30 FPS**, **batch size** from `IW3_BATCH_SIZE` (default 8). Default instance type is **ml.g4dn.2xlarge** (Terraform variable `sagemaker_instance_type`).
 
 If conversion is still too slow, check CloudWatch metrics for the endpoint (e.g. **SageMaker → Endpoints → stereo-spot-inference → Monitor**): **GPUUtilization**, **GPUMemoryUtilization**, **CPUUtilization**.
 
@@ -75,6 +75,8 @@ If conversion is still too slow, check CloudWatch metrics for the endpoint (e.g.
 - **GPU memory near 100%:** Set `IW3_LOW_VRAM=1` in the SageMaker model environment to reduce VRAM use (may be slightly slower). Or lower `IW3_BATCH_SIZE` (e.g. 4).
 - **Want faster at cost of quality:** Set env such as `IW3_MAX_FPS` (e.g. 24) or a lower-quality preset in the SageMaker container. See [nunif/iw3](https://github.com/nagadomi/nunif) for available flags.
 - **ETA in web UI:** Update `eta_seconds_per_mb_by_instance_type` in `variables.tf` for the instance type you use so the UI shows a realistic estimate.
+
+**iw3 fails with "Cannot load libnvidia-encode.so.1" / "h264_nvenc … Operation not permitted":** The inference image includes NVENC workarounds (install `libnvidia-encode-470`, `NVIDIA_DRIVER_CAPABILITIES=all,video`, and `LD_LIBRARY_PATH` including `/usr/local/nvidia/lib64`). Try **`sagemaker_iw3_video_codec = "h264_nvenc"`** and redeploy the image. If it still fails, SageMaker may not expose the encode device to the container—use **`IW3_VIDEO_CODEC=libx264`** (Terraform default).
 
 ---
 

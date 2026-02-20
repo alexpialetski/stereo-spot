@@ -111,6 +111,12 @@ variable "sagemaker_instance_count" {
   default     = 1
 }
 
+variable "sagemaker_iw3_video_codec" {
+  description = "iw3 video codec: libx264 (software, works on all instances) or h264_nvenc (GPU encode; SageMaker custom containers do not expose libnvidia-encode, so use libx264)"
+  type        = string
+  default     = "libx264"
+}
+
 # --- ETA (web-ui: estimated conversion time from file size, per MB) ---
 # Keyed by SageMaker instance type; lookup in ecs.tf. GCP would use its own infra package.
 
