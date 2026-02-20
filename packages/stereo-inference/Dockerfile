@@ -49,12 +49,12 @@ RUN . /opt/venv/bin/activate && pip install --no-cache-dir torch==2.7.1+cu128 to
     --extra-index-url https://download.pytorch.org/whl/cu128
 
 # Pip packages per requirements.txt (omit flake8, GUI, dev). Install av from source so it links to our FFmpeg (NVENC 11.1).
-# Activate venv in this RUN so PyAV's setup.py sees VIRTUAL_ENV (av 15.0.0 requires it when building from source).
+# PyAV 15+ requires FFmpeg 6/7 (AVFrame.duration, AV_FRAME_FLAG_KEY); we use FFmpeg 5.1.2, so pin PyAV 12.x.
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir \
     requests tqdm scipy waitress bottle==0.12.25 diskcache psutil pyyaml platformdirs packaging filelock \
     timm truststore pillow_heif safetensors einops omegaconf addict \
     boto3 gunicorn google-cloud-storage \
-    && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig LD_LIBRARY_PATH=/usr/local/lib pip install --no-cache-dir --no-binary av "av==15.0.0"
+    && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig LD_LIBRARY_PATH=/usr/local/lib pip install --no-cache-dir --no-binary av "av==12.3.0"
 
 # Pre-trained models for iw3 (ZoeDepth, Depth-Anything, etc.). Baked in so no network at startup.
 ENV NUNIF_HOME=/opt/nunif_data
