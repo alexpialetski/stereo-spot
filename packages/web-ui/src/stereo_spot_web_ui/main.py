@@ -33,7 +33,7 @@ from .deps import (
 # Load .env from STEREOSPOT_ENV_FILE if set (e.g. by nx run web-ui:serve). Unset in ECS.
 bootstrap_env()
 
-# Ensure app loggers (e.g. events stream) emit INFO; uvicorn --log-level only affects uvicorn loggers.
+# Ensure app loggers (e.g. events stream) emit INFO; uvicorn --log-level only affects uvicorn.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,8 @@ async def job_progress_events(
                 job = job_store.get(job_id, consistent_read=True)
                 if job is None:
                     logger.warning("job_id=%s events stream: job not found", job_id)
-                    yield f"data: {json.dumps({'progress_percent': 0, 'stage_label': 'Not found'})}\n\n"
+                    payload = {"progress_percent": 0, "stage_label": "Not found"}
+                    yield f"data: {json.dumps(payload)}\n\n"
                     return
                 percent, label = _compute_progress(job, segment_store)
                 # Send event when value changed or first time

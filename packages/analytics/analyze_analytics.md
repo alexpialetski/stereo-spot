@@ -22,6 +22,7 @@
 - **eta_seconds_per_mb:** Prefer **ConversionSecondsPerMb**.overall_avg when present; otherwise use ConversionSecondsPerMb_by_bucket (weighted or "20-50"); otherwise fall back to `avg_duration_sec / segment_size_mb` (~50MB).
 - When **ConversionSecondsPerMb_by_bucket** or **SegmentConversionDurationSeconds_by_bucket** exists, note the segment-size mix (e.g. "mostly 0-5 MB") so the user understands if ETA is dominated by small segments.
 - Suggest infra changes (instance type, segment size, `eta_seconds_per_mb_by_instance_type`) and whether the last change was worth it.
+- **Always recommend updating `eta_seconds_per_mb_by_instance_type`** in `packages/aws-infra/variables.tf` when the latest run’s eta_seconds_per_mb differs meaningfully from the current value for that instance type — even if the segment-size mix is “atypical” (e.g. only 5–20 MB). The UI ETA should reflect real observed conversion time; do not skip this recommendation on the grounds that the metric is dominated by small segments.
 - Suggest adding a new row to `packages/analytics/analytics_history.md` with the new numbers.
 
 **Output (concise):**

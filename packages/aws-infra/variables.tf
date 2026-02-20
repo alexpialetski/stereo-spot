@@ -129,7 +129,7 @@ variable "eta_seconds_per_mb_by_instance_type" {
   type        = map(number)
   default = {
     "ml.g4dn.xlarge"  = 1.6
-    "ml.g4dn.2xlarge" = 1.0
+    "ml.g4dn.2xlarge" = 42
   }
 }
 
