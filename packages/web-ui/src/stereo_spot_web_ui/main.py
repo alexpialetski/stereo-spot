@@ -46,8 +46,9 @@ templates_dir = _package_dir / "templates"
 static_dir = _package_dir / "static"
 templates = Jinja2Templates(directory=str(templates_dir))
 
-# SSE poll interval and max stream duration
+# SSE poll interval, keepalive, and max stream duration
 PROGRESS_POLL_SEC = 2
+PROGRESS_KEEPALIVE_SEC = 30  # Send SSE comment so ALB/proxy does not close idle connection
 PROGRESS_STREAM_TIMEOUT_SEC = 600  # 10 min
 
 
@@ -161,6 +162,7 @@ async def job_progress_events(
     """
     async def generate() -> str:
         start = time.monotonic()
+        last_keepalive = start
         last_percent = -1
         last_label = ""
         while (time.monotonic() - start) < PROGRESS_STREAM_TIMEOUT_SEC:
@@ -176,6 +178,11 @@ async def job_progress_events(
                 last_label = label
                 payload = {"progress_percent": percent, "stage_label": label}
                 yield f"data: {json.dumps(payload)}\n\n"
+                last_keepalive = time.monotonic()
+            # Keepalive so ALB/proxy does not close connection during long segment processing
+            elif time.monotonic() - last_keepalive >= PROGRESS_KEEPALIVE_SEC:
+                yield ": keepalive\n\n"
+                last_keepalive = time.monotonic()
             if job.status == JobStatus.COMPLETED:
                 if last_percent != 100 or last_label != "Completed":
                     payload = {"progress_percent": 100, "stage_label": "Completed"}

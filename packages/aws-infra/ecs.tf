@@ -233,6 +233,7 @@ resource "aws_lb" "web_ui" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.web_ui_alb.id]
   subnets            = module.vpc.public_subnets
+  idle_timeout       = 600 # 10 min so long-running SSE /jobs/{id}/events stream is not closed
 
   tags = merge(local.common_tags, { Name = "${local.name}-web-ui" })
 }
