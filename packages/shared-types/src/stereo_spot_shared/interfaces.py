@@ -18,7 +18,8 @@ class JobStore(Protocol):
     """Store for job records (get, put, update by job_id; list completed with pagination)."""
 
     def get(self, job_id: str, *, consistent_read: bool = False) -> Job | None:
-        """Return the job if it exists, otherwise None. Use consistent_read=True for progress/SSE so completion is seen promptly."""
+        """Return the job if it exists, otherwise None.
+        Use consistent_read=True for progress/SSE so completion is seen promptly."""
         ...
 
     def put(self, job: Job) -> None:

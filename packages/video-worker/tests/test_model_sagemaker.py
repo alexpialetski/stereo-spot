@@ -92,7 +92,8 @@ def test_invoke_sagemaker_endpoint_uses_provided_client_not_boto3_for_runtime() 
             client=mock_client,
         )
         mock_client.invoke_endpoint_async.assert_called_once()
-        # S3 client created in invoke_sagemaker_async (upload) and in invoke_sagemaker_endpoint (poll)
+        # S3 client created in invoke_sagemaker_async (upload) and in
+        # invoke_sagemaker_endpoint (poll)
         assert mock_boto3_client.call_count >= 2
         assert all(c[0][0] == "s3" for c in mock_boto3_client.call_args_list)
 
