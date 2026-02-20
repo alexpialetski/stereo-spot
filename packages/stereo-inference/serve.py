@@ -33,6 +33,38 @@ logger = logging.getLogger(__name__)
 NUNIF_ROOT = "/opt/nunif"
 
 
+def _check_nvenc_available() -> None:
+    """
+    If IW3_VIDEO_CODEC is h264_nvenc, verify that the loaded av/FFmpeg was built for
+    NVENC API 11.1 (SageMaker ml.g4dn driver 470). If we get "Required: 13.0", the
+    image is using a PyAV wheel or wrong FFmpeg; rebuild with --no-cache and redeploy.
+    """
+    if os.environ.get("IW3_VIDEO_CODEC") != "h264_nvenc":
+        return
+    try:
+        import av
+        codec = av.Codec("h264_nvenc", "w")
+        ctx = codec.create()
+        ctx.open()
+        ctx.close()
+    except av.error.NotImplementedError as e:
+        msg = str(e).lower()
+        if "13.0" in msg or ("nvenc" in msg and "required" in msg):
+            logger.error(
+                "h264_nvenc failed: PyAV/FFmpeg in this image expects NVENC 13.0; "
+                "ml.g4dn has driver 470 (11.1). Rebuild the inference image with "
+                "Docker --no-cache so av is built from source against FFmpeg 5.1 + n11.1.5.2, "
+                "then redeploy the SageMaker endpoint."
+            )
+            raise
+    except Exception:
+        pass  # Other errors (e.g. no GPU in test) are fine; we only care about 13.0 vs 11.1
+
+
+# Fail fast at startup if h264_nvenc is requested but image has wrong FFmpeg (NVENC 13.0).
+_check_nvenc_available()
+
+
 def run_iw3_pipeline(
     input_path: str,
     output_path: str,
