@@ -76,7 +76,9 @@ If conversion is still too slow, check CloudWatch metrics for the endpoint (e.g.
 - **Want faster at cost of quality:** Set env such as `IW3_MAX_FPS` (e.g. 24) or a lower-quality preset in the SageMaker container. See [nunif/iw3](https://github.com/nagadomi/nunif) for available flags.
 - **ETA in web UI:** Update `eta_seconds_per_mb_by_instance_type` in `variables.tf` for the instance type you use so the UI shows a realistic estimate.
 
-**iw3 fails with "Cannot load libnvidia-encode.so.1" / "h264_nvenc … Operation not permitted":** The inference image includes NVENC workarounds (install `libnvidia-encode-470`, `NVIDIA_DRIVER_CAPABILITIES=all,video`, and `LD_LIBRARY_PATH` including `/usr/local/nvidia/lib64`). Try **`sagemaker_iw3_video_codec = "h264_nvenc"`** and redeploy the image. If it still fails, SageMaker may not expose the encode device to the container—use **`IW3_VIDEO_CODEC=libx264`** (Terraform default).
+**iw3 fails with "Cannot load libnvidia-encode.so.1"** — Library not found. The image installs `libnvidia-encode-470` and sets `LD_LIBRARY_PATH`; if it still fails, use **`libx264`**.
+
+**iw3 fails with "Driver does not support the required nvenc API version. Required: 13.0 Found: 11.1"** — The inference image builds FFmpeg 5.1 from source with **nv-codec-headers n11.1.5.2** (NVENC API 11.1) and PyAV from source against it, so **h264_nvenc** should work on SageMaker ml.g4dn (driver 470). Set **`sagemaker_iw3_video_codec = "h264_nvenc"`** and redeploy the image. If the error persists, ensure the deployed image includes the custom FFmpeg build (rebuild and push).
 
 ---
 

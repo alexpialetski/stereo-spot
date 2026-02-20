@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+if ! command -v jq &>/dev/null; then
+  echo "Error: jq is required. Install jq (e.g. apt install jq / brew install jq)." >&2
+  exit 1
+fi
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <path-to-env-file>" >&2
   echo "  e.g. $0 packages/aws-infra/.env" >&2
@@ -40,11 +44,19 @@ S3_OUTPUT_PATH="s3://${OUTPUT_BUCKET_NAME}/sagemaker-async-responses/"
 S3_FAILURE_PATH="s3://${OUTPUT_BUCKET_NAME}/sagemaker-async-failures/"
 ASYNC_CONFIG="{\"OutputConfig\":{\"S3OutputPath\":\"${S3_OUTPUT_PATH}\",\"S3FailurePath\":\"${S3_FAILURE_PATH}\"}}"
 
-echo "Creating SageMaker model ${MODEL_NAME}..."
+# Model environment: match Terraform (sagemaker.tf). IW3_VIDEO_CODEC from .env (terraform-output).
+IW3_VIDEO_CODEC="${SAGEMAKER_IW3_VIDEO_CODEC:-libx264}"
+ENV_JSON=$(jq -n \
+  --arg hf "$HF_TOKEN_SECRET_ARN" \
+  --arg codec "$IW3_VIDEO_CODEC" \
+  '{HF_TOKEN_ARN: $hf, IW3_VIDEO_CODEC: $codec} + (if $codec == "h264_nvenc" then {NVIDIA_DRIVER_CAPABILITIES: "all"} else {} end)')
+PRIMARY_CONTAINER=$(jq -n --arg image "$IMAGE_URI" --argjson env "$ENV_JSON" '{Image: $image, Environment: $env}')
+
+echo "Creating SageMaker model ${MODEL_NAME} (IW3_VIDEO_CODEC=${IW3_VIDEO_CODEC})..."
 aws sagemaker create-model \
   --model-name "$MODEL_NAME" \
   --execution-role-arn "$SAGEMAKER_ENDPOINT_ROLE_ARN" \
-  --primary-container "{\"Image\":\"${IMAGE_URI}\",\"Environment\":{\"HF_TOKEN_ARN\":\"${HF_TOKEN_SECRET_ARN}\"}}" \
+  --primary-container "$PRIMARY_CONTAINER" \
   --region "$REGION"
 
 echo "Creating endpoint config ${CONFIG_NAME} (async inference)..."

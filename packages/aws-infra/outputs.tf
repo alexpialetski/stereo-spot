@@ -112,6 +112,11 @@ output "sagemaker_instance_count" {
   value       = var.sagemaker_instance_count
 }
 
+output "sagemaker_iw3_video_codec" {
+  description = "iw3 video codec for SageMaker model (for stereo-inference:sagemaker-deploy)"
+  value       = var.sagemaker_iw3_video_codec
+}
+
 # --- HTTP inference (only when inference_backend=http) ---
 
 output "inference_http_url" {

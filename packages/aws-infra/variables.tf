@@ -112,9 +112,13 @@ variable "sagemaker_instance_count" {
 }
 
 variable "sagemaker_iw3_video_codec" {
-  description = "iw3 video codec: libx264 (software, works on all instances) or h264_nvenc (GPU encode; SageMaker custom containers do not expose libnvidia-encode, so use libx264)"
+  description = "iw3 video codec: libx264 (software) or h264_nvenc (GPU). Image builds FFmpeg with NVENC 11.1 for ml.g4dn (driver 470)."
   type        = string
-  default     = "libx264"
+  default     = "h264_nvenc"
+  validation {
+    condition     = contains(["libx264", "h264_nvenc"], var.sagemaker_iw3_video_codec)
+    error_message = "sagemaker_iw3_video_codec must be libx264 or h264_nvenc."
+  }
 }
 
 # --- ETA (web-ui: estimated conversion time from file size, per MB) ---
