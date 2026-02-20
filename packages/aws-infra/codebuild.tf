@@ -67,6 +67,7 @@ resource "aws_codebuild_project" "inference" {
         variables:
           ECR_URI: "${aws_ecr_repository.inference.repository_url}:${var.ecs_image_tag}"
           REPO_URL: "${var.codebuild_inference_repo_url}"
+          DOCKER_BUILD_EXTRA_ARGS: ""
       phases:
         build:
           commands:
@@ -77,7 +78,7 @@ resource "aws_codebuild_project" "inference" {
             # - echo "Pulling previous image for cache (ignore failure on first build)..."
             # - docker pull $ECR_URI || true
             - echo "Building Docker image..."
-            - docker build --cache-from $ECR_URI -f packages/stereo-inference/Dockerfile -t $ECR_URI .
+            - docker build $${DOCKER_BUILD_EXTRA_ARGS} --cache-from $ECR_URI -f packages/stereo-inference/Dockerfile -t $ECR_URI .
             - echo "Pushing to ECR..."
             - docker push $ECR_URI
       BUILDSPEC
