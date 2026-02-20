@@ -33,6 +33,8 @@ from .deps import (
 # Load .env from STEREOSPOT_ENV_FILE if set (e.g. by nx run web-ui:serve). Unset in ECS.
 bootstrap_env()
 
+# Ensure app loggers (e.g. events stream) emit INFO; uvicorn --log-level only affects uvicorn loggers.
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Keys per ARCHITECTURE: input/{job_id}/source.mp4, jobs/{job_id}/final.mp4
