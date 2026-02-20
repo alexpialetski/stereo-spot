@@ -8,7 +8,7 @@
     "install-deps": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e packages/shared-types -e packages/aws-adapters -e packages/web-ui -e packages/media-worker -e packages/video-worker -e packages/analytics -e packages/integration -q",
+        "command": "pip install -e \"packages/shared-types[dev]\" -e \"packages/aws-adapters[dev]\" -e \"packages/web-ui[dev]\" -e \"packages/media-worker[dev]\" -e \"packages/video-worker[dev]\" -e \"packages/analytics[dev]\" -e \"packages/integration[dev]\" -q",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},

@@ -10,7 +10,8 @@
         "command": "pytest -v",
         "cwd": "{projectRoot}"
       },
-      "configurations": {}
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
     },
     "lint": {
       "executor": "nx:run-commands",
@@ -18,7 +19,8 @@
         "command": "ruff check src tests",
         "cwd": "{projectRoot}"
       },
-      "configurations": {}
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
     }
   }
 }

@@ -3,7 +3,22 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "packages/stereo-inference",
-  "targets":{"test":{"executor":"nx:run-commands","options":{"command":"pip install pytest -q && pytest -v","cwd":"{projectRoot}"},"configurations":{}},"lint":{"executor":"nx:run-commands","options":{"command":"ruff check . tests","cwd":"{projectRoot}"},"configurations":{}},
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip install pytest -q && pytest -v",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "ruff check . tests", "cwd": "{projectRoot}" },
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
+    },
     "sagemaker-build": {
       "executor": "nx:run-commands",
       "options": {
