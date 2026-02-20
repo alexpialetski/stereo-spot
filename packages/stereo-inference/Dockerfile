@@ -34,6 +34,10 @@ RUN cd /tmp \
     && ./configure --prefix=/usr/local --enable-nonfree --enable-nvenc --enable-shared --disable-static --disable-debug \
     && make -j"$(nproc)" && make install && cd /tmp && rm -rf ffmpeg-5.1.2 ffmpeg-5.1.2.tar.xz
 
+# Use a venv so PyAV's setup.py (build from source) sees VIRTUAL_ENV and does not raise.
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" VIRTUAL_ENV=/opt/venv
+
 # Clone nunif (iw3: 2D video to side-by-side 3D / anaglyph)
 WORKDIR /opt
 RUN git clone https://github.com/nagadomi/nunif.git
