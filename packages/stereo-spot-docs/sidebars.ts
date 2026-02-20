@@ -1,0 +1,40 @@
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
+
+const sidebars: SidebarsConfig = {
+  docsSidebar: [
+    'intro',
+    {
+      type: 'category',
+      label: 'Architecture',
+      items: [
+        'architecture/overview',
+        'architecture/pipeline',
+        'architecture/shared-types',
+        'architecture/inference',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Packages',
+      items: ['packages/overview'],
+    },
+    'testing',
+    'runbooks',
+    'operations',
+    'migration',
+    {
+      type: 'category',
+      label: 'AWS',
+      items: [
+        'aws/bring-up',
+        'aws/why-aws',
+        'aws/services-and-requirements',
+        'aws/infrastructure',
+        'aws/runbooks',
+        'aws/build-and-deploy',
+      ],
+    },
+  ],
+};
+
+export default sidebars;

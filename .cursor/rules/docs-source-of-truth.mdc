@@ -1,0 +1,10 @@
+---
+description: Documentation lives in packages/stereo-spot-docs; reference and update it as the single source of truth
+alwaysApply: true
+---
+
+# Documentation source of truth
+
+- **Documentation** for this project is in **`packages/stereo-spot-docs`** (Docusaurus). It is the single source of truth for architecture, pipeline, runbooks, testing, AWS, and per-package reference.
+- When answering questions about how the system works, deployment, or operations, prefer citing or summarizing from **`packages/stereo-spot-docs/docs/`** (and `sidebars.ts`) rather than from ad-hoc markdown elsewhere.
+- When making code or infra changes that affect behavior, APIs, or procedures, update the relevant page in **`packages/stereo-spot-docs`** so the docs stay in sync.

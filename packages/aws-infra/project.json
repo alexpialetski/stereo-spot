@@ -16,9 +16,7 @@
       }
     },
     "terraform-plan": {
-      "dependsOn": [
-        "terraform-init"
-      ]
+      "dependsOn": ["terraform-init"]
     },
     "terraform-output": {
       "metadata": {
@@ -33,28 +31,8 @@
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
-      "dependsOn": [
-        "aws-infra:terraform-output"
-      ],
-      "inputs": [
-        "default",
-        "{workspaceRoot}/packages/aws-infra/.env"
-      ]
-    },
-    "gather-analytics": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "nx run analytics:gather --configuration=aws",
-        "cwd": "{workspaceRoot}"
-      },
-      "configurations": {},
-      "dependsOn": [
-        "aws-infra:terraform-output"
-      ],
-      "inputs": [
-        "default",
-        "{workspaceRoot}/packages/aws-infra/.env"
-      ]
+      "dependsOn": ["aws-infra:terraform-output"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     }
   }
 }

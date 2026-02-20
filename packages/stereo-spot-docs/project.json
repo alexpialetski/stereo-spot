@@ -1,0 +1,39 @@
+{
+  "name": "stereo-spot-docs",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/stereo-spot-docs",
+  "projectType": "application",
+  "tags": ["docs"],
+  "targets": {
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx docusaurus start",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/build"],
+      "options": {
+        "command": "npx docusaurus build",
+        "cwd": "{projectRoot}"
+      },
+      "inputs": [
+        "default",
+        "{projectRoot}/docs/**",
+        "{projectRoot}/sidebars.ts",
+        "{projectRoot}/docusaurus.config.ts",
+        "{projectRoot}/src/**"
+      ],
+      "cache": true
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx docusaurus serve",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

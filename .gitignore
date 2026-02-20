@@ -5,6 +5,7 @@ dist
 tmp
 out-tsc
 build
+.docusaurus/
 *.egg-info
 *.egg
 

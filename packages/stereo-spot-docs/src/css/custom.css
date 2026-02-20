@@ -1,0 +1,33 @@
+/**
+ * Global styles for StereoSpot docs.
+ * Infima is included by the classic template.
+ */
+
+:root {
+  --ifm-color-primary: #2563eb;
+  --ifm-color-primary-dark: #1d4ed8;
+  --ifm-color-primary-darker: #1e40af;
+  --ifm-color-primary-darkest: #1e3a8a;
+  --ifm-color-primary-light: #3b82f6;
+  --ifm-color-primary-lighter: #60a5fa;
+  --ifm-color-primary-lightest: #93c5fd;
+  --ifm-code-font-size: 95%;
+
+  /* Softer than pure white; better contrast for text */
+  --ifm-background-color: #f8fafc;
+  --ifm-background-surface-color: #ffffff;
+
+  /* Darker secondary text for readability */
+  --ifm-color-content-secondary: #475569;
+  --ifm-font-color-secondary: #475569;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #3b82f6;
+  --ifm-color-primary-dark: #2563eb;
+  --ifm-color-primary-darker: #1d4ed8;
+  --ifm-color-primary-darkest: #1e40af;
+  --ifm-color-primary-light: #60a5fa;
+  --ifm-color-primary-lighter: #93c5fd;
+  --ifm-color-primary-lightest: #bfdbfe;
+}
