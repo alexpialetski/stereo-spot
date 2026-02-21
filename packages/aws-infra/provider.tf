@@ -1,5 +1,5 @@
 # nx-terraform-metadata-start
-# providers: aws, modules: terraform-aws-modules/vpc/aws@~> 5.0
+# providers: aws,local, modules: terraform-aws-modules/vpc/aws@~> 5.0
 # nx-terraform-metadata-end
 
 terraform {
@@ -9,6 +9,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "6.32.1"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
     }
   }
 }
@@ -23,3 +27,5 @@ terraform {
 provider "aws" {
   region = var.region
 }
+
+provider "local" {}

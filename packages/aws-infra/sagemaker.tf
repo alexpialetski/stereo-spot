@@ -88,6 +88,8 @@ resource "aws_sagemaker_model" "inference" {
   }
 
   tags = merge(local.common_tags, { Name = "${local.name}-inference" })
+
+  depends_on = [null_resource.inference_ecr_bootstrap]
 }
 
 # --- Endpoint configuration and endpoint (async inference for long-running segments) ---

@@ -55,3 +55,24 @@ resource "aws_ecr_repository" "inference" {
     Name = "${local.name}-inference"
   })
 }
+
+# Bootstrap: build and push a SageMaker-compliant stub image so the endpoint reaches InService on first apply.
+# Stub implements GET /ping and POST /invocations on 8080. Replace with real image via sagemaker-build then sagemaker-deploy.
+# Requires Docker and AWS CLI where Terraform runs (from packages/aws-infra). Runs only on create.
+resource "null_resource" "inference_ecr_bootstrap" {
+  count = var.inference_backend == "sagemaker" ? 1 : 0
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      TAG="${aws_ecr_repository.inference.repository_url}:${var.ecs_image_tag}"
+      REGISTRY="${regex("^[^/]+", aws_ecr_repository.inference.repository_url)}"
+      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin "$REGISTRY"
+      docker build -t "$TAG" -f sagemaker-stub/Dockerfile sagemaker-stub
+      docker push "$TAG"
+    EOT
+    working_dir = path.module
+  }
+
+  depends_on = [aws_ecr_repository.inference]
+}

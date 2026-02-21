@@ -10,7 +10,7 @@ One-time sequence to get StereoSpot running on AWS: provision infra, generate th
 
 - **AWS credentials** configured (e.g. `AWS_PROFILE` or default credentials).
 - **Node and npm** at the workspace root; run `npm ci` if you have not already.
-- **Docker** for building and pushing app images (web-ui, media-worker, video-worker).
+- **Docker** for building and pushing app images (web-ui, media-worker, video-worker). When using SageMaker, the first `terraform-apply` builds and pushes a minimal stub image (GET /ping, POST /invocations) so the endpoint reaches InService; you replace it with the real image in step 4.
 
 ## The aws-infra .env file (generated)
 
@@ -70,7 +70,7 @@ Each project’s `deploy` target depends on `aws-infra:terraform-output` and use
 
 ### 4. Build and deploy the inference endpoint (SageMaker)
 
-If you use SageMaker for inference (default), build the inference image in CodeBuild, then update the endpoint **after** the image has been published.
+If you use SageMaker for inference (default), the first apply pushed a minimal stub image so the endpoint could reach InService. Build the real inference image in CodeBuild, then update the endpoint so it serves the real image.
 
 **Set the Hugging Face token** (required for the inference container to download the model): add `HF_TOKEN=your_token` to `packages/aws-infra/.env`, then run:
 

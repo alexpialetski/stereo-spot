@@ -50,4 +50,6 @@ architecture-beta
 - **media-worker:** Scale on chunking + reassembly queue depth (Application Auto Scaling). Desired count 0 when idle.
 - **video-worker:** Scale on video-worker queue depth. Desired count 0 when idle.
 
+When **inference_backend=sagemaker**, the first apply builds and pushes a minimal SageMaker-compliant stub image (`packages/aws-infra/sagemaker-stub/`: GET /ping, POST /invocations on 8080) so the endpoint reaches InService. Replace it with the real image by running **sagemaker-build** then **sagemaker-deploy** (see [Bringing the solution up](/docs/aws/bring-up)). Terraform run environment must have Docker and AWS CLI for that step.
+
 Nx targets: terraform-init, terraform-plan, terraform-apply, terraform-output (writes env file for workers and smoke-test), ecr-login (Docker login to ECR), update-hf-token (writes HF_TOKEN from .env to Secrets Manager for SageMaker). See [nx-terraform](https://alexpialetski.github.io/nx-terraform/) for full reference.
