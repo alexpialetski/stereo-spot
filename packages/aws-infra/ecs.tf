@@ -9,7 +9,7 @@ resource "aws_ecs_cluster" "main" {
     value = "disabled"
   }
 
-  tags = merge(local.common_tags, { Name = local.name })
+  tags = { Name = local.name }
 }
 
 # --- IAM: task execution role (pull images, write logs) ---
@@ -27,7 +27,7 @@ data "aws_iam_policy_document" "ecs_task_execution_assume" {
 resource "aws_iam_role" "ecs_task_execution" {
   name               = "${local.name}-ecs-task-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_assume.json
-  tags               = merge(local.common_tags, { Name = "${local.name}-ecs-task-execution" })
+  tags               = { Name = "${local.name}-ecs-task-execution" }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
@@ -51,7 +51,7 @@ data "aws_iam_policy_document" "ecs_task_assume" {
 resource "aws_iam_role" "web_ui_task" {
   name               = "${local.name}-web-ui-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
-  tags               = merge(local.common_tags, { Name = "${local.name}-web-ui-task" })
+  tags               = { Name = "${local.name}-web-ui-task" }
 }
 
 resource "aws_iam_role_policy" "web_ui_task" {
@@ -88,7 +88,7 @@ resource "aws_iam_role_policy" "web_ui_task" {
 resource "aws_iam_role" "media_worker_task" {
   name               = "${local.name}-media-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
-  tags               = merge(local.common_tags, { Name = "${local.name}-media-worker-task" })
+  tags               = { Name = "${local.name}-media-worker-task" }
 }
 
 resource "aws_iam_role_policy" "media_worker_task" {
@@ -120,7 +120,7 @@ resource "aws_iam_role_policy" "media_worker_task" {
 resource "aws_iam_role" "video_worker_task" {
   name               = "${local.name}-video-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
-  tags               = merge(local.common_tags, { Name = "${local.name}-video-worker-task" })
+  tags               = { Name = "${local.name}-video-worker-task" }
 }
 
 resource "aws_iam_role_policy" "video_worker_task" {
@@ -190,7 +190,7 @@ resource "aws_security_group" "web_ui_alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-web-ui-alb" })
+  tags = { Name = "${local.name}-web-ui-alb" }
 }
 
 resource "aws_security_group" "web_ui_tasks" {
@@ -212,7 +212,7 @@ resource "aws_security_group" "web_ui_tasks" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-web-ui-tasks" })
+  tags = { Name = "${local.name}-web-ui-tasks" }
 }
 
 # Shared security group for Fargate tasks (media-worker; no ALB)
@@ -228,7 +228,7 @@ resource "aws_security_group" "fargate_tasks" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-fargate-tasks" })
+  tags = { Name = "${local.name}-fargate-tasks" }
 }
 
 # --- ALB and target group ---
@@ -240,7 +240,7 @@ resource "aws_lb" "web_ui" {
   subnets            = module.vpc.public_subnets
   idle_timeout       = 600 # 10 min so long-running SSE /jobs/{id}/events stream is not closed
 
-  tags = merge(local.common_tags, { Name = "${local.name}-web-ui" })
+  tags = { Name = "${local.name}-web-ui" }
 }
 
 resource "aws_lb_target_group" "web_ui" {
@@ -258,7 +258,7 @@ resource "aws_lb_target_group" "web_ui" {
     interval            = 30
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-web-ui" })
+  tags = { Name = "${local.name}-web-ui" }
 }
 
 resource "aws_lb_listener" "web_ui" {
@@ -347,8 +347,6 @@ resource "aws_ecs_task_definition" "web_ui" {
       }
     }
   }])
-
-  tags = local.common_tags
 }
 
 resource "aws_ecs_task_definition" "media_worker" {
@@ -374,8 +372,6 @@ resource "aws_ecs_task_definition" "media_worker" {
       }
     }
   }])
-
-  tags = local.common_tags
 }
 
 # Video-worker runs on Fargate (thin client); inference is on SageMaker.
@@ -402,27 +398,22 @@ resource "aws_ecs_task_definition" "video_worker" {
       }
     }
   }])
-
-  tags = local.common_tags
 }
 
 # --- CloudWatch log groups for ECS ---
 resource "aws_cloudwatch_log_group" "web_ui" {
   name              = "/ecs/${local.name}/web-ui"
   retention_in_days = 7
-  tags              = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "media_worker" {
   name              = "/ecs/${local.name}/media-worker"
   retention_in_days = 7
-  tags              = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "video_worker" {
   name              = "/ecs/${local.name}/video-worker"
   retention_in_days = 7
-  tags              = local.common_tags
 }
 
 # --- ECS services ---
@@ -444,8 +435,6 @@ resource "aws_ecs_service" "web_ui" {
     container_name   = "web-ui"
     container_port   = 8000
   }
-
-  tags = local.common_tags
 }
 
 resource "aws_ecs_service" "media_worker" {
@@ -463,8 +452,6 @@ resource "aws_ecs_service" "media_worker" {
     security_groups  = [aws_security_group.fargate_tasks.id]
     assign_public_ip = false
   }
-
-  tags = local.common_tags
 
   lifecycle {
     ignore_changes = [desired_count]
@@ -487,8 +474,6 @@ resource "aws_ecs_service" "video_worker" {
     security_groups  = [aws_security_group.fargate_tasks.id]
     assign_public_ip = false
   }
-
-  tags = local.common_tags
 
   lifecycle {
     ignore_changes = [desired_count]

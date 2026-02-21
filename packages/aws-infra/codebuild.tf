@@ -16,7 +16,7 @@ data "aws_iam_policy_document" "codebuild_assume" {
 resource "aws_iam_role" "codebuild_inference" {
   name               = "${local.name}-codebuild-inference"
   assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
-  tags               = merge(local.common_tags, { Name = "${local.name}-codebuild-inference" })
+  tags               = { Name = "${local.name}-codebuild-inference" }
 }
 
 resource "aws_iam_role_policy" "codebuild_inference" {
@@ -103,5 +103,5 @@ resource "aws_codebuild_project" "inference" {
     }
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-inference-build" })
+  tags = { Name = "${local.name}-inference-build" }
 }

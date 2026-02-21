@@ -14,7 +14,6 @@ resource "aws_cloudwatch_metric_alarm" "chunking_dlq" {
   }
 
   alarm_description = "Messages in chunking dead-letter queue; investigate failed chunking jobs."
-  tags              = local.common_tags
 }
 
 resource "aws_cloudwatch_metric_alarm" "video_worker_dlq" {
@@ -32,7 +31,6 @@ resource "aws_cloudwatch_metric_alarm" "video_worker_dlq" {
   }
 
   alarm_description = "Messages in video-worker dead-letter queue; investigate failed segment processing."
-  tags              = local.common_tags
 }
 
 resource "aws_cloudwatch_metric_alarm" "reassembly_dlq" {
@@ -50,7 +48,6 @@ resource "aws_cloudwatch_metric_alarm" "reassembly_dlq" {
   }
 
   alarm_description = "Messages in reassembly dead-letter queue; investigate failed reassembly jobs."
-  tags              = local.common_tags
 }
 
 resource "aws_cloudwatch_metric_alarm" "segment_output_dlq" {
@@ -68,5 +65,4 @@ resource "aws_cloudwatch_metric_alarm" "segment_output_dlq" {
   }
 
   alarm_description = "Messages in segment-output dead-letter queue; investigate failed SegmentCompletion writes."
-  tags              = local.common_tags
 }

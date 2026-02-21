@@ -26,6 +26,12 @@ terraform {
 
 provider "aws" {
   region = var.region
+
+  default_tags {
+    tags = {
+      App = var.name_prefix
+    }
+  }
 }
 
 provider "local" {}

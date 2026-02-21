@@ -19,7 +19,7 @@ resource "aws_iam_role" "sagemaker_endpoint" {
 
   name               = "${local.name}-sagemaker-endpoint"
   assume_role_policy = data.aws_iam_policy_document.sagemaker_endpoint_assume[0].json
-  tags               = merge(local.common_tags, { Name = "${local.name}-sagemaker-endpoint" })
+  tags               = { Name = "${local.name}-sagemaker-endpoint" }
 }
 
 resource "aws_iam_role_policy" "sagemaker_endpoint" {
@@ -87,7 +87,7 @@ resource "aws_sagemaker_model" "inference" {
     )
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-inference" })
+  tags = { Name = "${local.name}-inference" }
 
   depends_on = [null_resource.inference_ecr_bootstrap]
 }
@@ -114,7 +114,7 @@ resource "aws_sagemaker_endpoint_configuration" "inference" {
     }
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name}-inference" })
+  tags = { Name = "${local.name}-inference" }
 }
 
 resource "aws_sagemaker_endpoint" "inference" {
@@ -122,7 +122,7 @@ resource "aws_sagemaker_endpoint" "inference" {
 
   name                 = "${local.name}-inference"
   endpoint_config_name  = aws_sagemaker_endpoint_configuration.inference[0].name
-  tags                  = merge(local.common_tags, { Name = "${local.name}-inference" })
+  tags                  = { Name = "${local.name}-inference" }
 }
 
 # --- CloudWatch log group for SageMaker endpoint container logs ---
@@ -131,5 +131,5 @@ resource "aws_cloudwatch_log_group" "sagemaker_endpoint" {
 
   name              = "/aws/sagemaker/Endpoints/${local.name}-inference"
   retention_in_days = 7
-  tags              = merge(local.common_tags, { Name = "${local.name}-sagemaker-endpoint-logs" })
+  tags              = { Name = "${local.name}-sagemaker-endpoint-logs" }
 }

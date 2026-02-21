@@ -2,9 +2,7 @@
 resource "aws_s3_bucket" "input" {
   bucket = "${local.name}-input-${local.account_id}"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-input"
-  })
+  tags = { Name = "${local.name}-input" }
 }
 
 resource "aws_s3_bucket_versioning" "input" {
@@ -31,9 +29,7 @@ resource "aws_s3_bucket_cors_configuration" "input" {
 resource "aws_s3_bucket" "output" {
   bucket = "${local.name}-output-${local.account_id}"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-output"
-  })
+  tags = { Name = "${local.name}-output" }
 }
 
 # CORS: allow browser video playback from web UI (video element loads from presigned URL)

@@ -39,9 +39,7 @@ resource "aws_dynamodb_table" "jobs" {
     projection_type = "ALL"
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-jobs"
-  })
+  tags = { Name = "${local.name}-jobs" }
 }
 
 # SegmentCompletions: PK job_id, SK segment_index; video-worker writes and triggers reassembly (trigger-on-write); media-worker reads for concat
@@ -65,9 +63,7 @@ resource "aws_dynamodb_table" "segment_completions" {
   stream_enabled   = true
   stream_view_type = "NEW_AND_OLD_IMAGES"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-segment-completions"
-  })
+  tags = { Name = "${local.name}-segment-completions" }
 }
 
 # ReassemblyTriggered: PK job_id; TTL on ttl attribute; idempotency and media-worker lock
@@ -87,7 +83,5 @@ resource "aws_dynamodb_table" "reassembly_triggered" {
     enabled        = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-reassembly-triggered"
-  })
+  tags = { Name = "${local.name}-reassembly-triggered" }
 }

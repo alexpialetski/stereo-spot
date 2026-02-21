@@ -5,7 +5,7 @@
 resource "aws_secretsmanager_secret" "hf_token" {
   name        = "${local.name}/hf-token"
   description = "Hugging Face token for StereoCrafter model download in SageMaker container"
-  tags        = merge(local.common_tags, { Name = "${local.name}/hf-token" })
+  tags        = { Name = "${local.name}/hf-token" }
 }
 
 # Optional: placeholder value so the secret exists before first put-secret-value.

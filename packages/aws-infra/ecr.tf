@@ -8,9 +8,7 @@ resource "aws_ecr_repository" "web_ui" {
     scan_on_push = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-web-ui"
-  })
+  tags = { Name = "${local.name}-web-ui" }
 }
 
 resource "aws_ecr_repository" "media_worker" {
@@ -22,9 +20,7 @@ resource "aws_ecr_repository" "media_worker" {
     scan_on_push = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-media-worker"
-  })
+  tags = { Name = "${local.name}-media-worker" }
 }
 
 resource "aws_ecr_repository" "video_worker" {
@@ -36,9 +32,7 @@ resource "aws_ecr_repository" "video_worker" {
     scan_on_push = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-video-worker"
-  })
+  tags = { Name = "${local.name}-video-worker" }
 }
 
 # Stereo-inference container. Push image here; SageMaker model references it.
@@ -51,9 +45,7 @@ resource "aws_ecr_repository" "inference" {
     scan_on_push = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-inference"
-  })
+  tags = { Name = "${local.name}-inference" }
 }
 
 # Bootstrap: build and push a SageMaker-compliant stub image so the endpoint reaches InService on first apply.

@@ -2,41 +2,31 @@
 resource "aws_sqs_queue" "chunking_dlq" {
   name = "${local.name}-chunking-dlq"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-chunking-dlq"
-  })
+  tags = { Name = "${local.name}-chunking-dlq" }
 }
 
 resource "aws_sqs_queue" "video_worker_dlq" {
   name = "${local.name}-video-worker-dlq"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-video-worker-dlq"
-  })
+  tags = { Name = "${local.name}-video-worker-dlq" }
 }
 
 resource "aws_sqs_queue" "reassembly_dlq" {
   name = "${local.name}-reassembly-dlq"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-reassembly-dlq"
-  })
+  tags = { Name = "${local.name}-reassembly-dlq" }
 }
 
 resource "aws_sqs_queue" "segment_output_dlq" {
   name = "${local.name}-segment-output-dlq"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-segment-output-dlq"
-  })
+  tags = { Name = "${local.name}-segment-output-dlq" }
 }
 
 resource "aws_sqs_queue" "deletion_dlq" {
   name = "${local.name}-deletion-dlq"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-deletion-dlq"
-  })
+  tags = { Name = "${local.name}-deletion-dlq" }
 }
 
 # Main queues with redrive to DLQ
@@ -49,9 +39,7 @@ resource "aws_sqs_queue" "chunking" {
     maxReceiveCount     = var.dlq_max_receive_count
   })
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-chunking"
-  })
+  tags = { Name = "${local.name}-chunking" }
 }
 
 resource "aws_sqs_queue" "video_worker" {
@@ -63,9 +51,7 @@ resource "aws_sqs_queue" "video_worker" {
     maxReceiveCount     = var.dlq_max_receive_count
   })
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-video-worker"
-  })
+  tags = { Name = "${local.name}-video-worker" }
 }
 
 resource "aws_sqs_queue" "reassembly" {
@@ -77,9 +63,7 @@ resource "aws_sqs_queue" "reassembly" {
     maxReceiveCount     = var.dlq_max_receive_count
   })
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-reassembly"
-  })
+  tags = { Name = "${local.name}-reassembly" }
 }
 
 resource "aws_sqs_queue" "segment_output" {
@@ -91,9 +75,7 @@ resource "aws_sqs_queue" "segment_output" {
     maxReceiveCount     = var.dlq_max_receive_count
   })
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-segment-output"
-  })
+  tags = { Name = "${local.name}-segment-output" }
 }
 
 resource "aws_sqs_queue" "deletion" {
@@ -105,9 +87,7 @@ resource "aws_sqs_queue" "deletion" {
     maxReceiveCount     = var.dlq_max_receive_count
   })
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-deletion"
-  })
+  tags = { Name = "${local.name}-deletion" }
 }
 
 # Allow S3 input bucket to send events to chunking queue (prefix input/, suffix .mp4)
