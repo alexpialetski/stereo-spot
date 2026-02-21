@@ -48,6 +48,51 @@ class TestDynamoDBJobStore:
         assert got.status == JobStatus.CHUNKING_COMPLETE
         assert got.total_segments == 10
 
+    def test_put_and_get_with_title(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        job = Job(
+            job_id="job-title-1",
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CREATED,
+            created_at=1000,
+            title="attack-on-titan",
+        )
+        store.put(job)
+        got = store.get("job-title-1")
+        assert got is not None
+        assert got.title == "attack-on-titan"
+
+    def test_update_title(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        job = Job(
+            job_id="job-title-2",
+            mode=StereoMode.SBS,
+            status=JobStatus.CREATED,
+            created_at=2000,
+        )
+        store.put(job)
+        store.update("job-title-2", title="my-video")
+        got = store.get("job-title-2")
+        assert got is not None
+        assert got.title == "my-video"
+
+    def test_list_completed_includes_title(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        store.put(
+            Job(
+                job_id="completed-with-title",
+                mode=StereoMode.ANAGLYPH,
+                status=JobStatus.COMPLETED,
+                created_at=1000,
+                completed_at=2000,
+                title="attack-on-titan",
+            )
+        )
+        items, _ = store.list_completed(limit=10)
+        assert len(items) == 1
+        assert items[0].job_id == "completed-with-title"
+        assert items[0].title == "attack-on-titan"
+
     def test_list_completed(self, jobs_table):
         store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
         for i, jid in enumerate(["j1", "j2", "j3"]):

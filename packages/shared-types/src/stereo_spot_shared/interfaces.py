@@ -33,6 +33,7 @@ class JobStore(Protocol):
         status: str | None = None,
         total_segments: int | None = None,
         completed_at: int | None = None,
+        title: str | None = None,
     ) -> None:
         """Update selected attributes of a job by job_id."""
         ...

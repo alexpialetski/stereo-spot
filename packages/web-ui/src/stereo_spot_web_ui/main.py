@@ -4,14 +4,16 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 from stereo_spot_shared import (
     DeletionPayload,
     Job,
@@ -55,6 +57,37 @@ templates = Jinja2Templates(directory=str(templates_dir))
 PROGRESS_POLL_SEC = 2
 PROGRESS_KEEPALIVE_SEC = 30  # Send SSE comment so ALB/proxy does not close idle connection
 PROGRESS_STREAM_TIMEOUT_SEC = 600  # 10 min
+
+# Title: max length for storage and for Content-Disposition filename
+TITLE_MAX_LENGTH = 200
+
+
+def _normalize_title_for_storage(raw: str) -> str:
+    """Take basename, strip extension, sanitize for storage. Returns safe string or fallback."""
+    path = Path(raw)
+    base = path.stem or path.name  # stem = name without extension
+    if not base:
+        base = path.name or "video"
+    # Keep only alphanumeric, hyphen, underscore; replace others with underscore
+    safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", base)
+    safe = safe.strip("_") or "video"
+    return safe[:TITLE_MAX_LENGTH]
+
+
+def _safe_download_filename(title: str | None) -> str:
+    """Build safe filename for Content-Disposition. If no title, return 'final.mp4'."""
+    if not title or not title.strip():
+        return "final.mp4"
+    base = _normalize_title_for_storage(title)
+    return f"{base}3d.mp4"
+
+
+class PatchJobRequest(BaseModel):
+    """Request body for PATCH /jobs/{job_id} (set display title from upload filename)."""
+
+    title: str = Field(
+        ..., min_length=1, max_length=500, description="Display name (e.g. upload filename)"
+    )
 
 
 def _compute_progress(
@@ -157,6 +190,23 @@ async def create_job(
     return RedirectResponse(url=request.url_for("job_detail", job_id=job_id), status_code=303)
 
 
+@app.patch("/jobs/{job_id}", status_code=204)
+async def patch_job(
+    job_id: str,
+    body: PatchJobRequest,
+    job_store: JobStore = Depends(get_job_store),
+) -> None:
+    """Set job display title (e.g. from upload filename). Called after successful upload."""
+    job = job_store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == JobStatus.DELETED:
+        raise HTTPException(status_code=404, detail="Job not found")
+    normalized = _normalize_title_for_storage(body.title)
+    job_store.update(job_id, title=normalized)
+    logger.info("job_id=%s title set to %s", job_id, normalized)
+
+
 @app.get("/jobs/{job_id}/events")
 async def job_progress_events(
     job_id: str,
@@ -244,11 +294,12 @@ async def job_detail(
         playback_url = object_storage.presign_download(
             output_bucket, key, expires_in=3600
         )
+        download_filename = _safe_download_filename(job.title)
         download_url = object_storage.presign_download(
             output_bucket,
             key,
             expires_in=3600,
-            response_content_disposition='attachment; filename="final.mp4"',
+            response_content_disposition=f'attachment; filename="{download_filename}"',
         )
     progress_percent, stage_label = _compute_progress(job, segment_store)
     return templates.TemplateResponse(

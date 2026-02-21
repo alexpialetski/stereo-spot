@@ -37,6 +37,9 @@ class Job(BaseModel):
     completed_at: int | None = Field(
         None, description="Unix timestamp when job was completed"
     )
+    title: str | None = Field(
+        None, description="Optional display name (e.g. from upload filename)"
+    )
 
 
 # --- Segment key payload (from S3 key parser) and video-worker queue ---
@@ -116,6 +119,7 @@ class JobListItem(BaseModel):
     job_id: str
     mode: StereoMode
     completed_at: int = Field(..., description="Unix timestamp")
+    title: str | None = Field(None, description="Optional display name")
 
 
 class PresignedPlaybackResponse(BaseModel):

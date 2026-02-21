@@ -34,9 +34,9 @@ flowchart TB
 
 ### JobStore
 
-**Methods:** `get(job_id)`, `put(job)`, `update(job_id, status=..., total_segments=..., completed_at=...)`, `list_completed(limit, exclusive_start_key=None)`, `list_in_progress(limit=20)`.
+**Methods:** `get(job_id)`, `put(job)`, `update(job_id, status=..., total_segments=..., completed_at=..., title=...)`, `list_completed(limit, exclusive_start_key=None)`, `list_in_progress(limit=20)`.
 
-**Purpose:** Single source of truth for job metadata (mode, status, total_segments, timestamps). Used for create job, update status after chunking/reassembly, and list completed jobs for the UI.
+**Purpose:** Single source of truth for job metadata (mode, status, total_segments, timestamps, optional title). Used for create job, update status after chunking/reassembly, and list completed jobs for the UI. **Job** and **JobListItem** have an optional `title` (display name, e.g. from the upload filename); the web-ui sets it via PATCH after upload and uses it in the dashboard/detail and as the suggested download filename (e.g. `attack-on-titan3d.mp4`).
 
 **Consumers:** web-ui (create, get, list), media-worker chunking (get mode, update chunking_complete), media-worker reassembly (get, update completed), video-worker reassembly trigger (get total_segments, status).
 

@@ -80,6 +80,7 @@ class DynamoDBJobStore:
         status: str | None = None,
         total_segments: int | None = None,
         completed_at: int | None = None,
+        title: str | None = None,
     ) -> None:
         """Update selected attributes of a job by job_id."""
         updates: list[str] = []
@@ -98,6 +99,10 @@ class DynamoDBJobStore:
             updates.append("#ca = :ca")
             expr_names["#ca"] = "completed_at"
             expr_values[":ca"] = completed_at
+        if title is not None:
+            updates.append("#tl = :tl")
+            expr_names["#tl"] = "title"
+            expr_values[":tl"] = title
 
         if not updates:
             return
@@ -130,6 +135,7 @@ class DynamoDBJobStore:
                 job_id=row["job_id"],
                 mode=StereoMode(row["mode"]),
                 completed_at=int(row["completed_at"]),
+                title=row.get("title"),
             )
             for row in resp.get("Items", [])
         ]

@@ -6,12 +6,30 @@ import pytest
 from fastapi.testclient import TestClient
 from stereo_spot_shared import Job, JobStatus, StereoMode
 
-from stereo_spot_web_ui.main import app
+from stereo_spot_web_ui.main import (
+    _normalize_title_for_storage,
+    _safe_download_filename,
+    app,
+)
 
 
 @pytest.fixture
 def client(app_with_mocks: None) -> TestClient:
     return TestClient(app)
+
+
+def test_normalize_title_for_storage() -> None:
+    """Title normalization: basename, strip extension, safe chars."""
+    assert _normalize_title_for_storage("attack-on-titan.mp4") == "attack-on-titan"
+    assert _normalize_title_for_storage("/path/to/video.mp4") == "video"
+    assert _normalize_title_for_storage("my video (1).mp4") == "my_video__1"
+
+
+def test_safe_download_filename() -> None:
+    """Download filename: title -> base3d.mp4; no title -> final.mp4."""
+    assert _safe_download_filename("attack-on-titan") == "attack-on-titan3d.mp4"
+    assert _safe_download_filename(None) == "final.mp4"
+    assert _safe_download_filename("") == "final.mp4"
 
 
 def test_create_job_returns_job_id_and_upload_url_with_correct_key(client: TestClient) -> None:
@@ -280,3 +298,71 @@ def test_job_detail_returns_404_when_deleted(client: TestClient) -> None:
     )
     response = client.get(f"/jobs/{job_id}")
     assert response.status_code == 404
+
+
+def test_patch_job_sets_title(client: TestClient) -> None:
+    """PATCH /jobs/{id} with title updates job; GET detail shows normalized title."""
+    store = app.state.job_store
+    job_id = "patch-title-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CREATED,
+            created_at=100,
+        )
+    )
+    response = client.patch(
+        f"/jobs/{job_id}",
+        json={"title": "attack-on-titan.mp4"},
+    )
+    assert response.status_code == 204
+    job = store.get(job_id)
+    assert job is not None
+    assert job.title == "attack-on-titan"
+    detail = client.get(f"/jobs/{job_id}")
+    assert detail.status_code == 200
+    assert "attack-on-titan" in detail.text
+
+
+def test_patch_job_returns_404_when_job_missing(client: TestClient) -> None:
+    """PATCH /jobs/{id} returns 404 when job does not exist."""
+    response = client.patch(
+        "/jobs/nonexistent-id",
+        json={"title": "foo.mp4"},
+    )
+    assert response.status_code == 404
+
+
+def test_patch_job_returns_404_when_deleted(client: TestClient) -> None:
+    """PATCH /jobs/{id} returns 404 when job is deleted."""
+    store = app.state.job_store
+    job_id = "deleted-patch-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.DELETED,
+        )
+    )
+    response = client.patch(f"/jobs/{job_id}", json={"title": "foo.mp4"})
+    assert response.status_code == 404
+
+
+def test_job_detail_completed_with_title_shows_title(client: TestClient) -> None:
+    """Completed job with title: detail page shows title and download link."""
+    store = app.state.job_store
+    job_id = "done-with-title"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.COMPLETED,
+            completed_at=3000,
+            title="attack-on-titan",
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert "attack-on-titan" in response.text
+    assert "Download" in response.text

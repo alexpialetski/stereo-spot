@@ -30,6 +30,7 @@ class MockJobStore:
         status: str | None = None,
         total_segments: int | None = None,
         completed_at: int | None = None,
+        title: str | None = None,
     ) -> None:
         job = self._jobs.get(job_id)
         if not job:
@@ -41,6 +42,8 @@ class MockJobStore:
             updates["total_segments"] = total_segments
         if completed_at is not None:
             updates["completed_at"] = completed_at
+        if title is not None:
+            updates["title"] = title
         if updates:
             job = job.model_copy(update=updates)
             self._jobs[job_id] = job
@@ -55,6 +58,7 @@ class MockJobStore:
                 job_id=j.job_id,
                 mode=j.mode,
                 completed_at=j.completed_at or 0,
+                title=j.title,
             )
             for j in self._jobs.values()
             if j.status == JobStatus.COMPLETED and j.completed_at is not None

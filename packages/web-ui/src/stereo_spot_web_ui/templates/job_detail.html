@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Job {{ job.job_id }} — Stereo-Spot{% endblock %}
+{% block title %}Job {{ job.title or job.job_id }} — Stereo-Spot{% endblock %}
 {% block content %}
-<h1>Job <code>{{ job.job_id }}</code></h1>
+<h1>Job {{ job.title or job.job_id }}</h1>
 <p><strong>Mode:</strong> {{ job.mode.value }}</p>
 
 {% if upload_url %}
 <article>
   <h2>Upload your video</h2>
-  <div id="upload-area" data-upload-url="{{ upload_url }}"{% if settings.show_eta %} data-eta-seconds-per-mb="{{ settings.eta_seconds_per_mb }}" data-eta-cloud="{{ settings.eta_cloud_name }}"{% endif %}>
+  <div id="upload-area" data-upload-url="{{ upload_url }}" data-job-id="{{ job.job_id }}"{% if settings.show_eta %} data-eta-seconds-per-mb="{{ settings.eta_seconds_per_mb }}" data-eta-cloud="{{ settings.eta_cloud_name }}"{% endif %}>
     <label for="source-file">Choose an MP4 file:</label>
     <input type="file" id="source-file" name="source" accept=".mp4,video/mp4">
     <button type="button" id="upload-btn" disabled>Upload file</button>
@@ -90,6 +90,14 @@
       if (res.ok) {
         statusEl.textContent = 'Upload complete. Progress will update automatically.';
         fileInput.value = '';
+        var jobId = area.getAttribute('data-job-id');
+        if (jobId && file && file.name) {
+          fetch('/jobs/' + jobId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: file.name })
+          }).then(function () { window.location.reload(); }).catch(function () { window.location.reload(); });
+        }
       } else {
         statusEl.textContent = 'Upload failed: ' + res.status + ' ' + res.statusText;
         uploadBtn.disabled = false;
