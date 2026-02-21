@@ -15,11 +15,8 @@ class WebUISettings(BaseSettings):
     """
     All environment variables used by the web UI.
     Env vars are read from os.environ (UPPER_SNAKE_CASE by default).
+    Operator links (logs, cost) come from OperatorLinksProvider (e.g. aws-adapters).
     """
-
-    # Used for "Open logs" CloudWatch Logs Insights link on job detail (typically set in ECS).
-    name_prefix: str | None = None
-    logs_region: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=None,  # We load .env via bootstrap_env() in main so env is ready

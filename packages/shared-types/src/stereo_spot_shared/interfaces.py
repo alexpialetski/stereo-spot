@@ -174,3 +174,20 @@ class ConversionMetricsProvider(Protocol):
     ) -> AnalyticsSnapshot:
         """Fetch conversion metrics for the given time range and return a snapshot."""
         ...
+
+
+@runtime_checkable
+class OperatorLinksProvider(Protocol):
+    """
+    Provider for operator-facing console links (logs, cost dashboard).
+    Implementations are cloud-specific (e.g. AWS: CloudWatch Logs Insights, Cost Explorer).
+    When not deployed on a supported cloud, the app receives None and hides these links.
+    """
+
+    def get_job_logs_url(self, job_id: str) -> str | None:
+        """Return a deep link to view logs for the given job, or None if not available."""
+        ...
+
+    def get_cost_dashboard_url(self) -> str | None:
+        """Return a deep link to the cost/billing dashboard (e.g. filtered by app), or None."""
+        ...

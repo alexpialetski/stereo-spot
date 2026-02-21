@@ -2,7 +2,7 @@
 
 from fastapi import Request
 from stereo_spot_shared import JobStore, ObjectStorage, SegmentCompletionStore
-from stereo_spot_shared.interfaces import QueueSender
+from stereo_spot_shared.interfaces import OperatorLinksProvider, QueueSender
 
 
 def get_job_store(request: Request) -> JobStore:
@@ -63,3 +63,13 @@ def get_deletion_queue_sender(request: Request) -> QueueSender:
     from stereo_spot_aws_adapters.env_config import deletion_queue_sender_from_env
 
     return deletion_queue_sender_from_env()
+
+
+def get_operator_links_provider(request: Request) -> OperatorLinksProvider | None:
+    """Return OperatorLinksProvider from app state or build from env (e.g. AWS)."""
+    provider = getattr(request.app.state, "operator_links_provider", None)
+    if provider is not None:
+        return provider
+    from stereo_spot_aws_adapters.env_config import operator_links_from_env
+
+    return operator_links_from_env()

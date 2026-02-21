@@ -21,15 +21,22 @@ Optional:
 - AWS_REGION (default: us-east-1)
 - AWS_ENDPOINT_URL (e.g. for LocalStack)
 - SQS_LONG_POLL_WAIT_SECONDS (default: 20, max 20) for receive long polling
+- NAME_PREFIX (e.g. stereo-spot): when set, operator_links_from_env() returns a provider for
+  CloudWatch Logs Insights and Cost Explorer links.
+- LOGS_REGION: region for log links (default: AWS_REGION or us-east-1).
+- COST_EXPLORER_URL: optional override for the Cost Explorer deep link (default: App-tag filter).
 """
 
 import os
+
+from stereo_spot_shared.interfaces import OperatorLinksProvider
 
 from .dynamodb_stores import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
     ReassemblyTriggeredLock,
 )
+from .operator_links import AWSOperatorLinksProvider
 from .s3_storage import S3ObjectStorage
 from .sqs_queues import SQSQueueReceiver, SQSQueueSender
 
@@ -189,3 +196,24 @@ def input_bucket_name() -> str:
 def output_bucket_name() -> str:
     """Return output bucket name from OUTPUT_BUCKET_NAME."""
     return os.environ["OUTPUT_BUCKET_NAME"]
+
+
+def operator_links_from_env() -> OperatorLinksProvider | None:
+    """
+    Build AWS operator links provider when NAME_PREFIX is set (e.g. ECS deployment).
+    Returns None when NAME_PREFIX is unset so the web-ui does not show AWS console links.
+    """
+    name_prefix = os.environ.get("NAME_PREFIX")
+    if not name_prefix:
+        return None
+    region = (
+        os.environ.get("LOGS_REGION")
+        or os.environ.get("AWS_REGION")
+        or "us-east-1"
+    )
+    cost_url = os.environ.get("COST_EXPLORER_URL") or None
+    return AWSOperatorLinksProvider(
+        name_prefix=name_prefix,
+        region=region,
+        cost_explorer_url=cost_url,
+    )

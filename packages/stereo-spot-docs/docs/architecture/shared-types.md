@@ -72,6 +72,16 @@ flowchart TB
 
 **Consumers:** web-ui (presign upload/download); media-worker (download source, upload segments and final); video-worker (segment in/out via inference).
 
+---
+
+### OperatorLinksProvider
+
+**Methods:** `get_job_logs_url(job_id) → str | None`, `get_cost_dashboard_url() → str | None`.
+
+**Purpose:** Optional provider for operator-facing console links: a deep link to view logs for a job, and a link to the cost/billing dashboard (e.g. filtered by app). When not set (e.g. not deployed on a supported cloud), the web-ui hides these links. Keeps the web-ui cloud-agnostic; implementations are cloud-specific (e.g. AWS: CloudWatch Logs Insights, Cost Explorer).
+
+**Consumers:** web-ui (job detail “Open logs”, top nav “Cost” link). Injected via `get_operator_links_provider(request)`; when `NAME_PREFIX` is set (e.g. ECS), aws-adapters returns an implementation.
+
 ## Implementation
 
 - **AWS:** Implementations in **aws-adapters** (DynamoDB, SQS, S3). Used when `STORAGE_ADAPTER=aws` (or equivalent).

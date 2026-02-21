@@ -6,10 +6,13 @@ from .dynamodb_stores import (
     DynamoSegmentCompletionStore,
     ReassemblyTriggeredLock,
 )
+from .env_config import operator_links_from_env
+from .operator_links import AWSOperatorLinksProvider
 from .s3_storage import S3ObjectStorage
 from .sqs_queues import SQSQueueReceiver, SQSQueueSender
 
 __all__ = [
+    "AWSOperatorLinksProvider",
     "DynamoDBJobStore",
     "DynamoSegmentCompletionStore",
     "ReassemblyTriggeredLock",
@@ -17,4 +20,5 @@ __all__ = [
     "SQSQueueReceiver",
     "SQSQueueSender",
     "get_conversion_metrics",
+    "operator_links_from_env",
 ]

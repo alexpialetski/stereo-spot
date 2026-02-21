@@ -53,5 +53,6 @@ Pipeline logic uses **shared-types** and thin interfaces for:
 - **Segment-completion store** — put completion, query by job ordered by segment_index
 - **Queues** — send/receive messages
 - **Object storage** — presign upload/download, upload/download
+- **Operator links (optional)** — job logs URL, cost dashboard URL (e.g. web-ui “Open logs”, “Cost” nav link)
 
 **AWS** implementations live in **aws-adapters**. App and workers depend on the abstractions and get the implementation by config (e.g. `STORAGE_ADAPTER=aws`). Terraform remains per-cloud; application and worker code stay the same.

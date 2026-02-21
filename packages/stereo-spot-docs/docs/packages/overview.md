@@ -14,9 +14,9 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 **Main targets:** `serve`, `test`, `lint`, `build` (Docker), `deploy` (push image + ECS force-new-deployment).
 
-**Env (when using aws-adapters):** `INPUT_BUCKET_NAME`, `OUTPUT_BUCKET_NAME`, `JOBS_TABLE_NAME`, `SEGMENT_COMPLETIONS_TABLE_NAME`, `AWS_REGION`; optional `AWS_ENDPOINT_URL` (e.g. LocalStack). Local: `STEREOSPOT_ENV_FILE` to load from file.
+**Env (when using aws-adapters):** `INPUT_BUCKET_NAME`, `OUTPUT_BUCKET_NAME`, `JOBS_TABLE_NAME`, `SEGMENT_COMPLETIONS_TABLE_NAME`, `AWS_REGION`; optional `AWS_ENDPOINT_URL` (e.g. LocalStack). Optional operator links (Open logs, Cost in nav): when `NAME_PREFIX` is set, aws-adapters provides an OperatorLinksProvider. Local: `STEREOSPOT_ENV_FILE` to load from file.
 
-**Dependencies:** shared-types, aws-adapters. Uses JobStore and ObjectStorage abstractions.
+**Dependencies:** shared-types, aws-adapters. Uses JobStore, ObjectStorage, and optional OperatorLinksProvider (no AWS-specific code in web-ui).
 
 ---
 
@@ -68,11 +68,11 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 ## aws-adapters
 
-**Purpose:** AWS implementations of JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (DynamoDB, SQS, S3). Used when `STORAGE_ADAPTER=aws` or equivalent.
+**Purpose:** AWS implementations of JobStore, SegmentCompletionStore, QueueSender/Receiver, ObjectStorage (DynamoDB, SQS, S3), and OperatorLinksProvider (CloudWatch Logs Insights, Cost Explorer deep links). Used when `STORAGE_ADAPTER=aws` or equivalent.
 
 **Main targets:** `test` (pytest with moto), `lint`, `smoke-test` (data-plane e2e against real AWS or LocalStack).
 
-**Env (smoke-test and production):** Bucket names, table names, queue URLs; `AWS_REGION`; optional `AWS_ENDPOINT_URL`. Load from `terraform-outputs.env` or equivalent.
+**Env (smoke-test and production):** Bucket names, table names, queue URLs; `AWS_REGION`; optional `AWS_ENDPOINT_URL`. For operator links (web-ui “Open logs” and “Cost”): `NAME_PREFIX` (e.g. stereo-spot); optional `LOGS_REGION`, `COST_EXPLORER_URL`. Load from `terraform-outputs.env` or equivalent.
 
 **Dependencies:** shared-types.
 

@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import re
 import time
 import uuid
@@ -24,15 +23,15 @@ from stereo_spot_shared import (
     SegmentCompletionStore,
     StereoMode,
 )
-from stereo_spot_shared.interfaces import QueueSender
+from stereo_spot_shared.interfaces import OperatorLinksProvider, QueueSender
 
-from .cloudwatch_links import build_cloudwatch_logs_insights_url
-from .config import bootstrap_env, get_settings
+from .config import bootstrap_env
 from .deps import (
     get_deletion_queue_sender,
     get_input_bucket,
     get_job_store,
     get_object_storage,
+    get_operator_links_provider,
     get_output_bucket,
     get_segment_completion_store,
 )
@@ -53,7 +52,19 @@ app = FastAPI(title="Stereo-Spot Web UI", version="0.1.0")
 _package_dir = Path(__file__).resolve().parent
 templates_dir = _package_dir / "templates"
 static_dir = _package_dir / "static"
-templates = Jinja2Templates(directory=str(templates_dir))
+
+
+def _cost_explorer_context(request: Request) -> dict:
+    """Inject cost_explorer_url into all templates (from OperatorLinksProvider when available)."""
+    provider = get_operator_links_provider(request)
+    url = provider.get_cost_dashboard_url() if provider else None
+    return {"cost_explorer_url": url}
+
+
+templates = Jinja2Templates(
+    directory=str(templates_dir),
+    context_processors=[_cost_explorer_context],
+)
 
 # SSE poll interval, keepalive, and max stream duration
 PROGRESS_POLL_SEC = 2
@@ -322,6 +333,7 @@ async def job_detail(
     segment_store: SegmentCompletionStore = Depends(get_segment_completion_store),
     input_bucket: str = Depends(get_input_bucket),
     output_bucket: str = Depends(get_output_bucket),
+    operator_links: OperatorLinksProvider | None = Depends(get_operator_links_provider),
 ) -> HTMLResponse:
     """Job detail: upload URL + instructions if status=created; otherwise status + progress."""
     job = job_store.get(job_id)
@@ -369,14 +381,9 @@ async def job_detail(
             conversion_sec_per_mb = conversion_duration_sec / (
                 job.source_file_size_bytes / 1e6
             )
-    settings = get_settings()
-    cloudwatch_logs_url = None
-    if settings.name_prefix:
-        region = settings.logs_region or os.environ.get("AWS_REGION")
-        if region:
-            cloudwatch_logs_url = build_cloudwatch_logs_insights_url(
-                job.job_id, settings.name_prefix, region
-            )
+    cloudwatch_logs_url = (
+        operator_links.get_job_logs_url(job.job_id) if operator_links else None
+    )
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -393,7 +400,6 @@ async def job_detail(
             "conversion_duration_sec": conversion_duration_sec,
             "conversion_sec_per_mb": conversion_sec_per_mb,
             "cloudwatch_logs_url": cloudwatch_logs_url,
-            "settings": settings,
         },
     )
 

@@ -10,6 +10,7 @@ High-level levers and guardrails that apply to any cloud implementation.
 
 - **Main levers:** Compute (workers, inference endpoint), object storage and egress, queues, job/segment store. Segment sizing (e.g. ~50MB / ~5 min) keeps cost predictable for batch video work.
 - **Guardrails:** Set **max capacity** per worker service and inference endpoint to cap scale. Use **dead-letter queues** with a max receive count; add an **alarm** when any DLQ has messages so failed messages are visible. Tag resources for billing; optionally set budget alerts.
+- **Web UI:** Operator-facing links (job detail “Open logs”, top nav “Cost”) come from **OperatorLinksProvider** (see [shared-types](/docs/architecture/shared-types#operatorlinksprovider)). On AWS, when `NAME_PREFIX` is set (e.g. in ECS), aws-adapters provides the implementation (CloudWatch Logs Insights, Cost Explorer filtered by App tag). Override the cost link via `COST_EXPLORER_URL`; when `NAME_PREFIX` is unset, no operator links are shown.
 
 ## Security
 
