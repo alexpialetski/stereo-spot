@@ -121,18 +121,6 @@ variable "sagemaker_iw3_video_codec" {
   }
 }
 
-# --- ETA (web-ui: estimated conversion time from file size, per MB) ---
-# Keyed by SageMaker instance type; lookup in ecs.tf. GCP would use its own infra package.
-
-variable "eta_seconds_per_mb_by_instance_type" {
-  description = "Conversion time per MB of source video by SageMaker instance type (for UI ETA). Update from analytics when tuning."
-  type        = map(number)
-  default = {
-    "ml.g4dn.xlarge"  = 1.6
-    "ml.g4dn.2xlarge" = 42
-  }
-}
-
 # --- CodeBuild (stereo-inference image) ---
 
 variable "codebuild_inference_repo_url" {

@@ -40,6 +40,12 @@ class Job(BaseModel):
     title: str | None = Field(
         None, description="Optional display name (e.g. from upload filename)"
     )
+    uploaded_at: int | None = Field(
+        None, description="Unix timestamp when upload finished"
+    )
+    source_file_size_bytes: int | None = Field(
+        None, description="Size of uploaded source file in bytes"
+    )
 
 
 # --- Segment key payload (from S3 key parser) and video-worker queue ---
@@ -120,6 +126,10 @@ class JobListItem(BaseModel):
     mode: StereoMode
     completed_at: int = Field(..., description="Unix timestamp")
     title: str | None = Field(None, description="Optional display name")
+    uploaded_at: int | None = Field(None, description="Unix timestamp when upload finished")
+    source_file_size_bytes: int | None = Field(
+        None, description="Size of uploaded source file in bytes"
+    )
 
 
 class PresignedPlaybackResponse(BaseModel):

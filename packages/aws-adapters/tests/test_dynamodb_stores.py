@@ -93,6 +93,60 @@ class TestDynamoDBJobStore:
         assert items[0].job_id == "completed-with-title"
         assert items[0].title == "attack-on-titan"
 
+    def test_put_and_get_with_uploaded_at_and_size(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        job = Job(
+            job_id="job-timing-1",
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CREATED,
+            created_at=1000,
+            uploaded_at=1005,
+            source_file_size_bytes=50_000_000,
+        )
+        store.put(job)
+        got = store.get("job-timing-1")
+        assert got is not None
+        assert got.uploaded_at == 1005
+        assert got.source_file_size_bytes == 50_000_000
+
+    def test_update_uploaded_at_and_source_file_size_bytes(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        job = Job(
+            job_id="job-timing-2",
+            mode=StereoMode.SBS,
+            status=JobStatus.CREATED,
+            created_at=2000,
+        )
+        store.put(job)
+        store.update(
+            "job-timing-2",
+            uploaded_at=2010,
+            source_file_size_bytes=100_000_000,
+        )
+        got = store.get("job-timing-2")
+        assert got is not None
+        assert got.uploaded_at == 2010
+        assert got.source_file_size_bytes == 100_000_000
+
+    def test_list_completed_includes_uploaded_at_and_size(self, jobs_table):
+        store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
+        store.put(
+            Job(
+                job_id="completed-with-timing",
+                mode=StereoMode.ANAGLYPH,
+                status=JobStatus.COMPLETED,
+                created_at=1000,
+                completed_at=2000,
+                uploaded_at=1005,
+                source_file_size_bytes=25_000_000,
+            )
+        )
+        items, _ = store.list_completed(limit=10)
+        assert len(items) == 1
+        assert items[0].job_id == "completed-with-timing"
+        assert items[0].uploaded_at == 1005
+        assert items[0].source_file_size_bytes == 25_000_000
+
     def test_list_completed(self, jobs_table):
         store = DynamoDBJobStore(jobs_table, region_name="us-east-1")
         for i, jid in enumerate(["j1", "j2", "j3"]):

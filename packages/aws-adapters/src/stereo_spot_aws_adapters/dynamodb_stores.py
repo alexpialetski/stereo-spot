@@ -81,6 +81,8 @@ class DynamoDBJobStore:
         total_segments: int | None = None,
         completed_at: int | None = None,
         title: str | None = None,
+        uploaded_at: int | None = None,
+        source_file_size_bytes: int | None = None,
     ) -> None:
         """Update selected attributes of a job by job_id."""
         updates: list[str] = []
@@ -103,6 +105,14 @@ class DynamoDBJobStore:
             updates.append("#tl = :tl")
             expr_names["#tl"] = "title"
             expr_values[":tl"] = title
+        if uploaded_at is not None:
+            updates.append("#ua = :ua")
+            expr_names["#ua"] = "uploaded_at"
+            expr_values[":ua"] = uploaded_at
+        if source_file_size_bytes is not None:
+            updates.append("#sf = :sf")
+            expr_names["#sf"] = "source_file_size_bytes"
+            expr_values[":sf"] = source_file_size_bytes
 
         if not updates:
             return
@@ -136,6 +146,8 @@ class DynamoDBJobStore:
                 mode=StereoMode(row["mode"]),
                 completed_at=int(row["completed_at"]),
                 title=row.get("title"),
+                uploaded_at=row.get("uploaded_at"),
+                source_file_size_bytes=row.get("source_file_size_bytes"),
             )
             for row in resp.get("Items", [])
         ]

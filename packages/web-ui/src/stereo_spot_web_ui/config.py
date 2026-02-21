@@ -22,14 +22,6 @@ class WebUISettings(BaseSettings):
         extra="ignore",
     )
 
-    # ETA: conversion time estimate from file size (job detail upload)
-    eta_seconds_per_mb: float = 0.0
-    eta_cloud_name: str = "aws"
-
-    @property
-    def show_eta(self) -> bool:
-        return self.eta_seconds_per_mb > 0
-
 
 def get_settings() -> WebUISettings:
     """Return validated settings from current environment."""

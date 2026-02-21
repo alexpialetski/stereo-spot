@@ -61,6 +61,9 @@ PROGRESS_STREAM_TIMEOUT_SEC = 600  # 10 min
 # Title: max length for storage and for Content-Disposition filename
 TITLE_MAX_LENGTH = 200
 
+# ETA cache TTL (seconds)
+ETA_CACHE_TTL_SEC = 300
+
 
 def _normalize_title_for_storage(raw: str) -> str:
     """Take basename, strip extension, sanitize for storage. Returns safe string or fallback."""
@@ -83,11 +86,47 @@ def _safe_download_filename(title: str | None) -> str:
 
 
 class PatchJobRequest(BaseModel):
-    """Request body for PATCH /jobs/{job_id} (set display title from upload filename)."""
+    """Request body for PATCH /jobs/{job_id} (set display title and timing from upload)."""
 
     title: str = Field(
         ..., min_length=1, max_length=500, description="Display name (e.g. upload filename)"
     )
+    source_file_size_bytes: int | None = Field(
+        None,
+        ge=1,
+        le=10 * 1024 * 1024 * 1024,
+        description="Size of uploaded file in bytes (for ETA)",
+    )
+
+
+def _get_eta_seconds_per_mb(job_store: JobStore, app: FastAPI) -> float:
+    """
+    Return average conversion seconds per MB from recent completed jobs (lazy + TTL cache).
+    Used for ETA and countdown; returns 0.0 when no data.
+    """
+    cached = getattr(app.state, "eta_seconds_per_mb_cached", None)
+    cached_at = getattr(app.state, "eta_seconds_per_mb_cached_at", 0)
+    if cached is not None and (time.time() - cached_at) < ETA_CACHE_TTL_SEC:
+        return cached
+    items, _ = job_store.list_completed(limit=50)
+    sec_per_mb_list = []
+    for item in items:
+        if (
+            item.uploaded_at is not None
+            and item.source_file_size_bytes is not None
+            and item.source_file_size_bytes > 0
+        ):
+            duration_sec = item.completed_at - item.uploaded_at
+            if duration_sec > 0:
+                mb = item.source_file_size_bytes / 1e6
+                sec_per_mb_list.append(duration_sec / mb)
+    if not sec_per_mb_list:
+        value = 0.0
+    else:
+        value = sum(sec_per_mb_list) / len(sec_per_mb_list)
+    app.state.eta_seconds_per_mb_cached = value
+    app.state.eta_seconds_per_mb_cached_at = time.time()
+    return value
 
 
 def _compute_progress(
@@ -196,15 +235,25 @@ async def patch_job(
     body: PatchJobRequest,
     job_store: JobStore = Depends(get_job_store),
 ) -> None:
-    """Set job display title (e.g. from upload filename). Called after successful upload."""
+    """Set job display title and timing (from upload). Called after successful upload."""
     job = job_store.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status == JobStatus.DELETED:
         raise HTTPException(status_code=404, detail="Job not found")
     normalized = _normalize_title_for_storage(body.title)
-    job_store.update(job_id, title=normalized)
-    logger.info("job_id=%s title set to %s", job_id, normalized)
+    update_kw: dict = {"title": normalized}
+    if job.uploaded_at is None:
+        update_kw["uploaded_at"] = int(time.time())
+    if body.source_file_size_bytes is not None:
+        update_kw["source_file_size_bytes"] = body.source_file_size_bytes
+    job_store.update(job_id, **update_kw)
+    logger.info(
+        "job_id=%s title=%s uploaded_at/size set=%s",
+        job_id,
+        normalized,
+        body.source_file_size_bytes is not None,
+    )
 
 
 @app.get("/jobs/{job_id}/events")
@@ -302,6 +351,22 @@ async def job_detail(
             response_content_disposition=f'attachment; filename="{download_filename}"',
         )
     progress_percent, stage_label = _compute_progress(job, segment_store)
+    eta_seconds_per_mb = _get_eta_seconds_per_mb(job_store, request.app)
+    show_eta = eta_seconds_per_mb > 0
+    conversion_duration_sec = None
+    conversion_sec_per_mb = None
+    if (
+        job.status == JobStatus.COMPLETED
+        and job.uploaded_at is not None
+        and job.completed_at is not None
+        and job.source_file_size_bytes is not None
+        and job.source_file_size_bytes > 0
+    ):
+        conversion_duration_sec = job.completed_at - job.uploaded_at
+        if conversion_duration_sec > 0:
+            conversion_sec_per_mb = conversion_duration_sec / (
+                job.source_file_size_bytes / 1e6
+            )
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -313,6 +378,10 @@ async def job_detail(
             "download_url": download_url,
             "progress_percent": progress_percent,
             "stage_label": stage_label,
+            "eta_seconds_per_mb": eta_seconds_per_mb,
+            "show_eta": show_eta,
+            "conversion_duration_sec": conversion_duration_sec,
+            "conversion_sec_per_mb": conversion_sec_per_mb,
             "settings": get_settings(),
         },
     )

@@ -35,6 +35,8 @@ class MockJobStore:
         total_segments: int | None = None,
         completed_at: int | None = None,
         title: str | None = None,
+        uploaded_at: int | None = None,
+        source_file_size_bytes: int | None = None,
     ) -> None:
         job = self._jobs.get(job_id)
         if not job:
@@ -48,6 +50,10 @@ class MockJobStore:
             updates["completed_at"] = completed_at
         if title is not None:
             updates["title"] = title
+        if uploaded_at is not None:
+            updates["uploaded_at"] = uploaded_at
+        if source_file_size_bytes is not None:
+            updates["source_file_size_bytes"] = source_file_size_bytes
         if updates:
             job = job.model_copy(update=updates)
             self._jobs[job_id] = job
@@ -63,6 +69,8 @@ class MockJobStore:
                 mode=j.mode,
                 completed_at=j.completed_at or 0,
                 title=j.title,
+                uploaded_at=j.uploaded_at,
+                source_file_size_bytes=j.source_file_size_bytes,
             )
             for j in self._jobs.values()
             if j.status == JobStatus.COMPLETED and j.completed_at is not None

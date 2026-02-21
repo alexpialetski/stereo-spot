@@ -7,12 +7,12 @@
 {% if upload_url %}
 <article>
   <h2>Upload your video</h2>
-  <div id="upload-area" data-upload-url="{{ upload_url }}" data-job-id="{{ job.job_id }}"{% if settings.show_eta %} data-eta-seconds-per-mb="{{ settings.eta_seconds_per_mb }}" data-eta-cloud="{{ settings.eta_cloud_name }}"{% endif %}>
+  <div id="upload-area" data-upload-url="{{ upload_url }}" data-job-id="{{ job.job_id }}"{% if show_eta %} data-eta-seconds-per-mb="{{ eta_seconds_per_mb }}" data-eta-cloud="aws"{% endif %}>
     <label for="source-file">Choose an MP4 file:</label>
     <input type="file" id="source-file" name="source" accept=".mp4,video/mp4">
     <button type="button" id="upload-btn" disabled>Upload file</button>
     <p id="upload-status" aria-live="polite"></p>
-    {% if settings.show_eta %}
+    {% if show_eta %}
     <p id="eta-message" aria-live="polite" style="display: none;"></p>
     {% endif %}
   </div>
@@ -25,6 +25,11 @@
   <h2>Progress</h2>
   <p id="stage-label" aria-live="polite">{{ stage_label }}</p>
   <progress id="progress-bar" value="{{ progress_percent }}" max="100">{{ progress_percent }}%</progress>
+  {% if show_eta and job.uploaded_at and job.source_file_size_bytes %}
+  <div id="progress-eta" data-uploaded-at="{{ job.uploaded_at }}" data-source-file-size-bytes="{{ job.source_file_size_bytes }}" data-eta-seconds-per-mb="{{ eta_seconds_per_mb }}">
+    <p id="eta-countdown" aria-live="polite"></p>
+  </div>
+  {% endif %}
 </article>
 {% else %}
 <article>
@@ -32,6 +37,9 @@
   {% if playback_url %}
   <video src="{{ playback_url }}" controls preload="metadata" style="width: 100%; display: block; margin-bottom: 1rem;"></video>
   <p><a href="{{ download_url }}" role="button">Download</a></p>
+  {% if conversion_duration_sec is not none and conversion_sec_per_mb is not none %}
+  <p>Conversion: {{ (conversion_duration_sec / 60)|round(1) }} min ({{ conversion_sec_per_mb|round(1) }} sec/MB)</p>
+  {% endif %}
   {% endif %}
 </article>
 {% endif %}
@@ -95,7 +103,7 @@
           fetch('/jobs/' + jobId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: file.name })
+            body: JSON.stringify({ title: file.name, source_file_size_bytes: file.size })
           }).then(function () { window.location.reload(); }).catch(function () { window.location.reload(); });
         }
       } else {
@@ -117,6 +125,33 @@
   var jobId = '{{ job.job_id }}';
   var progressBar = document.getElementById('progress-bar');
   var stageLabel = document.getElementById('stage-label');
+  var etaCountdownEl = document.getElementById('eta-countdown');
+  var progressEtaEl = document.getElementById('progress-eta');
+  var countdownInterval = null;
+
+  function formatRemaining(sec) {
+    if (sec <= 0) return 'Almost done…';
+    var m = Math.floor(sec / 60);
+    var s = Math.floor(sec % 60);
+    if (m > 0) return 'About ' + m + ' min ' + s + ' sec remaining';
+    return 'About ' + s + ' sec remaining';
+  }
+
+  if (progressEtaEl && etaCountdownEl) {
+    var uploadedAt = parseInt(progressEtaEl.getAttribute('data-uploaded-at'), 10);
+    var sourceFileSizeBytes = parseInt(progressEtaEl.getAttribute('data-source-file-size-bytes'), 10);
+    var etaPerMb = parseFloat(progressEtaEl.getAttribute('data-eta-seconds-per-mb') || '0');
+    if (!isNaN(uploadedAt) && !isNaN(sourceFileSizeBytes) && etaPerMb > 0) {
+      var estimatedTotalSec = (sourceFileSizeBytes / 1e6) * etaPerMb;
+      countdownInterval = setInterval(function () {
+        var elapsed = Math.floor(Date.now() / 1000) - uploadedAt;
+        var remaining = Math.max(0, Math.ceil(estimatedTotalSec - elapsed));
+        etaCountdownEl.textContent = formatRemaining(remaining);
+      }, 1000);
+      etaCountdownEl.textContent = formatRemaining(Math.max(0, Math.ceil(estimatedTotalSec)));
+    }
+  }
+
   var es = new EventSource('/jobs/' + jobId + '/events');
 
   es.onmessage = function (e) {
@@ -125,14 +160,19 @@
     progressBar.textContent = data.progress_percent + '%';
     stageLabel.textContent = data.stage_label;
     if (data.progress_percent >= 100) {
+      if (countdownInterval) clearInterval(countdownInterval);
+      if (etaCountdownEl) etaCountdownEl.textContent = '';
       es.close();
       window.location.reload();
     } else if (data.stage_label === 'Failed') {
+      if (countdownInterval) clearInterval(countdownInterval);
+      if (etaCountdownEl) etaCountdownEl.textContent = '';
       es.close();
     }
   };
 
   es.onerror = function () {
+    if (countdownInterval) clearInterval(countdownInterval);
     es.close();
   };
 })();

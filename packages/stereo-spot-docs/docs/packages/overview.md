@@ -10,7 +10,7 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 ## web-ui
 
-**Purpose:** FastAPI server-rendered UI: dashboard, job creation (form POST → redirect with upload URL), unified jobs list (in-progress + completed), job detail with upload form or video player + download, live progress via SSE. Jobs can have an optional display **title** (from the uploaded file name), shown on the dashboard and job detail and used as the suggested download filename (e.g. `attack-on-titan3d.mp4`).
+**Purpose:** FastAPI server-rendered UI: dashboard, job creation (form POST → redirect with upload URL), unified jobs list (in-progress + completed), job detail with upload form or video player + download, live progress via SSE. Jobs can have an optional display **title** (from the uploaded file name), shown on the dashboard and job detail and used as the suggested download filename (e.g. `attack-on-titan3d.mp4`). ETA and the countdown under the progress bar use a lazy TTL-cached average of conversion time per MB from recent completed jobs (no env-based ETA). Optional timing fields (`uploaded_at`, `source_file_size_bytes`) are set on PATCH after upload; completed jobs can show "Conversion: X min (Y sec/MB)".
 
 **Main targets:** `serve`, `test`, `lint`, `build` (Docker), `deploy` (push image + ECS force-new-deployment).
 

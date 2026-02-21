@@ -34,9 +34,9 @@ flowchart TB
 
 ### JobStore
 
-**Methods:** `get(job_id)`, `put(job)`, `update(job_id, status=..., total_segments=..., completed_at=..., title=...)`, `list_completed(limit, exclusive_start_key=None)`, `list_in_progress(limit=20)`.
+**Methods:** `get(job_id)`, `put(job)`, `update(job_id, status=..., total_segments=..., completed_at=..., title=..., uploaded_at=..., source_file_size_bytes=...)`, `list_completed(limit, exclusive_start_key=None)`, `list_in_progress(limit=20)`.
 
-**Purpose:** Single source of truth for job metadata (mode, status, total_segments, timestamps, optional title). Used for create job, update status after chunking/reassembly, and list completed jobs for the UI. **Job** and **JobListItem** have an optional `title` (display name, e.g. from the upload filename); the web-ui sets it via PATCH after upload and uses it in the dashboard/detail and as the suggested download filename (e.g. `attack-on-titan3d.mp4`).
+**Purpose:** Single source of truth for job metadata (mode, status, total_segments, timestamps, optional title, optional timing). Used for create job, update status after chunking/reassembly, and list completed jobs for the UI. **Job** and **JobListItem** have an optional `title` (display name, e.g. from the upload filename); the web-ui sets it via PATCH after upload and uses it in the dashboard/detail and as the suggested download filename (e.g. `attack-on-titan3d.mp4`). Optional `uploaded_at` (Unix timestamp when upload finished) and `source_file_size_bytes` (size of uploaded file) are set by the web-ui on PATCH after upload; they are used for a data-driven ETA (lazy TTL-cached average sec/MB from recent completed jobs) and for showing conversion time and sec/MB on completed jobs.
 
 **Consumers:** web-ui (create, get, list), media-worker chunking (get mode, update chunking_complete), media-worker reassembly (get, update completed), video-worker reassembly trigger (get total_segments, status).
 

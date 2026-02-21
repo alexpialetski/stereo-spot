@@ -1,7 +1,5 @@
 """Unit tests for web-ui routes: create job, list, play URL."""
 
-from unittest.mock import patch
-
 import pytest
 from fastapi.testclient import TestClient
 from stereo_spot_shared import Job, JobStatus, StereoMode
@@ -174,9 +172,21 @@ def test_job_detail_completed_shows_video_and_download(client: TestClient) -> No
     assert "Download" in response.text
 
 
-def test_job_detail_passes_eta_when_configured(client: TestClient) -> None:
-    """Job detail includes ETA data attributes and message when ETA_SECONDS_PER_MB set."""
+def test_job_detail_shows_eta_when_cache_has_data(client: TestClient) -> None:
+    """Job detail includes ETA when cache is populated from completed jobs."""
     store = app.state.job_store
+    # Populate cache: completed job with uploaded_at and source_file_size_bytes
+    store.put(
+        Job(
+            job_id="completed-eta-source",
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.COMPLETED,
+            created_at=100,
+            completed_at=200,
+            uploaded_at=105,
+            source_file_size_bytes=10_000_000,
+        )
+    )
     job_id = "eta-job"
     store.put(
         Job(
@@ -186,14 +196,10 @@ def test_job_detail_passes_eta_when_configured(client: TestClient) -> None:
             created_at=100,
         )
     )
-    with patch.dict("os.environ", {"ETA_SECONDS_PER_MB": "5", "ETA_CLOUD_NAME": "aws"}):
-        response = client.get(f"/jobs/{job_id}")
+    response = client.get(f"/jobs/{job_id}")
     assert response.status_code == 200
     assert "data-eta-seconds-per-mb" in response.text
-    assert "data-eta-cloud" in response.text
     assert "eta-message" in response.text
-    assert "5" in response.text
-    assert "aws" in response.text
 
 
 def test_job_progress_events_stream(client: TestClient) -> None:
@@ -300,8 +306,8 @@ def test_job_detail_returns_404_when_deleted(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_patch_job_sets_title(client: TestClient) -> None:
-    """PATCH /jobs/{id} with title updates job; GET detail shows normalized title."""
+def test_patch_job_sets_title_and_timing(client: TestClient) -> None:
+    """PATCH /jobs/{id} with title and source_file_size_bytes sets title, uploaded_at, size."""
     store = app.state.job_store
     job_id = "patch-title-job"
     store.put(
@@ -314,12 +320,14 @@ def test_patch_job_sets_title(client: TestClient) -> None:
     )
     response = client.patch(
         f"/jobs/{job_id}",
-        json={"title": "attack-on-titan.mp4"},
+        json={"title": "attack-on-titan.mp4", "source_file_size_bytes": 5_000_000},
     )
     assert response.status_code == 204
     job = store.get(job_id)
     assert job is not None
     assert job.title == "attack-on-titan"
+    assert job.uploaded_at is not None
+    assert job.source_file_size_bytes == 5_000_000
     detail = client.get(f"/jobs/{job_id}")
     assert detail.status_code == 200
     assert "attack-on-titan" in detail.text
@@ -366,3 +374,24 @@ def test_job_detail_completed_with_title_shows_title(client: TestClient) -> None
     assert response.status_code == 200
     assert "attack-on-titan" in response.text
     assert "Download" in response.text
+
+
+def test_job_detail_completed_shows_conversion_stats(client: TestClient) -> None:
+    """Completed job with uploaded_at and source_file_size_bytes shows conversion time."""
+    store = app.state.job_store
+    job_id = "done-with-timing"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.COMPLETED,
+            created_at=100,
+            completed_at=3000,
+            uploaded_at=200,
+            source_file_size_bytes=50_000_000,
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert "Conversion:" in response.text
+    assert "sec/MB" in response.text

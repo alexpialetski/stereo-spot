@@ -74,7 +74,7 @@ If conversion is still too slow, check CloudWatch metrics for the endpoint (e.g.
 - **GPU util &lt; 80% and GPU memory &lt; 50%:** Consider a **larger instance** (e.g. `ml.g5.2xlarge`); set Terraform variable `sagemaker_instance_type` and run `terraform apply`, then update the endpoint to the new config.
 - **GPU memory near 100%:** Set `IW3_LOW_VRAM=1` in the SageMaker model environment to reduce VRAM use (may be slightly slower). Or lower `IW3_BATCH_SIZE` (e.g. 4).
 - **Want faster at cost of quality:** Set env such as `IW3_MAX_FPS` (e.g. 24) or a lower-quality preset in the SageMaker container. See [nunif/iw3](https://github.com/nagadomi/nunif) for available flags.
-- **ETA in web UI:** Update `eta_seconds_per_mb_by_instance_type` in `variables.tf` for the instance type you use so the UI shows a realistic estimate.
+- **ETA in web UI:** ETA and the countdown are computed from recent completed jobs (lazy TTL cache). No Terraform or env configuration; once some jobs complete with `uploaded_at` and `source_file_size_bytes`, the UI shows estimates.
 
 **iw3 fails with "Cannot load libnvidia-encode.so.1"** — Library not found. The image installs `libnvidia-encode-470` and sets `LD_LIBRARY_PATH`; if it still fails, use **`libx264`**.
 
