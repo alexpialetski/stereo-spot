@@ -121,6 +121,6 @@ fields @timestamp, @logStream, @message
 | sort @timestamp asc
 ```
 
-Replace `<JOB_ID>` with the job UUID.
+Replace `<JOB_ID>` with the job UUID. When the web UI is configured with `NAME_PREFIX` (and region, e.g. via ECS), the job detail page shows an **Open logs** link that opens Logs Insights with these log groups and the above query pre-filled for that job.
 
 **SSE progress stream (web-ui):** To see how each progress stream ended, filter for `events stream` in the web-ui log group. You should see one of: `events stream started`, then later `events stream ended (completed)`, `events stream ended (timeout)`, or `events stream ended (client disconnect)`. Use this to confirm whether the server saw the job as completed or the stream timed out / client disconnected.

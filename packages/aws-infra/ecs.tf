@@ -285,7 +285,8 @@ locals {
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
-    { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url }
+    { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url },
+    { name = "NAME_PREFIX", value = var.name_prefix }
   ])
   media_worker_env = concat(local.ecs_env_common, [
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },

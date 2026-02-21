@@ -395,3 +395,46 @@ def test_job_detail_completed_shows_conversion_stats(client: TestClient) -> None
     assert response.status_code == 200
     assert "Conversion:" in response.text
     assert "sec/MB" in response.text
+
+
+def test_job_detail_includes_open_logs_link_when_name_prefix_set(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Job detail shows Open logs link when NAME_PREFIX and region are set."""
+    monkeypatch.setenv("NAME_PREFIX", "stereo-spot")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    store = app.state.job_store
+    job_id = "logs-job-123"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CREATED,
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert "Open logs" in response.text
+    assert job_id in response.text
+    assert "stereo-spot" in response.text
+    assert "cloudwatch" in response.text.lower()
+
+
+def test_job_detail_no_open_logs_link_when_name_prefix_unset(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Job detail does not show Open logs link when NAME_PREFIX is not set."""
+    monkeypatch.delenv("NAME_PREFIX", raising=False)
+    monkeypatch.delenv("LOGS_REGION", raising=False)
+    store = app.state.job_store
+    job_id = "no-logs-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CREATED,
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert "Open logs" not in response.text

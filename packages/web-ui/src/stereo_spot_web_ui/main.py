@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -25,6 +26,7 @@ from stereo_spot_shared import (
 )
 from stereo_spot_shared.interfaces import QueueSender
 
+from .cloudwatch_links import build_cloudwatch_logs_insights_url
 from .config import bootstrap_env, get_settings
 from .deps import (
     get_deletion_queue_sender,
@@ -367,6 +369,14 @@ async def job_detail(
             conversion_sec_per_mb = conversion_duration_sec / (
                 job.source_file_size_bytes / 1e6
             )
+    settings = get_settings()
+    cloudwatch_logs_url = None
+    if settings.name_prefix:
+        region = settings.logs_region or os.environ.get("AWS_REGION")
+        if region:
+            cloudwatch_logs_url = build_cloudwatch_logs_insights_url(
+                job.job_id, settings.name_prefix, region
+            )
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -382,7 +392,8 @@ async def job_detail(
             "show_eta": show_eta,
             "conversion_duration_sec": conversion_duration_sec,
             "conversion_sec_per_mb": conversion_sec_per_mb,
-            "settings": get_settings(),
+            "cloudwatch_logs_url": cloudwatch_logs_url,
+            "settings": settings,
         },
     )
 

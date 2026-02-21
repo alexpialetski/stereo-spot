@@ -3,6 +3,9 @@
 {% block content %}
 <h1>Job {{ job.title or job.job_id }}</h1>
 <p><strong>Mode:</strong> {{ job.mode.value }}</p>
+{% if cloudwatch_logs_url %}
+<p><a href="{{ cloudwatch_logs_url }}" target="_blank" rel="noopener">Open logs</a> (CloudWatch Logs Insights for this job)</p>
+{% endif %}
 
 {% if upload_url %}
 <article>
