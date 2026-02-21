@@ -90,7 +90,7 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 **Purpose:** Terraform: S3, SQS, DynamoDB, ECS cluster, ECR, CodeBuild (stereo-inference build), task definitions and services (Fargate), SageMaker or HTTP inference, ALB. Backend dependency on aws-infra-setup.
 
-**Main targets:** Same Terraform targets; `terraform-output` exports resource names/URLs to env file for workers and smoke-test.
+**Main targets:** Same Terraform targets; `terraform-output` exports resource names/URLs to env file for workers and smoke-test; `ecr-login` (Docker login to ECR); `update-hf-token` (writes HF_TOKEN from .env to Secrets Manager for SageMaker).
 
 ---
 
