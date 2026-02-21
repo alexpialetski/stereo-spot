@@ -89,6 +89,9 @@ class MockSegmentCompletionStore:
             key=lambda c: c.segment_index,
         )
 
+    def delete_by_job(self, job_id: str) -> None:
+        self._completions = [c for c in self._completions if c.job_id != job_id]
+
 
 class MockQueueSender:
     """Minimal QueueSender implementation for testing."""
@@ -158,6 +161,15 @@ class MockObjectStorage:
 
     def download(self, bucket: str, key: str) -> bytes:
         return self._objects.get((bucket, key), b"")
+
+    def delete(self, bucket: str, key: str) -> None:
+        self._objects.pop((bucket, key), None)
+
+    def list_object_keys(self, bucket: str, prefix: str) -> list[str]:
+        return [
+            k for (b, k) in self._objects.keys()
+            if b == bucket and k.startswith(prefix)
+        ]
 
 
 def test_mock_job_store_returns_job() -> None:

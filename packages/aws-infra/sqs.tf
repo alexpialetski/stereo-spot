@@ -31,6 +31,14 @@ resource "aws_sqs_queue" "segment_output_dlq" {
   })
 }
 
+resource "aws_sqs_queue" "deletion_dlq" {
+  name = "${local.name}-deletion-dlq"
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-deletion-dlq"
+  })
+}
+
 # Main queues with redrive to DLQ
 resource "aws_sqs_queue" "chunking" {
   name                       = "${local.name}-chunking"
@@ -85,6 +93,20 @@ resource "aws_sqs_queue" "segment_output" {
 
   tags = merge(local.common_tags, {
     Name = "${local.name}-segment-output"
+  })
+}
+
+resource "aws_sqs_queue" "deletion" {
+  name                       = "${local.name}-deletion"
+  visibility_timeout_seconds = 600 # 10 min for S3 + DynamoDB cleanup
+  message_retention_seconds  = 1209600
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.deletion_dlq.arn
+    maxReceiveCount     = var.dlq_max_receive_count
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-deletion"
   })
 }
 

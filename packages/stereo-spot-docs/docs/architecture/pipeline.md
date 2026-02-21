@@ -57,3 +57,14 @@ Zero-padding keeps lexicographic order and avoids ambiguity.
 - Chunking and segment processing use **deterministic keys**; retries overwrite the same objects.
 - Reassembly trigger uses a **conditional create** on a lock table so at most one reassembly message per job is sent.
 - Reassembly worker uses a **conditional update** on the lock so only one worker runs reassembly per job.
+
+## Job removal
+
+Users can remove a job from the dashboard (completed or failed only). Removal is **soft delete** plus **asynchronous cleanup**:
+
+1. **Soft delete** — The web-ui sets the job **status = deleted** and sends a message containing **job_id** to the **deletion queue**. The job disappears from list views immediately (list_completed and list_in_progress do not include deleted).
+2. **Deletion queue** — A dedicated SQS queue consumed by the **media-worker**. No S3 events; only the web-ui sends to this queue.
+3. **Deletion loop** — The media-worker runs a third loop (with chunking and reassembly) that processes deletion messages: deletes objects in the input bucket (`input/{job_id}/source.mp4`, `segments/{job_id}/*`), in the output bucket (`jobs/{job_id}/*`), deletes SegmentCompletions and ReassemblyTriggered records for the job. The job record remains with **status = deleted** (no hard delete of the job row).
+4. **Restriction** — Remove is allowed only when the job is **completed** or **failed** to avoid races with in-flight chunking or inference. Direct links to a deleted job return 404.
+
+Cleanup (S3 and DynamoDB) is asynchronous; the user sees "Job removed. Cleanup in progress." after redirect. Failed deletion messages go to the deletion DLQ like other queues.

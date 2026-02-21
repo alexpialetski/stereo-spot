@@ -189,6 +189,15 @@ class DynamoSegmentCompletionStore:
         )
         return [_item_to_completion(row) for row in resp.get("Items", [])]
 
+    def delete_by_job(self, job_id: str) -> None:
+        """Delete all segment completion records for the job."""
+        completions = self.query_by_job(job_id)
+        with self._table.batch_writer() as writer:
+            for c in completions:
+                writer.delete_item(
+                    Key={"job_id": c.job_id, "segment_index": c.segment_index}
+                )
+
 
 class ReassemblyTriggeredLock:
     """
@@ -258,3 +267,7 @@ class ReassemblyTriggeredLock:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 return False
             raise
+
+    def delete(self, job_id: str) -> None:
+        """Delete the ReassemblyTriggered item for this job. Idempotent if item does not exist."""
+        self._table.delete_item(Key={"job_id": job_id})

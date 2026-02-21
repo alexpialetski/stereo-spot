@@ -36,6 +36,16 @@
 </article>
 {% endif %}
 
+{% if job.status.value == "completed" or job.status.value == "failed" %}
+<article>
+  <h2>Remove job</h2>
+  <p>Permanently remove this job and its files. This cannot be undone.</p>
+  <form action="/jobs/{{ job.job_id }}/delete" method="post" onsubmit="return confirm('Remove this job and its files?');">
+    <button type="submit">Remove job</button>
+  </form>
+</article>
+{% endif %}
+
 {% if upload_url %}
 <script>
 (function () {

@@ -74,12 +74,17 @@ resource "aws_iam_role_policy" "web_ui_task" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:Query"]
         Resource = [aws_dynamodb_table.segment_completions.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.deletion.arn]
       }
     ]
   })
 }
 
-# Media worker: S3, DynamoDB (Jobs, SegmentCompletions, ReassemblyTriggered), SQS chunking + reassembly
+# Media worker: S3, DynamoDB (Jobs, SegmentCompletions, ReassemblyTriggered), SQS chunking + reassembly + deletion
 resource "aws_iam_role" "media_worker_task" {
   name               = "${local.name}-media-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
@@ -94,18 +99,18 @@ resource "aws_iam_role_policy" "media_worker_task" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"]
         Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:ConditionCheckItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:ConditionCheckItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
         Resource = [aws_dynamodb_table.jobs.arn, "${aws_dynamodb_table.jobs.arn}/index/*", aws_dynamodb_table.segment_completions.arn, aws_dynamodb_table.reassembly_triggered.arn]
       },
       {
         Effect   = "Allow"
         Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        Resource = [aws_sqs_queue.chunking.arn, aws_sqs_queue.reassembly.arn]
+        Resource = [aws_sqs_queue.chunking.arn, aws_sqs_queue.reassembly.arn, aws_sqs_queue.deletion.arn]
       }
     ]
   })
@@ -280,6 +285,7 @@ locals {
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
+    { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url },
     { name = "ETA_SECONDS_PER_MB", value = tostring(lookup(var.eta_seconds_per_mb_by_instance_type, var.sagemaker_instance_type, 5)) },
     { name = "ETA_CLOUD_NAME", value = "aws" }
   ])
@@ -290,7 +296,8 @@ locals {
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
     { name = "REASSEMBLY_TRIGGERED_TABLE_NAME", value = aws_dynamodb_table.reassembly_triggered.name },
     { name = "CHUNKING_QUEUE_URL", value = aws_sqs_queue.chunking.url },
-    { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url }
+    { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
+    { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url }
   ])
   inference_http_url = var.inference_backend == "http" ? var.inference_http_url : ""
   video_worker_inference_env = var.inference_backend == "sagemaker" ? [

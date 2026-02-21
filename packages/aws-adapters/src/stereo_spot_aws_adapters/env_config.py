@@ -15,6 +15,7 @@ Required env vars (match Terraform output names, uppercased with underscores):
 - VIDEO_WORKER_QUEUE_URL
 - SEGMENT_OUTPUT_QUEUE_URL (video-worker segment-output queue)
 - REASSEMBLY_QUEUE_URL
+- DELETION_QUEUE_URL (web-ui and media-worker)
 
 Optional:
 - AWS_REGION (default: us-east-1)
@@ -143,6 +144,27 @@ def reassembly_queue_sender_from_env() -> SQSQueueSender:
 def reassembly_queue_receiver_from_env() -> SQSQueueReceiver:
     """Build SQSQueueReceiver for reassembly queue from REASSEMBLY_QUEUE_URL."""
     url = os.environ["REASSEMBLY_QUEUE_URL"]
+    return SQSQueueReceiver(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
+    )
+
+
+def deletion_queue_sender_from_env() -> SQSQueueSender:
+    """Build SQSQueueSender for deletion queue from DELETION_QUEUE_URL."""
+    url = os.environ["DELETION_QUEUE_URL"]
+    return SQSQueueSender(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+    )
+
+
+def deletion_queue_receiver_from_env() -> SQSQueueReceiver:
+    """Build SQSQueueReceiver for deletion queue from DELETION_QUEUE_URL."""
+    url = os.environ["DELETION_QUEUE_URL"]
     return SQSQueueReceiver(
         url,
         region_name=_get_region(),

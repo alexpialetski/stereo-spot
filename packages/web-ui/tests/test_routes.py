@@ -197,3 +197,86 @@ def test_job_progress_events_stream(client: TestClient) -> None:
     text = response.text
     assert "100" in text
     assert "Completed" in text
+
+
+def test_delete_job_returns_404_when_job_missing(client: TestClient) -> None:
+    """POST /jobs/{id}/delete returns 404 when job does not exist."""
+    response = client.post("/jobs/nonexistent-id/delete")
+    assert response.status_code == 404
+
+
+def test_delete_job_returns_400_when_not_completed_or_failed(client: TestClient) -> None:
+    """POST /jobs/{id}/delete returns 400 when job is in progress."""
+    store = app.state.job_store
+    job_id = "in-progress-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.CHUNKING_IN_PROGRESS,
+            created_at=100,
+        )
+    )
+    response = client.post(f"/jobs/{job_id}/delete")
+    assert response.status_code == 400
+    assert "Can only remove" in response.text
+
+
+def test_delete_job_redirects_and_sends_message_when_completed(
+    client: TestClient,
+) -> None:
+    """POST /jobs/{id}/delete marks job deleted, sends to queue, redirects with removed=1."""
+    store = app.state.job_store
+    sender = app.state.deletion_queue_sender
+    job_id = "to-delete-completed"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.COMPLETED,
+            completed_at=2000,
+        )
+    )
+    response = client.post(f"/jobs/{job_id}/delete", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/jobs?removed=1"
+    job = store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.DELETED
+    assert len(sender.sent) == 1
+    body = sender.sent[0]
+    assert job_id in (body.decode() if isinstance(body, bytes) else body)
+
+
+def test_delete_job_allowed_when_failed(client: TestClient) -> None:
+    """POST /jobs/{id}/delete is allowed when job status is failed."""
+    store = app.state.job_store
+    sender = app.state.deletion_queue_sender
+    job_id = "to-delete-failed"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.SBS,
+            status=JobStatus.FAILED,
+            created_at=100,
+        )
+    )
+    response = client.post(f"/jobs/{job_id}/delete", follow_redirects=False)
+    assert response.status_code == 303
+    assert store.get(job_id).status == JobStatus.DELETED
+    assert len(sender.sent) == 1
+
+
+def test_job_detail_returns_404_when_deleted(client: TestClient) -> None:
+    """GET /jobs/{id} returns 404 when job status is deleted."""
+    store = app.state.job_store
+    job_id = "deleted-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.DELETED,
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 404

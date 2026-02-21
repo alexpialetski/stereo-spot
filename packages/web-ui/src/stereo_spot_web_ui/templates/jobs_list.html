@@ -2,6 +2,9 @@
 {% block title %}All jobs — Stereo-Spot{% endblock %}
 {% block content %}
 <h1>All jobs</h1>
+{% if removed %}
+<p role="status">Job removed. Cleanup in progress.</p>
+{% endif %}
 
 {% if in_progress_jobs %}
 <h2>In progress</h2>

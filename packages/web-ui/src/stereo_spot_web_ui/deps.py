@@ -2,6 +2,7 @@
 
 from fastapi import Request
 from stereo_spot_shared import JobStore, ObjectStorage, SegmentCompletionStore
+from stereo_spot_shared.interfaces import QueueSender
 
 
 def get_job_store(request: Request) -> JobStore:
@@ -52,3 +53,13 @@ def get_segment_completion_store(request: Request) -> SegmentCompletionStore:
     from stereo_spot_aws_adapters.env_config import segment_completion_store_from_env
 
     return segment_completion_store_from_env()
+
+
+def get_deletion_queue_sender(request: Request) -> QueueSender:
+    """Return QueueSender for the deletion queue from app state or build from env."""
+    sender = getattr(request.app.state, "deletion_queue_sender", None)
+    if sender is not None:
+        return sender
+    from stereo_spot_aws_adapters.env_config import deletion_queue_sender_from_env
+
+    return deletion_queue_sender_from_env()

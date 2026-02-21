@@ -123,3 +123,18 @@ class S3ObjectStorage:
         """Download object from bucket/key and return its body as bytes."""
         resp = self._client.get_object(Bucket=bucket, Key=key)
         return resp["Body"].read()
+
+    def delete(self, bucket: str, key: str) -> None:
+        """Delete the object at bucket/key. Idempotent if object does not exist."""
+        self._client.delete_object(Bucket=bucket, Key=key)
+
+    def list_object_keys(self, bucket: str, prefix: str) -> list[str]:
+        """List object keys under the given prefix. Returns up to 1000 keys per call."""
+        keys: list[str] = []
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix, MaxKeys=1000):
+            for obj in page.get("Contents", []):
+                key = obj.get("Key")
+                if key is not None:
+                    keys.append(key)
+        return keys

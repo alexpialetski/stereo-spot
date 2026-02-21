@@ -70,6 +70,10 @@ class SegmentCompletionStore(Protocol):
         """Return all completions for the job, ordered by segment_index ascending."""
         ...
 
+    def delete_by_job(self, job_id: str) -> None:
+        """Delete all segment completion records for the job."""
+        ...
+
 
 class QueueMessage:
     """A message received from a queue (body + receipt handle for delete)."""
@@ -140,6 +144,14 @@ class ObjectStorage(Protocol):
 
     def download(self, bucket: str, key: str) -> bytes:
         """Download object from bucket/key and return its body as bytes."""
+        ...
+
+    def delete(self, bucket: str, key: str) -> None:
+        """Delete the object at bucket/key. Idempotent if object does not exist."""
+        ...
+
+    def list_object_keys(self, bucket: str, prefix: str) -> list[str]:
+        """List object keys under the given prefix. Returns up to 1000 keys per call."""
         ...
 
 

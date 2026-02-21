@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from stereo_spot_shared import (
+    DeletionPayload,
     Job,
     JobStatus,
     JobStore,
@@ -20,9 +21,11 @@ from stereo_spot_shared import (
     SegmentCompletionStore,
     StereoMode,
 )
+from stereo_spot_shared.interfaces import QueueSender
 
 from .config import bootstrap_env, get_settings
 from .deps import (
+    get_deletion_queue_sender,
     get_input_bucket,
     get_job_store,
     get_object_storage,
@@ -117,6 +120,7 @@ async def list_jobs(
         next_token_out = base64.urlsafe_b64encode(
             json.dumps(next_key, default=str).encode()
         ).decode()
+    removed = request.query_params.get("removed") == "1"
     return templates.TemplateResponse(
         request,
         "jobs_list.html",
@@ -125,6 +129,7 @@ async def list_jobs(
             "in_progress_jobs": in_progress,
             "completed_jobs": completed_items,
             "next_token": next_token_out,
+            "removed": removed,
         },
     )
 
@@ -222,6 +227,9 @@ async def job_detail(
     if job is None:
         logger.warning("job_id=%s not found (detail)", job_id)
         return HTMLResponse(content="Job not found", status_code=404)
+    if job.status == JobStatus.DELETED:
+        logger.info("job_id=%s detail requested but job is deleted", job_id)
+        return HTMLResponse(content="Job not found", status_code=404)
     logger.info("job_id=%s detail status=%s", job_id, job.status.value)
     upload_url = None
     playback_url = None
@@ -284,3 +292,29 @@ async def play(
         output_bucket, key, expires_in=3600
     )
     return RedirectResponse(url=playback_url, status_code=302)
+
+
+@app.post("/jobs/{job_id}/delete", response_model=None)
+async def delete_job(
+    request: Request,
+    job_id: str,
+    job_store: JobStore = Depends(get_job_store),
+    deletion_sender: QueueSender = Depends(get_deletion_queue_sender),
+) -> RedirectResponse | HTMLResponse:
+    """Soft-delete job (status=deleted) and enqueue cleanup.
+    Only allowed for completed or failed jobs."""
+    job = job_store.get(job_id)
+    if job is None:
+        logger.warning("job_id=%s not found (delete)", job_id)
+        return HTMLResponse(content="Job not found", status_code=404)
+    if job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
+        logger.info("job_id=%s delete rejected status=%s", job_id, job.status.value)
+        return HTMLResponse(
+            content="Can only remove completed or failed jobs.",
+            status_code=400,
+        )
+    job_store.update(job_id, status=JobStatus.DELETED.value)
+    payload = DeletionPayload(job_id=job_id)
+    deletion_sender.send(payload.model_dump_json())
+    logger.info("job_id=%s marked deleted, deletion message sent", job_id)
+    return RedirectResponse(url="/jobs?removed=1", status_code=303)

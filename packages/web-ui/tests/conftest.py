@@ -111,6 +111,12 @@ class MockObjectStorage:
     def download(self, bucket: str, key: str) -> bytes:
         return b""
 
+    def delete(self, bucket: str, key: str) -> None:
+        pass
+
+    def list_object_keys(self, bucket: str, prefix: str) -> list[str]:
+        return []
+
 
 class MockSegmentCompletionStore:
     """SegmentCompletionStore for tests: in-memory, query_by_job returns list."""
@@ -123,6 +129,24 @@ class MockSegmentCompletionStore:
 
     def query_by_job(self, job_id: str) -> list[SegmentCompletion]:
         return [c for c in self._completions if c.job_id == job_id]
+
+    def delete_by_job(self, job_id: str) -> None:
+        self._completions = [c for c in self._completions if c.job_id != job_id]
+
+
+class MockDeletionQueueSender:
+    """QueueSender for tests: records sent bodies."""
+
+    def __init__(self) -> None:
+        self.sent: list[str | bytes] = []
+
+    def send(self, body: str | bytes) -> None:
+        self.sent.append(body)
+
+
+@pytest.fixture
+def mock_deletion_queue_sender() -> MockDeletionQueueSender:
+    return MockDeletionQueueSender()
 
 
 @pytest.fixture
@@ -145,10 +169,12 @@ def app_with_mocks(
     mock_job_store: MockJobStore,
     mock_object_storage: MockObjectStorage,
     mock_segment_completion_store: MockSegmentCompletionStore,
+    mock_deletion_queue_sender: MockDeletionQueueSender,
 ) -> None:
     """Set app.state so routes use mocks; bucket names fixed."""
     app.state.job_store = mock_job_store
     app.state.object_storage = mock_object_storage
     app.state.segment_completion_store = mock_segment_completion_store
+    app.state.deletion_queue_sender = mock_deletion_queue_sender
     app.state.input_bucket_name = "input-bucket"
     app.state.output_bucket_name = "output-bucket"

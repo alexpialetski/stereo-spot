@@ -21,6 +21,7 @@ class JobStatus(str, Enum):
     CHUNKING_COMPLETE = "chunking_complete"
     COMPLETED = "completed"
     FAILED = "failed"
+    DELETED = "deleted"
 
 
 class Job(BaseModel):
@@ -82,6 +83,14 @@ class ChunkingPayload(BaseModel):
 
 class ReassemblyPayload(BaseModel):
     """Payload for the Reassembly SQS queue (sent by Lambda, consumed by media-worker)."""
+
+    job_id: str
+
+
+# --- Deletion queue ---
+
+class DeletionPayload(BaseModel):
+    """Payload for the Deletion SQS queue (sent by web-ui, consumed by media-worker)."""
 
     job_id: str
 

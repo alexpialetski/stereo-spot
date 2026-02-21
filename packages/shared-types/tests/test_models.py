@@ -7,6 +7,7 @@ from stereo_spot_shared import (
     ChunkingPayload,
     CreateJobRequest,
     CreateJobResponse,
+    DeletionPayload,
     Job,
     JobListItem,
     JobStatus,
@@ -45,6 +46,15 @@ class TestJob:
         )
         assert j.total_segments == 10
         assert j.completed_at == 2000
+
+    def test_status_deleted(self) -> None:
+        j = Job(
+            job_id="job-del",
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.DELETED,
+        )
+        assert j.status == JobStatus.DELETED
+        assert j.status.value == "deleted"
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -128,6 +138,14 @@ class TestReassemblyPayload:
         assert r.job_id == "job-1"
 
 
+class TestDeletionPayload:
+    """DeletionPayload validation."""
+
+    def test_valid(self) -> None:
+        d = DeletionPayload(job_id="job-1")
+        assert d.job_id == "job-1"
+
+
 class TestCreateJobRequest:
     """CreateJobRequest API DTO validation."""
 
@@ -198,3 +216,9 @@ class TestSerialization:
         data = r.model_dump()
         r2 = ReassemblyPayload.model_validate(data)
         assert r2.job_id == r.job_id
+
+    def test_deletion_payload_round_trip(self) -> None:
+        d = DeletionPayload(job_id="job-abc")
+        data = d.model_dump()
+        d2 = DeletionPayload.model_validate(data)
+        assert d2.job_id == d.job_id

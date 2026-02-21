@@ -33,6 +33,11 @@ output "segment_output_queue_url" {
   value       = aws_sqs_queue.segment_output.url
 }
 
+output "deletion_queue_url" {
+  description = "URL of the deletion SQS queue (job removal cleanup)"
+  value       = aws_sqs_queue.deletion.url
+}
+
 output "jobs_table_name" {
   description = "Name of the DynamoDB Jobs table"
   value       = aws_dynamodb_table.jobs.name
