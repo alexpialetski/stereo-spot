@@ -1,5 +1,9 @@
 """Tests for launch router: playlist, setup/windows, launch pages."""
 
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 from stereo_spot_shared import Job, JobStatus, StereoMode
 
@@ -72,7 +76,9 @@ def test_playlist_all_m3u_returns_m3u_with_long_expiry(client: TestClient) -> No
 
 def test_setup_windows_returns_404_when_exe_missing(client: TestClient) -> None:
     """GET /setup/windows returns 404 when EXE file is not present (e.g. local dev)."""
-    response = client.get("/setup/windows")
+    empty_static = Path(tempfile.mkdtemp())
+    with patch("stereo_spot_web_ui.routers.launch.STATIC_DIR", empty_static):
+        response = client.get("/setup/windows")
     assert response.status_code == 404
     assert "not available" in response.text or "404" in response.text
 
