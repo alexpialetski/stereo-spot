@@ -71,6 +71,26 @@ def get_deletion_queue_sender(request: Request) -> QueueSender:
     return deletion_queue_sender_from_env()
 
 
+def get_ingest_queue_sender(request: Request) -> QueueSender:
+    """Return QueueSender for the ingest queue from app state or build from env."""
+    sender = getattr(request.app.state, "ingest_queue_sender", None)
+    if sender is not None:
+        return sender
+    from stereo_spot_aws_adapters.env_config import ingest_queue_sender_from_env
+
+    return ingest_queue_sender_from_env()
+
+
+def get_ingest_queue_sender_optional(request: Request) -> QueueSender | None:
+    """Return ingest queue sender when INGEST_QUEUE_URL is set; else None."""
+    sender = getattr(request.app.state, "ingest_queue_sender", None)
+    if sender is not None:
+        return sender
+    from stereo_spot_aws_adapters.env_config import ingest_queue_sender_from_env_or_none
+
+    return ingest_queue_sender_from_env_or_none()
+
+
 def get_operator_links_provider(request: Request) -> OperatorLinksProvider | None:
     """Return OperatorLinksProvider from app state or build from env (e.g. AWS)."""
     provider = getattr(request.app.state, "operator_links_provider", None)

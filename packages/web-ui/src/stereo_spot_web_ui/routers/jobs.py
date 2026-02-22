@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
 import uuid
 
@@ -19,6 +20,7 @@ from stereo_spot_shared import (
     ObjectStorage,
     SegmentCompletionStore,
     StereoMode,
+    YoutubeIngestPayload,
 )
 from stereo_spot_shared.interfaces import OperatorLinksProvider, QueueSender
 
@@ -32,6 +34,7 @@ from ..constants import (
 )
 from ..deps import (
     get_deletion_queue_sender,
+    get_ingest_queue_sender_optional,
     get_input_bucket,
     get_job_store,
     get_object_storage,
@@ -64,6 +67,12 @@ class PatchJobRequest(BaseModel):
         le=10 * 1024 * 1024 * 1024,
         description="Size of uploaded file in bytes (for ETA)",
     )
+
+
+class IngestFromUrlRequest(BaseModel):
+    """Request body for POST /jobs/{job_id}/ingest-from-url."""
+
+    source_url: str = Field(..., min_length=1, description="Video URL (e.g. YouTube)")
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -137,6 +146,63 @@ async def create_job(
     return RedirectResponse(url=request.url_for("job_detail", job_id=job_id), status_code=303)
 
 
+# YouTube URL patterns: youtube.com/watch?v=ID or youtu.be/ID (optional query string)
+YOUTUBE_URL_RE = re.compile(
+    r"^https?://"
+    r"(?:www\.)?"
+    r"(?:youtube\.com/watch\?v=[\w-]+(?:&[^\s]*)?|youtu\.be/[\w-]+(?:\?[^\s]*)?)"
+    r"$",
+    re.IGNORECASE,
+)
+
+
+def _is_youtube_url(s: str) -> bool:
+    """Return True if s looks like a supported YouTube URL."""
+    s = (s or "").strip()
+    return bool(YOUTUBE_URL_RE.match(s))
+
+
+@router.post("/jobs/from-url")
+async def create_job_from_url(
+    request: Request,
+    mode: str = Form(..., description="anaglyph or sbs"),
+    source_url: str = Form(..., description="Video URL (e.g. YouTube)"),
+    source_type: str = Form("youtube", description="Source type (e.g. youtube)"),
+    job_store: JobStore = Depends(get_job_store),
+    ingest_sender: QueueSender | None = Depends(get_ingest_queue_sender_optional),
+) -> RedirectResponse:
+    """Create job and send URL to ingest queue; redirect to job page."""
+    if ingest_sender is None:
+        raise HTTPException(
+            status_code=503,
+            detail="YouTube URL ingest is not enabled for this deployment.",
+        )
+    source_url = source_url.strip()
+    if not _is_youtube_url(source_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Only YouTube URLs are supported (e.g. youtube.com/watch?v=… or youtu.be/…).",
+        )
+    job_id = str(uuid.uuid4())
+    stereo_mode = StereoMode(mode)
+    now = int(time.time())
+    job = Job(
+        job_id=job_id,
+        mode=stereo_mode,
+        status=JobStatus.CREATED,
+        created_at=now,
+    )
+    job_store.put(job)
+    # Use YouTube payload for youtube (and yt-dlp–compatible) URLs; add other variants when needed.
+    payload = YoutubeIngestPayload(
+        job_id=job_id,
+        source_url=source_url,
+    )
+    ingest_sender.send(payload.model_dump_json())
+    logger.info("job_id=%s created from URL mode=%s", job_id, mode)
+    return RedirectResponse(url=request.url_for("job_detail", job_id=job_id), status_code=303)
+
+
 @router.patch("/jobs/{job_id}", status_code=204)
 async def patch_job(
     job_id: str,
@@ -162,6 +228,40 @@ async def patch_job(
         normalized,
         body.source_file_size_bytes is not None,
     )
+
+
+@router.post("/jobs/{job_id}/ingest-from-url", status_code=204)
+async def ingest_job_from_url(
+    job_id: str,
+    body: IngestFromUrlRequest,
+    job_store: JobStore = Depends(get_job_store),
+    ingest_sender: QueueSender | None = Depends(get_ingest_queue_sender_optional),
+) -> None:
+    """Send URL to ingest queue for an existing job in CREATED status."""
+    if ingest_sender is None:
+        raise HTTPException(
+            status_code=503,
+            detail="YouTube URL ingest is not enabled for this deployment.",
+        )
+    job = job_store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == JobStatus.DELETED:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != JobStatus.CREATED:
+        raise HTTPException(
+            status_code=400,
+            detail="Job already has source; only jobs waiting for upload can ingest from URL.",
+        )
+    source_url = body.source_url.strip()
+    if not _is_youtube_url(source_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Only YouTube URLs are supported (e.g. youtube.com/watch?v=… or youtu.be/…).",
+        )
+    payload = YoutubeIngestPayload(job_id=job_id, source_url=source_url)
+    ingest_sender.send(payload.model_dump_json())
+    logger.info("job_id=%s ingest-from-url queued", job_id)
 
 
 @router.get("/jobs/{job_id}/events")
@@ -228,6 +328,7 @@ async def job_detail(
     output_bucket: str = Depends(get_output_bucket),
     operator_links: OperatorLinksProvider | None = Depends(get_operator_links_provider),
     templates: Jinja2Templates = Depends(get_templates),
+    ingest_sender: QueueSender | None = Depends(get_ingest_queue_sender_optional),
 ) -> HTMLResponse:
     """Job detail: upload URL + instructions if status=created; otherwise status + progress."""
     job = job_store.get(job_id)
@@ -246,6 +347,7 @@ async def job_detail(
         upload_url = object_storage.presign_upload(
             input_bucket, input_key, expires_in=3600
         )
+    # When INGESTING, do not show upload block (worker is fetching from URL)
     if job.status == JobStatus.COMPLETED:
         key = OUTPUT_FINAL_KEY_TEMPLATE.format(job_id=job_id)
         playback_url = object_storage.presign_download(
@@ -285,6 +387,7 @@ async def job_detail(
             "request": request,
             "job": job,
             "upload_url": upload_url,
+            "ingest_from_url_available": ingest_sender is not None,
             "playback_url": playback_url,
             "download_url": download_url,
             "progress_percent": progress_percent,

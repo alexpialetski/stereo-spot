@@ -59,32 +59,39 @@ resource "aws_iam_role_policy" "web_ui_task" {
   role = aws_iam_role.web_ui_task.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:BatchGetItem"]
-        Resource = [aws_dynamodb_table.jobs.arn, "${aws_dynamodb_table.jobs.arn}/index/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:Query"]
-        Resource = [aws_dynamodb_table.segment_completions.arn]
-      },
-      {
+    Statement = concat(
+      [
+        {
+          Effect   = "Allow"
+          Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+          Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:BatchGetItem"]
+          Resource = [aws_dynamodb_table.jobs.arn, "${aws_dynamodb_table.jobs.arn}/index/*"]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:Query"]
+          Resource = [aws_dynamodb_table.segment_completions.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:SendMessage"]
+          Resource = [aws_sqs_queue.deletion.arn]
+        }
+      ],
+      var.enable_youtube_ingest ? [{
         Effect   = "Allow"
         Action   = ["sqs:SendMessage"]
-        Resource = [aws_sqs_queue.deletion.arn]
-      }
-    ]
+        Resource = [aws_sqs_queue.ingest[0].arn]
+      }] : []
+    )
   })
 }
 
-# Media worker: S3, DynamoDB (Jobs, SegmentCompletions, ReassemblyTriggered), SQS chunking + reassembly + deletion
+# Media worker: S3, DynamoDB (Jobs, SegmentCompletions, ReassemblyTriggered), SQS chunking + reassembly + deletion + ingest
 resource "aws_iam_role" "media_worker_task" {
   name               = "${local.name}-media-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
@@ -96,23 +103,33 @@ resource "aws_iam_role_policy" "media_worker_task" {
   role = aws_iam_role.media_worker_task.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
+    Statement = concat(
+      [
+        {
+          Effect   = "Allow"
+          Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"]
+          Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:ConditionCheckItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
+          Resource = [aws_dynamodb_table.jobs.arn, "${aws_dynamodb_table.jobs.arn}/index/*", aws_dynamodb_table.segment_completions.arn, aws_dynamodb_table.reassembly_triggered.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+          Resource = concat(
+            [aws_sqs_queue.chunking.arn, aws_sqs_queue.reassembly.arn, aws_sqs_queue.deletion.arn],
+            var.enable_youtube_ingest ? [aws_sqs_queue.ingest[0].arn] : []
+          )
+        }
+      ],
+      var.enable_youtube_ingest ? [{
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"]
-        Resource = [aws_s3_bucket.input.arn, "${aws_s3_bucket.input.arn}/*", aws_s3_bucket.output.arn, "${aws_s3_bucket.output.arn}/*"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:ConditionCheckItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
-        Resource = [aws_dynamodb_table.jobs.arn, "${aws_dynamodb_table.jobs.arn}/index/*", aws_dynamodb_table.segment_completions.arn, aws_dynamodb_table.reassembly_triggered.arn]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        Resource = [aws_sqs_queue.chunking.arn, aws_sqs_queue.reassembly.arn, aws_sqs_queue.deletion.arn]
-      }
-    ]
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_secretsmanager_secret.ytdlp_cookies[0].arn]
+      }] : []
+    )
   })
 }
 
@@ -280,24 +297,35 @@ locals {
   ecs_env_common = [
     { name = "AWS_REGION", value = local.region }
   ]
-  web_ui_env = concat(local.ecs_env_common, [
-    { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
-    { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
-    { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
-    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
-    { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url },
-    { name = "NAME_PREFIX", value = var.name_prefix }
-  ])
-  media_worker_env = concat(local.ecs_env_common, [
-    { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
-    { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
-    { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
-    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
-    { name = "REASSEMBLY_TRIGGERED_TABLE_NAME", value = aws_dynamodb_table.reassembly_triggered.name },
-    { name = "CHUNKING_QUEUE_URL", value = aws_sqs_queue.chunking.url },
-    { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
-    { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url }
-  ])
+  web_ui_env = concat(
+    local.ecs_env_common,
+    [
+      { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
+      { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
+      { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
+      { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
+      { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url },
+      { name = "NAME_PREFIX", value = var.name_prefix }
+    ],
+    var.enable_youtube_ingest ? [{ name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url }] : []
+  )
+  media_worker_env = concat(
+    local.ecs_env_common,
+    [
+      { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
+      { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
+      { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
+      { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
+      { name = "REASSEMBLY_TRIGGERED_TABLE_NAME", value = aws_dynamodb_table.reassembly_triggered.name },
+      { name = "CHUNKING_QUEUE_URL", value = aws_sqs_queue.chunking.url },
+      { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
+      { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url }
+    ],
+    var.enable_youtube_ingest ? [
+      { name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url },
+      { name = "YTDLP_COOKIES_SECRET_ARN", value = aws_secretsmanager_secret.ytdlp_cookies[0].arn }
+    ] : []
+  )
   inference_http_url = var.inference_backend == "http" ? var.inference_http_url : ""
   video_worker_inference_env = var.inference_backend == "sagemaker" ? [
     { name = "INFERENCE_BACKEND", value = "sagemaker" },

@@ -43,6 +43,11 @@ output "deletion_queue_url" {
   value       = aws_sqs_queue.deletion.url
 }
 
+output "ingest_queue_url" {
+  description = "URL of the ingest SQS queue (URL / YouTube source jobs); null when enable_youtube_ingest=false"
+  value       = var.enable_youtube_ingest ? aws_sqs_queue.ingest[0].url : null
+}
+
 output "jobs_table_name" {
   description = "Name of the DynamoDB Jobs table"
   value       = aws_dynamodb_table.jobs.name
@@ -137,6 +142,11 @@ output "inference_http_url" {
 output "hf_token_secret_arn" {
   description = "ARN of the Secrets Manager secret for Hugging Face token (set value manually)"
   value       = aws_secretsmanager_secret.hf_token.arn
+}
+
+output "ytdlp_cookies_secret_arn" {
+  description = "ARN of the Secrets Manager secret for yt-dlp cookies (set via update-ytdlp-cookies); null when enable_youtube_ingest=false"
+  value       = var.enable_youtube_ingest ? aws_secretsmanager_secret.ytdlp_cookies[0].arn : null
 }
 
 # --- CodeBuild ---

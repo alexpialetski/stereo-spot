@@ -1,10 +1,19 @@
 # Media worker: chunking (ffmpeg split) + reassembly (ffmpeg concat). One image for both.
 # Build from repo root: docker build -f packages/media-worker/Dockerfile .
-FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
+# Stage 1: build Deno binary for yt-dlp EJS (YouTube n challenge solver)
+FROM python:3.12-slim AS deno-builder
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://deno.land/install.sh | sh -s v2.6.10 \
+    && mv /root/.deno/bin/deno /usr/local/bin/deno \
+    && rm -rf /root/.deno
+
+# Stage 2: runtime image
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=deno-builder /usr/local/bin/deno /usr/local/bin/deno
 
 WORKDIR /app
 

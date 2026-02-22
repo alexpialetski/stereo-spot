@@ -208,6 +208,14 @@ class TestDynamoDBJobStore:
         )
         store.put(
             Job(
+                job_id="ip3",
+                mode=StereoMode.ANAGLYPH,
+                status=JobStatus.INGESTING,
+                created_at=1500,
+            )
+        )
+        store.put(
+            Job(
                 job_id="done",
                 mode=StereoMode.ANAGLYPH,
                 status=JobStatus.COMPLETED,
@@ -216,8 +224,8 @@ class TestDynamoDBJobStore:
             )
         )
         items = store.list_in_progress(limit=10)
-        assert len(items) == 2
-        assert [x.job_id for x in items] == ["ip2", "ip1"]
+        assert len(items) == 3
+        assert [x.job_id for x in items] == ["ip2", "ip3", "ip1"]
 
 
 class TestDynamoSegmentCompletionStore:

@@ -42,6 +42,8 @@ def compute_progress(
         return 100, "Completed"
     if job.status == JobStatus.CREATED:
         return 5, "Waiting for upload"
+    if job.status == JobStatus.INGESTING:
+        return 5, "Downloading source…"
     if job.status == JobStatus.CHUNKING_IN_PROGRESS:
         return 15, "Chunking video"
     if job.status == JobStatus.CHUNKING_COMPLETE:

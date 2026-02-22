@@ -106,6 +106,8 @@ def integration_env(moto_aws: None) -> dict[str, str]:
     reassembly_queue_url = reassembly_resp["QueueUrl"]
     deletion_resp = sqs.create_queue(QueueName="int-test-deletion")
     deletion_queue_url = deletion_resp["QueueUrl"]
+    ingest_resp = sqs.create_queue(QueueName="int-test-ingest")
+    ingest_queue_url = ingest_resp["QueueUrl"]
 
     input_bucket = "int-test-input-bucket"
     output_bucket = "int-test-output-bucket"
@@ -120,6 +122,7 @@ def integration_env(moto_aws: None) -> dict[str, str]:
         "VIDEO_WORKER_QUEUE_URL": video_worker_queue_url,
         "REASSEMBLY_QUEUE_URL": reassembly_queue_url,
         "DELETION_QUEUE_URL": deletion_queue_url,
+        "INGEST_QUEUE_URL": ingest_queue_url,
         "INPUT_BUCKET_NAME": input_bucket,
         "OUTPUT_BUCKET_NAME": output_bucket,
         "AWS_REGION": region,

@@ -16,6 +16,7 @@ Required env vars (match Terraform output names, uppercased with underscores):
 - SEGMENT_OUTPUT_QUEUE_URL (video-worker segment-output queue)
 - REASSEMBLY_QUEUE_URL
 - DELETION_QUEUE_URL (web-ui and media-worker)
+- INGEST_QUEUE_URL (web-ui sends, media-worker consumes)
 
 Optional:
 - AWS_REGION (default: us-east-1)
@@ -172,6 +173,52 @@ def deletion_queue_sender_from_env() -> SQSQueueSender:
 def deletion_queue_receiver_from_env() -> SQSQueueReceiver:
     """Build SQSQueueReceiver for deletion queue from DELETION_QUEUE_URL."""
     url = os.environ["DELETION_QUEUE_URL"]
+    return SQSQueueReceiver(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
+    )
+
+
+def ingest_queue_sender_from_env() -> SQSQueueSender:
+    """Build SQSQueueSender for ingest queue from INGEST_QUEUE_URL."""
+    url = os.environ["INGEST_QUEUE_URL"]
+    return SQSQueueSender(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+    )
+
+
+def ingest_queue_sender_from_env_or_none() -> SQSQueueSender | None:
+    """Build SQSQueueSender for ingest queue when INGEST_QUEUE_URL is set; else None."""
+    url = os.environ.get("INGEST_QUEUE_URL")
+    if not url:
+        return None
+    return SQSQueueSender(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+    )
+
+
+def ingest_queue_receiver_from_env_or_none() -> SQSQueueReceiver | None:
+    """Build SQSQueueReceiver for ingest queue when INGEST_QUEUE_URL is set; else None."""
+    url = os.environ.get("INGEST_QUEUE_URL")
+    if not url:
+        return None
+    return SQSQueueReceiver(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
+    )
+
+
+def ingest_queue_receiver_from_env() -> SQSQueueReceiver:
+    """Build SQSQueueReceiver for ingest queue from INGEST_QUEUE_URL."""
+    url = os.environ["INGEST_QUEUE_URL"]
     return SQSQueueReceiver(
         url,
         region_name=_get_region(),

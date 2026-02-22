@@ -1,11 +1,20 @@
 """Tests for jobs router: dashboard, list, create, detail, play, patch, delete, events."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
-from stereo_spot_shared import Job, JobStatus, StereoMode
+from stereo_spot_shared import (
+    Job,
+    JobStatus,
+    StereoMode,
+    YoutubeIngestPayload,
+    parse_ingest_payload,
+)
 
 from stereo_spot_web_ui.constants import PLAYBACK_PRESIGN_EXPIRY_SEC
 from stereo_spot_web_ui.main import app
+from stereo_spot_web_ui.utils import compute_progress
 
 
 def test_create_job_returns_job_id_and_upload_url_with_correct_key(client: TestClient) -> None:
@@ -23,6 +32,213 @@ def test_create_job_returns_job_id_and_upload_url_with_correct_key(client: TestC
     # Upload URL must use key input/{job_id}/source.mp4
     assert f"input/{job_id}/source.mp4" in detail.text
     assert "mock-upload" in detail.text or "input-bucket" in detail.text
+
+
+def test_create_job_from_url_creates_job_and_sends_to_ingest_queue(
+    client: TestClient,
+) -> None:
+    """POST /jobs/from-url creates job and sends IngestPayload to ingest queue."""
+    response = client.post(
+        "/jobs/from-url",
+        data={
+            "mode": "sbs",
+            "source_url": "https://www.youtube.com/watch?v=abc",
+            "source_type": "youtube",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "/jobs/" in location
+    job_id = location.split("/jobs/")[1].rstrip("/")
+    assert job_id
+    sender = app.state.ingest_queue_sender
+    assert len(sender.sent) == 1
+    payload = parse_ingest_payload(json.loads(sender.sent[0]))
+    assert payload is not None
+    assert isinstance(payload, YoutubeIngestPayload)
+    assert payload.job_id == job_id
+    assert payload.source_url == "https://www.youtube.com/watch?v=abc"
+    assert payload.source_type == "youtube"
+    store = app.state.job_store
+    job = store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.CREATED
+
+
+def test_create_job_from_url_rejects_invalid_url(client: TestClient) -> None:
+    """POST /jobs/from-url returns 400 for non-YouTube URL."""
+    response = client.post(
+        "/jobs/from-url",
+        data={"mode": "sbs", "source_url": "not-a-url"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "YouTube" in response.text or "supported" in response.text
+
+
+def test_create_job_from_url_rejects_non_youtube_http_url(client: TestClient) -> None:
+    """POST /jobs/from-url returns 400 for http(s) URL that is not YouTube."""
+    response = client.post(
+        "/jobs/from-url",
+        data={"mode": "sbs", "source_url": "https://example.com/video"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "YouTube" in response.text or "supported" in response.text
+
+
+def test_create_job_from_url_accepts_youtube_url_formats(client: TestClient) -> None:
+    """POST /jobs/from-url accepts youtube.com/watch and youtu.be URLs."""
+    from stereo_spot_web_ui.routers.jobs import _is_youtube_url
+
+    assert _is_youtube_url("https://www.youtube.com/watch?v=z10mgByREbc") is True
+    url_with_list = "https://www.youtube.com/watch?v=4N9HmMNf7EU&list=RD4N9HmMNf7EU&start_radio=1"
+    assert _is_youtube_url(url_with_list) is True
+    assert _is_youtube_url("https://youtu.be/4N9HmMNf7EU?si=fDoEEB4SFmYjohda") is True
+    assert _is_youtube_url("https://example.com/v") is False
+    assert _is_youtube_url("") is False
+
+
+def test_ingest_from_url_queues_payload_job_stays_created(client: TestClient) -> None:
+    """POST /jobs/{id}/ingest-from-url returns 204, sends payload; job stays CREATED."""
+    store = app.state.job_store
+    job_id = "created-for-ingest"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.SBS,
+            status=JobStatus.CREATED,
+            created_at=100,
+        )
+    )
+    response = client.post(
+        f"/jobs/{job_id}/ingest-from-url",
+        json={"source_url": "https://www.youtube.com/watch?v=abc"},
+    )
+    assert response.status_code == 204
+    sender = app.state.ingest_queue_sender
+    assert len(sender.sent) == 1
+    payload = parse_ingest_payload(json.loads(sender.sent[0]))
+    assert payload is not None
+    assert isinstance(payload, YoutubeIngestPayload)
+    assert payload.job_id == job_id
+    assert payload.source_url == "https://www.youtube.com/watch?v=abc"
+    job = store.get(job_id)
+    assert job is not None
+    assert job.status == JobStatus.CREATED
+
+
+def test_ingest_from_url_returns_404_when_job_missing(client: TestClient) -> None:
+    """POST /jobs/{id}/ingest-from-url returns 404 when job does not exist."""
+    response = client.post(
+        "/jobs/nonexistent-id/ingest-from-url",
+        json={"source_url": "https://www.youtube.com/watch?v=abc"},
+    )
+    assert response.status_code == 404
+
+
+def test_ingest_from_url_returns_400_when_job_not_created(client: TestClient) -> None:
+    """POST /jobs/{id}/ingest-from-url returns 400 when job already has source."""
+    store = app.state.job_store
+    job_id = "completed-for-ingest"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.SBS,
+            status=JobStatus.COMPLETED,
+            created_at=100,
+            completed_at=200,
+        )
+    )
+    response = client.post(
+        f"/jobs/{job_id}/ingest-from-url",
+        json={"source_url": "https://www.youtube.com/watch?v=abc"},
+    )
+    assert response.status_code == 400
+    assert "already" in response.text or "content" in response.text.lower()
+
+
+def test_ingest_from_url_returns_400_for_invalid_url(client: TestClient) -> None:
+    """POST /jobs/{id}/ingest-from-url returns 400 for non-YouTube URL."""
+    store = app.state.job_store
+    job_id = "created-bad-url"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.SBS,
+            status=JobStatus.CREATED,
+            created_at=100,
+        )
+    )
+    response = client.post(
+        f"/jobs/{job_id}/ingest-from-url",
+        json={"source_url": "https://example.com/video"},
+    )
+    assert response.status_code == 400
+    assert "YouTube" in response.text or "supported" in response.text
+
+
+def test_job_detail_created_shows_upload_and_url_blocks(client: TestClient) -> None:
+    """Job detail when CREATED shows side-by-side upload and paste URL options."""
+    store = app.state.job_store
+    job_id = "created-two-options"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.SBS,
+            status=JobStatus.CREATED,
+            created_at=100,
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert "Upload your video" in response.text
+    assert "Or paste a video URL" in response.text
+    assert "Fetch from URL" in response.text
+    assert "source-url" in response.text
+    assert "source-upload-block" in response.text
+    assert "source-url-block" in response.text
+
+
+def test_job_detail_ingesting_does_not_show_upload_block(client: TestClient) -> None:
+    """Job detail with status ingesting does not show upload URL block."""
+    store = app.state.job_store
+    job_id = "ingesting-job"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.ANAGLYPH,
+            status=JobStatus.INGESTING,
+            created_at=100,
+        )
+    )
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    # Upload block is only shown when status is CREATED; INGESTING should not show it
+    assert "Upload your video" not in response.text
+    assert "Downloading source" in response.text
+
+
+def test_compute_progress_ingesting_returns_downloading_label(
+    client: TestClient,
+) -> None:
+    """compute_progress returns (5, 'Downloading source…') for INGESTING."""
+    store = app.state.job_store
+    job_id = "ing-progress"
+    store.put(
+        Job(
+            job_id=job_id,
+            mode=StereoMode.SBS,
+            status=JobStatus.INGESTING,
+            created_at=200,
+        )
+    )
+    job = store.get(job_id)
+    segment_store = app.state.segment_completion_store
+    percent, label = compute_progress(job, segment_store)
+    assert percent == 5
+    assert label == "Downloading source…"
 
 
 def test_list_endpoint_shows_in_progress_and_completed(client: TestClient) -> None:
@@ -98,11 +314,12 @@ def test_play_returns_404_when_job_missing(client: TestClient) -> None:
 
 
 def test_dashboard_and_jobs_list_render(client: TestClient) -> None:
-    """Dashboard and jobs list return HTML."""
+    """Dashboard has single Create job form; jobs list returns HTML."""
     r = client.get("/")
     assert r.status_code == 200
     assert "Stereo-Spot" in r.text
-    assert "Create" in r.text or "create" in r.text
+    assert "Create job" in r.text
+    assert "Create job from URL" not in r.text
 
     r2 = client.get("/jobs")
     assert r2.status_code == 200

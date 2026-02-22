@@ -84,6 +84,7 @@ class MockJobStore:
     def list_in_progress(self, limit: int = 20) -> list[Job]:
         in_progress_statuses = {
             JobStatus.CREATED,
+            JobStatus.INGESTING,
             JobStatus.CHUNKING_IN_PROGRESS,
             JobStatus.CHUNKING_COMPLETE,
             JobStatus.FAILED,
@@ -163,9 +164,24 @@ class MockDeletionQueueSender:
         self.sent.append(body)
 
 
+class MockIngestQueueSender:
+    """QueueSender for ingest queue tests: records sent bodies."""
+
+    def __init__(self) -> None:
+        self.sent: list[str | bytes] = []
+
+    def send(self, body: str | bytes) -> None:
+        self.sent.append(body)
+
+
 @pytest.fixture
 def mock_deletion_queue_sender() -> MockDeletionQueueSender:
     return MockDeletionQueueSender()
+
+
+@pytest.fixture
+def mock_ingest_queue_sender() -> MockIngestQueueSender:
+    return MockIngestQueueSender()
 
 
 @pytest.fixture
@@ -189,11 +205,13 @@ def app_with_mocks(
     mock_object_storage: MockObjectStorage,
     mock_segment_completion_store: MockSegmentCompletionStore,
     mock_deletion_queue_sender: MockDeletionQueueSender,
+    mock_ingest_queue_sender: MockIngestQueueSender,
 ) -> None:
     """Set app.state so routes use mocks; bucket names fixed."""
     app.state.job_store = mock_job_store
     app.state.object_storage = mock_object_storage
     app.state.segment_completion_store = mock_segment_completion_store
     app.state.deletion_queue_sender = mock_deletion_queue_sender
+    app.state.ingest_queue_sender = mock_ingest_queue_sender
     app.state.input_bucket_name = "input-bucket"
     app.state.output_bucket_name = "output-bucket"

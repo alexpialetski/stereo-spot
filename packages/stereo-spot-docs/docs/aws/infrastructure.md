@@ -42,7 +42,7 @@ architecture-beta
 
 - **Input bucket:** Prefixes input/ (source uploads) and segments/ (segment files). Two S3 event notifications: input/*.mp4 to chunking queue; segments/*.mp4 to video-worker queue.
 - **Output bucket:** Prefix `jobs/<job_id>/segments/` (segment outputs), `jobs/<job_id>/final.mp4` (final file). Lifecycle: expire `jobs/*/segments/` after 1 day. CORS for playback.
-- **Queues:** Chunking, video-worker, segment-output, reassembly; each with a DLQ and max receive count (e.g. 3-5). Visibility timeouts set in Terraform (chunking 15 min, video-worker 30 min, reassembly 10 min).
+- **Queues:** Chunking, video-worker, segment-output, reassembly, deletion; optionally **ingest** when `enable_youtube_ingest` is true. Each queue has a DLQ and max receive count (e.g. 3-5). Visibility timeouts set in Terraform (chunking 15 min, video-worker 40 min, reassembly 10 min, ingest 20 min when present). Web-ui sends to deletion (job removal) and, when ingest is enabled, to ingest (create job from URL); media-worker consumes chunking, reassembly, deletion, and ingest (if configured).
 
 ## ECS
 
@@ -52,4 +52,4 @@ architecture-beta
 
 When **inference_backend=sagemaker**, the first apply builds and pushes a minimal SageMaker-compliant stub image (`packages/aws-infra/sagemaker-stub/`: GET /ping, POST /invocations on 8080) so the endpoint reaches InService. Replace it with the real image by running **sagemaker-build** then **sagemaker-deploy** (see [Bringing the solution up](/docs/aws/bring-up)). Terraform run environment must have Docker and AWS CLI for that step.
 
-Nx targets: terraform-init, terraform-plan, terraform-apply, terraform-output (writes env file for workers and smoke-test), ecr-login (Docker login to ECR), update-hf-token (writes HF_TOKEN from .env to Secrets Manager for SageMaker). See [nx-terraform](https://alexpialetski.github.io/nx-terraform/) for full reference.
+Nx targets: terraform-init, terraform-plan, terraform-apply, terraform-output (writes env file for workers and smoke-test), ecr-login (Docker login to ECR), update-hf-token (writes HF_TOKEN from .env to Secrets Manager for SageMaker), update-ytdlp-cookies (when `enable_youtube_ingest` is true: writes yt-dlp cookies file from YTDLP_COOKIES_FILE to Secrets Manager for media-worker YouTube ingest). See [nx-terraform](https://alexpialetski.github.io/nx-terraform/) for full reference.

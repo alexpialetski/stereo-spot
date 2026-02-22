@@ -16,6 +16,8 @@ from stereo_spot_shared import (
     SegmentCompletion,
     StereoMode,
     VideoWorkerPayload,
+    YoutubeIngestPayload,
+    parse_ingest_payload,
 )
 
 
@@ -55,6 +57,15 @@ class TestJob:
         )
         assert j.status == JobStatus.DELETED
         assert j.status.value == "deleted"
+
+    def test_status_ingesting(self) -> None:
+        j = Job(
+            job_id="job-ing",
+            mode=StereoMode.SBS,
+            status=JobStatus.INGESTING,
+        )
+        assert j.status == JobStatus.INGESTING
+        assert j.status.value == "ingesting"
 
     def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -222,3 +233,26 @@ class TestSerialization:
         data = d.model_dump()
         d2 = DeletionPayload.model_validate(data)
         assert d2.job_id == d.job_id
+
+    def test_youtube_ingest_payload_round_trip(self) -> None:
+        i = YoutubeIngestPayload(
+            job_id="job-1",
+            source_url="https://www.youtube.com/watch?v=abc",
+        )
+        data = i.model_dump()
+        i2 = YoutubeIngestPayload.model_validate(data)
+        assert i2.job_id == i.job_id
+        assert i2.source_url == i.source_url
+        assert i2.source_type == "youtube"
+
+    def test_parse_ingest_payload_youtube(self) -> None:
+        data = {"source_type": "youtube", "job_id": "j", "source_url": "https://x"}
+        payload = parse_ingest_payload(data)
+        assert payload is not None
+        assert isinstance(payload, YoutubeIngestPayload)
+        assert payload.job_id == "j"
+        assert payload.source_url == "https://x"
+
+    def test_parse_ingest_payload_invalid_returns_none(self) -> None:
+        assert parse_ingest_payload({}) is None
+        assert parse_ingest_payload({"source_type": "unknown", "job_id": "j"}) is None

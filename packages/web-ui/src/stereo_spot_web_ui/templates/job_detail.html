@@ -8,6 +8,33 @@
 {% endif %}
 
 {% if upload_url %}
+{% if ingest_from_url_available %}
+<div class="source-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+  <article id="source-upload-block">
+    <h2>Upload your video</h2>
+    <div id="upload-area" data-upload-url="{{ upload_url }}" data-job-id="{{ job.job_id }}"{% if show_eta %} data-eta-seconds-per-mb="{{ eta_seconds_per_mb }}" data-eta-cloud="aws"{% endif %}>
+      <label for="source-file">Choose an MP4 file:</label>
+      <input type="file" id="source-file" name="source" accept=".mp4,video/mp4">
+      <button type="button" id="upload-btn" disabled>Upload file</button>
+      <p id="upload-status" aria-live="polite"></p>
+      {% if show_eta %}
+      <p id="eta-message" aria-live="polite" style="display: none;"></p>
+      {% endif %}
+    </div>
+    <p>After uploading, the chunking worker will process the file automatically. Progress will update below.</p>
+  </article>
+  <article id="source-url-block">
+    <h2>Or paste a video URL</h2>
+    <p>Enter a YouTube URL and we will fetch it and run the conversion.</p>
+    <div id="url-submit-area">
+      <label for="source-url">Video URL</label>
+      <input type="url" id="source-url" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%; box-sizing: border-box;">
+      <button type="button" id="fetch-from-url-btn">Fetch from URL</button>
+      <p id="url-status" aria-live="polite"></p>
+    </div>
+  </article>
+</div>
+{% else %}
 <article>
   <h2>Upload your video</h2>
   <div id="upload-area" data-upload-url="{{ upload_url }}" data-job-id="{{ job.job_id }}"{% if show_eta %} data-eta-seconds-per-mb="{{ eta_seconds_per_mb }}" data-eta-cloud="aws"{% endif %}>
@@ -21,6 +48,7 @@
   </div>
   <p>After uploading, the chunking worker will process the file automatically. Progress will update below.</p>
 </article>
+{% endif %}
 {% endif %}
 
 {% if job.status.value != "completed" %}
@@ -60,13 +88,27 @@
 {% if upload_url %}
 <script>
 (function () {
+  var jobId = '{{ job.job_id }}';
   var area = document.getElementById('upload-area');
   var fileInput = document.getElementById('source-file');
   var uploadBtn = document.getElementById('upload-btn');
   var statusEl = document.getElementById('upload-status');
   var uploadUrl = area.getAttribute('data-upload-url');
+  var uploadBlock = document.getElementById('source-upload-block');
+  var urlBlock = document.getElementById('source-url-block');
+  var sourceUrlInput = document.getElementById('source-url');
+  var fetchFromUrlBtn = document.getElementById('fetch-from-url-btn');
+  var urlStatusEl = document.getElementById('url-status');
+
+  function hideUrlBlock() {
+    if (urlBlock) urlBlock.style.display = 'none';
+  }
+  function hideUploadBlock() {
+    if (uploadBlock) uploadBlock.style.display = 'none';
+  }
 
   fileInput.addEventListener('change', function () {
+    if (fileInput.files.length) hideUrlBlock();
     uploadBtn.disabled = !fileInput.files.length;
     statusEl.textContent = '';
     var etaEl = document.getElementById('eta-message');
@@ -90,6 +132,7 @@
   uploadBtn.addEventListener('click', function () {
     var file = fileInput.files[0];
     if (!file) return;
+    hideUrlBlock();
     uploadBtn.disabled = true;
     statusEl.textContent = 'Uploading…';
 
@@ -101,7 +144,6 @@
       if (res.ok) {
         statusEl.textContent = 'Upload complete. Progress will update automatically.';
         fileInput.value = '';
-        var jobId = area.getAttribute('data-job-id');
         if (jobId && file && file.name) {
           fetch('/jobs/' + jobId, {
             method: 'PATCH',
@@ -118,6 +160,39 @@
       uploadBtn.disabled = false;
     });
   });
+
+  if (fetchFromUrlBtn && sourceUrlInput && urlStatusEl) {
+    fetchFromUrlBtn.addEventListener('click', function () {
+      var url = (sourceUrlInput.value || '').trim();
+      if (!url) {
+        urlStatusEl.textContent = 'Please enter a YouTube URL.';
+        return;
+      }
+      hideUploadBlock();
+      fetchFromUrlBtn.disabled = true;
+      urlStatusEl.textContent = 'Sending…';
+
+      fetch('/jobs/' + jobId + '/ingest-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_url: url })
+      }).then(function (res) {
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          res.json().then(function (data) {
+            urlStatusEl.textContent = data.detail || 'Request failed: ' + res.status;
+          }).catch(function () {
+            urlStatusEl.textContent = 'Request failed: ' + res.status;
+          });
+          fetchFromUrlBtn.disabled = false;
+        }
+      }).catch(function (err) {
+        urlStatusEl.textContent = 'Request failed: ' + err.message;
+        fetchFromUrlBtn.disabled = false;
+      });
+    });
+  }
 })();
 </script>
 {% endif %}

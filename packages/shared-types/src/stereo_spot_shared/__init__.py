@@ -22,6 +22,8 @@ from .models import (
     CreateJobRequest,
     CreateJobResponse,
     DeletionPayload,
+    IngestPayload,
+    IngestPayloadUnion,
     Job,
     JobListItem,
     JobStatus,
@@ -31,6 +33,8 @@ from .models import (
     SegmentKeyPayload,
     StereoMode,
     VideoWorkerPayload,
+    YoutubeIngestPayload,
+    parse_ingest_payload,
 )
 
 __version__ = "0.1.0"
@@ -52,6 +56,8 @@ __all__ = [
     "CreateJobRequest",
     "CreateJobResponse",
     "DeletionPayload",
+    "IngestPayload",
+    "IngestPayloadUnion",
     "Job",
     "JobListItem",
     "JobStatus",
@@ -61,4 +67,6 @@ __all__ = [
     "SegmentKeyPayload",
     "StereoMode",
     "VideoWorkerPayload",
+    "YoutubeIngestPayload",
+    "parse_ingest_payload",
 ]

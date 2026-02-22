@@ -158,6 +158,7 @@ class DynamoDBJobStore:
         """List in-progress jobs (including failed) by created_at desc."""
         statuses = [
             JobStatus.CREATED.value,
+            JobStatus.INGESTING.value,
             JobStatus.CHUNKING_IN_PROGRESS.value,
             JobStatus.CHUNKING_COMPLETE.value,
             JobStatus.FAILED.value,

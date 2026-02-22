@@ -29,6 +29,14 @@ resource "aws_sqs_queue" "deletion_dlq" {
   tags = { Name = "${local.name}-deletion-dlq" }
 }
 
+resource "aws_sqs_queue" "ingest_dlq" {
+  count = var.enable_youtube_ingest ? 1 : 0
+
+  name = "${local.name}-ingest-dlq"
+
+  tags = { Name = "${local.name}-ingest-dlq" }
+}
+
 # Main queues with redrive to DLQ
 resource "aws_sqs_queue" "chunking" {
   name                       = "${local.name}-chunking"
@@ -88,6 +96,20 @@ resource "aws_sqs_queue" "deletion" {
   })
 
   tags = { Name = "${local.name}-deletion" }
+}
+
+resource "aws_sqs_queue" "ingest" {
+  count = var.enable_youtube_ingest ? 1 : 0
+
+  name                       = "${local.name}-ingest"
+  visibility_timeout_seconds = 1200 # 20 min for URL download
+  message_retention_seconds  = 1209600
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.ingest_dlq[0].arn
+    maxReceiveCount     = var.dlq_max_receive_count
+  })
+
+  tags = { Name = "${local.name}-ingest" }
 }
 
 # Allow S3 input bucket to send events to chunking queue (prefix input/, suffix .mp4)
@@ -154,6 +176,28 @@ resource "aws_sqs_queue_policy" "segment_output_allow_s3" {
             "aws:SourceArn" = aws_s3_bucket.output.arn
           }
         }
+      }
+    ]
+  })
+}
+
+# Allow web-ui task role to send to ingest queue (URL / YouTube jobs)
+resource "aws_sqs_queue_policy" "ingest_allow_web_ui" {
+  count = var.enable_youtube_ingest ? 1 : 0
+
+  queue_url = aws_sqs_queue.ingest[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowWebUiSendMessage"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.web_ui_task.arn
+        }
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.ingest[0].arn
       }
     ]
   })

@@ -1,7 +1,7 @@
 """Pydantic models for jobs, segments, queue payloads, and API DTOs."""
 
 from enum import Enum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,7 @@ class JobStatus(str, Enum):
     """Lifecycle status of a conversion job."""
 
     CREATED = "created"
+    INGESTING = "ingesting"
     CHUNKING_IN_PROGRESS = "chunking_in_progress"
     CHUNKING_COMPLETE = "chunking_complete"
     COMPLETED = "completed"
@@ -102,6 +103,34 @@ class DeletionPayload(BaseModel):
     """Payload for the Deletion SQS queue (sent by web-ui, consumed by media-worker)."""
 
     job_id: str
+
+
+# --- Ingest queue (discriminated union by source_type) ---
+
+class YoutubeIngestPayload(BaseModel):
+    """YouTube (or yt-dlp–compatible) URL ingest payload."""
+
+    source_type: Literal["youtube"] = "youtube"
+    job_id: str
+    source_url: str
+
+
+# Union of all ingest payload variants; add new source types here.
+IngestPayloadUnion = YoutubeIngestPayload
+IngestPayload = Annotated[
+    IngestPayloadUnion,
+    Field(discriminator="source_type"),
+]
+
+
+def parse_ingest_payload(data: dict) -> IngestPayloadUnion | None:
+    """Parse dict into ingest payload union (discriminated by source_type). None if invalid."""
+    try:
+        from pydantic import TypeAdapter
+
+        return TypeAdapter(IngestPayload).validate_python(data)
+    except Exception:
+        return None
 
 
 # --- API DTOs ---
