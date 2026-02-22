@@ -331,7 +331,7 @@ locals {
     { name = "INFERENCE_BACKEND", value = "sagemaker" },
     { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.inference[0].name },
     { name = "SAGEMAKER_REGION", value = local.region },
-    { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.inference_max_in_flight) }
+    { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.sagemaker_instance_count) }
   ] : [
     { name = "INFERENCE_BACKEND", value = "http" },
     { name = "INFERENCE_HTTP_URL", value = local.inference_http_url }

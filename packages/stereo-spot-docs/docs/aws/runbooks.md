@@ -69,7 +69,7 @@ Or manually: create/update endpoint config with new image, then `aws sagemaker u
 
 ## 5. SageMaker performance tuning
 
-Default stereo-inference settings use **software encoding** (`--video-codec libx264`) so the endpoint works on CPU or instances without NVENC. On **GPU instances** (e.g. **ml.g4dn.2xlarge**), set env **`IW3_VIDEO_CODEC=h264_nvenc`** in the SageMaker model for faster encoding. Other defaults: **stereo method** `row_flow_v3_sym`, **max 30 FPS**, **batch size** from `IW3_BATCH_SIZE` (default 8). Default instance type is **ml.g4dn.2xlarge** (Terraform variable `sagemaker_instance_type`).
+Default stereo-inference settings use **software encoding** (`--video-codec libx264`) so the endpoint works on CPU or instances without NVENC. On **GPU instances** (e.g. **ml.g4dn.xlarge**), set env **`IW3_VIDEO_CODEC=h264_nvenc`** in the SageMaker model for faster encoding. Other defaults: **stereo method** `row_flow_v3_sym`, **max 30 FPS**, **batch size** from `IW3_BATCH_SIZE` (default 8). Default instance type is **ml.g4dn.xlarge** (Terraform variable `sagemaker_instance_type`).
 
 If conversion is still too slow, check CloudWatch metrics for the endpoint (e.g. **SageMaker → Endpoints → stereo-spot-inference → Monitor**): **GPUUtilization**, **GPUMemoryUtilization**, **CPUUtilization**.
 

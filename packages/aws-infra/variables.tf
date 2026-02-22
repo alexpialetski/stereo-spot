@@ -78,12 +78,6 @@ variable "ecs_video_worker_max_capacity" {
   default     = 8
 }
 
-variable "inference_max_in_flight" {
-  description = "Max concurrent SageMaker async invocations per video-worker task (1–20)."
-  type        = number
-  default     = 5
-}
-
 # --- Inference backend: SageMaker vs HTTP (e.g. EC2 for dev) ---
 
 variable "inference_backend" {
@@ -106,9 +100,9 @@ variable "inference_http_url" {
 # --- SageMaker (StereoCrafter endpoint; only when inference_backend=sagemaker) ---
 
 variable "sagemaker_instance_type" {
-  description = "SageMaker endpoint instance type (GPU, e.g. ml.g4dn.2xlarge)"
+  description = "SageMaker endpoint instance type (GPU, e.g. ml.g4dn.xlarge)"
   type        = string
-  default     = "ml.g4dn.2xlarge"
+  default     = "ml.g4dn.xlarge"
 }
 
 variable "sagemaker_instance_count" {

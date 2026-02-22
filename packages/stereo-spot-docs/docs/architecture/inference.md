@@ -39,6 +39,13 @@ sequenceDiagram
 4. Backend reads segment from storage, runs inference, writes result to output URI.
 5. When the output object is written, an event feeds the **segment-output queue**; the video-worker writes a **SegmentCompletion** record. Completion is thus **event-driven** from storage, not by polling.
 
+## Concurrency
+
+The **video-worker** keeps up to **INFERENCE_MAX_IN_FLIGHT** async invocations in flight: it sends multiple `InvokeEndpointAsync` calls and polls for completion.
+
+- **SageMaker**: Infra sets **INFERENCE_MAX_IN_FLIGHT** from the endpoint **instance count** (`sagemaker_instance_count`) so the worker’s in-flight cap matches backend capacity. With one instance you get one in flight; with two instances, two. Each instance runs the inference container with gunicorn `--workers 1`, so one request at a time per instance. To get parallel inference, increase `sagemaker_instance_count` in Terraform; the video-worker will automatically use that value as its max in flight.
+- **HTTP**: **INFERENCE_MAX_IN_FLIGHT** can be set via env (1–20); default is 5. Effective parallelism also depends on your server’s workers/threads.
+
 ## Package
 
 The **stereo-inference** package provides the inference container (e.g. iw3/nunif for 2D→stereo). It is built and deployed separately (e.g. via CodeBuild and SageMaker, or run as your own HTTP service). Storage and metrics are adapter-based so the same image can target AWS or GCP.
