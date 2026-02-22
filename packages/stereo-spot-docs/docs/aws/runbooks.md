@@ -21,6 +21,8 @@ aws sqs delete-message --queue-url <DLQ_URL> --receipt-handle <receipt_handle>
 
 **Discard:** `aws sqs purge-queue --queue-url <DLQ_URL>` (use with care).
 
+**Chunking DLQ with job completed:** If a job finished successfully but `stereo-spot-chunking-dlq` has 1 message, it is often a **duplicate S3 event**. S3 can send more than one notification for the same object; one message is processed and deleted, the other may be retried (e.g. "job not found" due to timing, or a transient exception) until `maxReceiveCount` (default 5), then moved to the DLQ. To confirm, receive the message and check the body: same `input/<job_id>/source.mp4` as the completed job. You can safely **discard** that DLQ message (delete it or purge after inspection). No code change is required for correctness; optionally you can add idempotency (e.g. S3 event sequencer) to avoid duplicate processing.
+
 ---
 
 ## 2. ECS scaling and visibility timeout

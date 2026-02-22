@@ -3,6 +3,11 @@ output "region" {
   value       = local.region
 }
 
+output "name_prefix" {
+  description = "Prefix for resource names (e.g. stereo-spot); used by web-ui for operator links (Cost, Open logs)"
+  value       = var.name_prefix
+}
+
 output "input_bucket_name" {
   description = "Name of the S3 input bucket (source uploads, segment files)"
   value       = aws_s3_bucket.input.id

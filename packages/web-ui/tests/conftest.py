@@ -1,6 +1,7 @@
 """Pytest fixtures: app with mocked JobStore, ObjectStorage, SegmentCompletionStore."""
 
 import pytest
+from fastapi.testclient import TestClient
 from stereo_spot_shared import (
     Job,
     JobListItem,
@@ -9,6 +10,12 @@ from stereo_spot_shared import (
 )
 
 from stereo_spot_web_ui.main import app
+
+
+@pytest.fixture
+def client(app_with_mocks: None) -> TestClient:
+    """TestClient for the app (requires app_with_mocks to set app.state)."""
+    return TestClient(app)
 
 
 class MockJobStore:

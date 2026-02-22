@@ -10,6 +10,8 @@ COPY packages/aws-adapters /aws-adapters
 RUN pip install --no-cache-dir -e /shared-types -e /aws-adapters
 
 COPY packages/web-ui /web-ui
+# 3D Linker setup EXE (built by desktop-launcher-setup:build before this image)
+COPY packages/desktop-launcher-setup/dist/3d_setup.exe /web-ui/src/stereo_spot_web_ui/static/3d_setup.exe
 RUN pip install --no-cache-dir -e /web-ui
 
 ENV PYTHONUNBUFFERED=1

@@ -6,17 +6,27 @@ sidebar_position: 1
 
 Per-package purpose, main Nx targets, and how each fits in the pipeline. Single source for this narrative; in-repo package READMEs are minimal stubs with a link here.
 
-**On this page:** [web-ui](#web-ui) · [media-worker](#media-worker) · [video-worker](#video-worker) · [stereo-inference](#stereo-inference) · [shared-types](#shared-types) · [aws-adapters](#aws-adapters) · [aws-infra-setup](#aws-infra-setup) · [aws-infra](#aws-infra) · [analytics](#analytics) · [integration](#integration)
+**On this page:** [web-ui](#web-ui) · [desktop-launcher-setup](#desktop-launcher-setup) · [media-worker](#media-worker) · [video-worker](#video-worker) · [stereo-inference](#stereo-inference) · [shared-types](#shared-types) · [aws-adapters](#aws-adapters) · [aws-infra-setup](#aws-infra-setup) · [aws-infra](#aws-infra) · [analytics](#analytics) · [integration](#integration)
 
 ## web-ui
 
-**Purpose:** FastAPI server-rendered UI: dashboard, job creation (form POST → redirect with upload URL), unified jobs list (in-progress + completed), job detail with upload form or video player + download, live progress via SSE. Jobs can have an optional display **title** (from the uploaded file name), shown on the dashboard and job detail and used as the suggested download filename (e.g. `attack-on-titan3d.mp4`). ETA and the countdown under the progress bar use a lazy TTL-cached average of conversion time per MB from recent completed jobs (no env-based ETA). Optional timing fields (`uploaded_at`, `source_file_size_bytes`) are set on PATCH after upload; completed jobs can show "Conversion: X min (Y sec/MB)".
+**Purpose:** FastAPI server-rendered UI: dashboard, job creation (form POST → redirect with upload URL), unified jobs list (in-progress + completed), job detail with upload form or video player + download, live progress via SSE. Jobs can have an optional display **title** (from the uploaded file name), shown on the dashboard and job detail and used as the suggested download filename (e.g. `attack-on-titan3d.mp4`). ETA and the countdown under the progress bar use a lazy TTL-cached average of conversion time per MB from recent completed jobs (no env-based ETA). Optional timing fields (`uploaded_at`, `source_file_size_bytes`) are set on PATCH after upload; completed jobs can show "Conversion: X min (Y sec/MB)". **3D player launch:** "Open in 3D player" (dashboard, job list, job detail) goes to a launch page that opens an external player via `pot3d://` or offers download of the 3D Linker (EXE) or M3U playlist. Routes: `GET /launch`, `GET /launch/{job_id}`, `GET /playlist/{job_id}.m3u`, `GET /playlist.m3u`, `GET /setup/windows`. Playback presigned URLs use a longer expiry (e.g. 4 hours) for M3U and in-page playback.
 
-**Main targets:** `serve`, `test`, `lint`, `build` (Docker), `deploy` (push image + ECS force-new-deployment).
+**Main targets:** `serve`, `test`, `lint`, `build` (Docker; depends on desktop-launcher-setup:build for EXE), `deploy` (push image + ECS force-new-deployment).
 
 **Env (when using aws-adapters):** `INPUT_BUCKET_NAME`, `OUTPUT_BUCKET_NAME`, `JOBS_TABLE_NAME`, `SEGMENT_COMPLETIONS_TABLE_NAME`, `AWS_REGION`; optional `AWS_ENDPOINT_URL` (e.g. LocalStack). Optional operator links (Open logs, Cost in nav): when `NAME_PREFIX` is set, aws-adapters provides an OperatorLinksProvider. Local: `STEREOSPOT_ENV_FILE` to load from file.
 
-**Dependencies:** shared-types, aws-adapters. Uses JobStore, ObjectStorage, and optional OperatorLinksProvider (no AWS-specific code in web-ui).
+**Dependencies:** shared-types, aws-adapters. Uses JobStore, ObjectStorage, and optional OperatorLinksProvider (no AWS-specific code in web-ui). Build copies the 3D Linker EXE from desktop-launcher-setup into the image and serves it at `/setup/windows`. Local `serve` runs `packages/web-ui/scripts/serve.sh`, which copies the EXE into `static/` so the "Download 3D Linker (EXE)" link works when running locally.
+
+---
+
+## desktop-launcher-setup
+
+**Purpose:** Builds the Windows **3D Linker for PotPlayer** setup EXE. The installer registers the `pot3d://` URL protocol so that "Open in 3D player" links from the web UI open in PotPlayer with anaglyph (Dubois) settings. No runtime dependency on other packages; output artifact is consumed by web-ui at build time.
+
+**Main targets:** `build` (Docker: Inno Setup via amake/innosetup image; writes `dist/3d_setup.exe` in the package).
+
+**Output:** `packages/desktop-launcher-setup/dist/3d_setup.exe`. Web-ui Dockerfile copies it into the app image and serves it at `GET /setup/windows`.
 
 ---
 

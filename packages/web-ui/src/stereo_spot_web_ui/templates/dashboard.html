@@ -9,12 +9,10 @@
   <form method="post" action="/jobs">
     <label for="mode">Output format</label>
     <select name="mode" id="mode" required>
-      <option value="anaglyph">Anaglyph</option>
       <option value="sbs">Side-by-side (SBS)</option>
+      <option value="anaglyph">Anaglyph</option>
     </select>
     <button type="submit">Create job</button>
   </form>
 </article>
-
-<p><a href="/jobs">View all jobs</a></p>
 {% endblock %}

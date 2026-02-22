@@ -1,0 +1,17 @@
+{
+  "name": "desktop-launcher-setup",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/desktop-launcher-setup",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mkdir -p packages/desktop-launcher-setup/dist && DOCKER_BUILDKIT=1 docker build -f packages/desktop-launcher-setup/Dockerfile --output type=local,dest=packages/desktop-launcher-setup/dist packages/desktop-launcher-setup",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "outputs": ["{projectRoot}/dist/3d_setup.exe"]
+    }
+  }
+}

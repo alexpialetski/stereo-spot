@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Open in 3D player — Stereo-Spot{% endblock %}
+{% block content %}
+<article>
+  <h1>Opening in 3D player…</h1>
+  <p id="launch-status" aria-live="polite">If your 3D player does not open automatically, use the options below.</p>
+</article>
+
+<article id="fallback" style="display: none;">
+  <h2>Didn't open?</h2>
+  <div id="fallback-windows" style="display: none;">
+    <p>Install the 3D Linker first (Windows only), then try again.</p>
+    <p><a href="{{ setup_exe_url }}" role="button" download>Download 3D Linker (EXE)</a></p>
+    <p><a href="{{ pot3d_url }}" id="try-again-link">Try again</a>. Or <a href="{{ m3u_url }}" download>download playlist (M3U)</a> and open it in PotPlayer manually.</p>
+    <p><a href="{{ docs_help_url }}" target="_blank" rel="noopener noreferrer">Viewing 3D – tips and troubleshooting</a></p>
+  </div>
+  <div id="fallback-other" style="display: none;">
+    <p>PotPlayer is only available on Windows. Download the playlist and open it in <a href="https://bino3d.org/" target="_blank" rel="noopener noreferrer">Bino 3D</a> or VLC.</p>
+    <p><a href="{{ m3u_url }}" role="button" download>Download playlist (M3U)</a></p>
+    <p>Then open the downloaded file in your player.</p>
+    <p><a href="{{ docs_help_url }}" target="_blank" rel="noopener noreferrer">Viewing 3D – tips and troubleshooting</a></p>
+  </div>
+</article>
+
+<script>
+(function () {
+  var pot3dUrl = {{ pot3d_url | tojson }};
+  var delayMs = 1500;
+
+  function isWindows() {
+    var ua = navigator.userAgent || navigator.platform || '';
+    return ua.indexOf('Win') !== -1 || ua.indexOf('Windows') !== -1;
+  }
+
+  function showFallback() {
+    var el = document.getElementById('fallback');
+    if (el) el.style.display = 'block';
+    if (isWindows()) {
+      var w = document.getElementById('fallback-windows');
+      if (w) w.style.display = 'block';
+    } else {
+      var o = document.getElementById('fallback-other');
+      if (o) o.style.display = 'block';
+    }
+  }
+
+  setTimeout(function () {
+    window.location.href = pot3dUrl;
+    setTimeout(showFallback, 800);
+  }, delayMs);
+})();
+</script>
+{% endblock %}

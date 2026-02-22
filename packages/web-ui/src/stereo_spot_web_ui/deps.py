@@ -1,8 +1,14 @@
 """Dependencies and app state for FastAPI routes."""
 
 from fastapi import Request
+from fastapi.templating import Jinja2Templates
 from stereo_spot_shared import JobStore, ObjectStorage, SegmentCompletionStore
 from stereo_spot_shared.interfaces import OperatorLinksProvider, QueueSender
+
+
+def get_templates(request: Request) -> Jinja2Templates:
+    """Return Jinja2Templates from app state (set in main before including routers)."""
+    return request.app.state.templates
 
 
 def get_job_store(request: Request) -> JobStore:

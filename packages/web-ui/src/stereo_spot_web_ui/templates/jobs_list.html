@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}All jobs — Stereo-Spot{% endblock %}
+{% block title %}All videos — Stereo-Spot{% endblock %}
 {% block content %}
-<h1>All jobs</h1>
+<h1>All videos</h1>
 {% if removed %}
 <p role="status">Job removed. Cleanup in progress.</p>
 {% endif %}
@@ -36,6 +36,7 @@
 
 {% if completed_jobs %}
 <h2>Completed</h2>
+<p><a href="/launch" role="button">Open all in 3D player</a></p>
 <figure>
   <table role="grid">
     <thead>

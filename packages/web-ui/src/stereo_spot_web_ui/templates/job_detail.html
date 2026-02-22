@@ -39,7 +39,7 @@
   <h2>Final video</h2>
   {% if playback_url %}
   <video src="{{ playback_url }}" controls preload="metadata" style="width: 100%; display: block; margin-bottom: 1rem;"></video>
-  <p><a href="{{ download_url }}" role="button">Download</a></p>
+  <p><a href="{{ download_url }}" role="button">Download</a> <a href="/launch/{{ job.job_id }}" role="button">Open in 3D player</a></p>
   {% if conversion_duration_sec is not none and conversion_sec_per_mb is not none %}
   <p>Conversion: {{ (conversion_duration_sec / 60)|round(1) }} min ({{ conversion_sec_per_mb|round(1) }} sec/MB)</p>
   {% endif %}

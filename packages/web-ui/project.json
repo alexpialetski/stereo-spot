@@ -12,7 +12,8 @@
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
-      "outputs": []
+      "outputs": [],
+      "dependsOn": ["desktop-launcher-setup:build"]
     },
     "deploy": {
       "executor": "nx:run-commands",
@@ -45,11 +46,15 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "export STEREOSPOT_ENV_FILE=\"$PWD/packages/aws-infra/.env\" && cd packages/web-ui && uvicorn stereo_spot_web_ui.main:app --reload",
+        "command": "bash packages/web-ui/scripts/serve.sh",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
-      "dependsOn": ["stereo-spot:install-deps"]
+      "dependsOn": [
+        "aws-infra:terraform-output",
+        "desktop-launcher-setup:build",
+        "stereo-spot:install-deps"
+      ]
     }
   }
 }
