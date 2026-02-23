@@ -6,6 +6,7 @@ from stereo_spot_shared import Job, JobListItem, JobStatus, SegmentCompletion, S
 from stereo_spot_aws_adapters import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
+    InferenceInvocationsStore,
     ReassemblyTriggeredLock,
 )
 
@@ -318,3 +319,58 @@ class TestReassemblyTriggeredLock:
         )
         assert lock.try_create_triggered("job-create-2") is True
         assert lock.try_create_triggered("job-create-2") is False
+
+
+class TestInferenceInvocationsStore:
+    """Tests for InferenceInvocationsStore (output_location -> job/segment correlation)."""
+
+    def test_put_and_get(self, inference_invocations_table):
+        store = InferenceInvocationsStore(
+            inference_invocations_table, region_name="us-east-1"
+        )
+        output_location = "s3://bucket/sagemaker-async-responses/xyz"
+        store.put(
+            output_location,
+            job_id="job-1",
+            segment_index=2,
+            total_segments=5,
+            output_s3_uri="s3://bucket/jobs/job-1/segments/2.mp4",
+        )
+        got = store.get(output_location)
+        assert got is not None
+        assert got["job_id"] == "job-1"
+        assert got["segment_index"] == 2
+        assert got["total_segments"] == 5
+        assert got["output_s3_uri"] == "s3://bucket/jobs/job-1/segments/2.mp4"
+
+    def test_get_missing_returns_none(self, inference_invocations_table):
+        store = InferenceInvocationsStore(
+            inference_invocations_table, region_name="us-east-1"
+        )
+        assert store.get("s3://bucket/missing") is None
+
+    def test_delete_removes_item(self, inference_invocations_table):
+        store = InferenceInvocationsStore(
+            inference_invocations_table, region_name="us-east-1"
+        )
+        output_location = "s3://bucket/sagemaker-async-responses/abc"
+        store.put(output_location, "job-2", 0, 1, "s3://bucket/jobs/job-2/segments/0.mp4")
+        assert store.get(output_location) is not None
+        store.delete(output_location)
+        assert store.get(output_location) is None
+
+    def test_put_sets_ttl(self, inference_invocations_table):
+        import time
+        store = InferenceInvocationsStore(
+            inference_invocations_table, region_name="us-east-1"
+        )
+        output_location = "s3://bucket/sagemaker-async-responses/ttl"
+        before = int(time.time())
+        store.put(output_location, "job-3", 1, 3, "s3://out/1.mp4")
+        after = int(time.time())
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table(
+            inference_invocations_table
+        )
+        item = table.get_item(Key={"output_location": output_location})["Item"]
+        assert "ttl" in item
+        assert before + 7200 <= item["ttl"] <= after + 7200 + 2

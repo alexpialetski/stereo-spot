@@ -16,6 +16,7 @@ from .keys import (
     parse_output_segment_key,
     parse_segment_key,
 )
+from .logging_config import configure_logging
 from .models import (
     AnalyticsSnapshot,
     ChunkingPayload,
@@ -39,6 +40,7 @@ from .models import (
 
 __version__ = "0.1.0"
 __all__ = [
+    "configure_logging",
     "AnalyticsSnapshot",
     "ConversionMetricsProvider",
     "JobStore",

@@ -50,8 +50,8 @@ resource "aws_cloudwatch_metric_alarm" "reassembly_dlq" {
   alarm_description = "Messages in reassembly dead-letter queue; investigate failed reassembly jobs."
 }
 
-resource "aws_cloudwatch_metric_alarm" "segment_output_dlq" {
-  alarm_name          = "${local.name}-segment-output-dlq-messages"
+resource "aws_cloudwatch_metric_alarm" "output_events_dlq" {
+  alarm_name          = "${local.name}-output-events-dlq-messages"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "ApproximateNumberOfMessagesVisible"
@@ -61,8 +61,8 @@ resource "aws_cloudwatch_metric_alarm" "segment_output_dlq" {
   threshold           = 0
 
   dimensions = {
-    QueueName = aws_sqs_queue.segment_output_dlq.name
+    QueueName = aws_sqs_queue.output_events_dlq.name
   }
 
-  alarm_description = "Messages in segment-output dead-letter queue; investigate failed SegmentCompletion writes."
+  alarm_description = "Messages in output-events dead-letter queue; investigate failed output-event processing."
 }

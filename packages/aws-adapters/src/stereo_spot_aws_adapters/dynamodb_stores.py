@@ -290,3 +290,69 @@ class ReassemblyTriggeredLock:
     def delete(self, job_id: str) -> None:
         """Delete the ReassemblyTriggered item for this job. Idempotent if item does not exist."""
         self._table.delete_item(Key={"job_id": job_id})
+
+
+# TTL for inference invocations: 2h so stale entries expire if result event never arrives
+INFERENCE_INVOCATIONS_TTL_SECONDS = 7200
+
+
+class InferenceInvocationsStore:
+    """
+    Stores output_location -> (job_id, segment_index, total_segments, output_s3_uri) for correlating
+    SageMaker async result S3 events to segment completion. Used when inference_backend=sagemaker.
+    """
+
+    def __init__(
+        self,
+        table_name: str,
+        *,
+        region_name: str | None = None,
+        endpoint_url: str | None = None,
+    ) -> None:
+        self._table_name = table_name
+        self._resource = boto3.resource(
+            "dynamodb",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        self._table = self._resource.Table(table_name)
+
+    def put(
+        self,
+        output_location: str,
+        job_id: str,
+        segment_index: int,
+        total_segments: int,
+        output_s3_uri: str,
+    ) -> None:
+        """Store correlation for output_location. TTL set so item expires if event never arrives."""
+        now = int(time.time())
+        ttl = now + INFERENCE_INVOCATIONS_TTL_SECONDS
+        self._table.put_item(
+            Item={
+                "output_location": output_location,
+                "job_id": job_id,
+                "segment_index": segment_index,
+                "total_segments": total_segments,
+                "output_s3_uri": output_s3_uri,
+                "created_at": now,
+                "ttl": ttl,
+            }
+        )
+
+    def get(self, output_location: str) -> dict[str, str | int] | None:
+        """Return job_id, segment_index, total_segments, output_s3_uri if found; else None."""
+        resp = self._table.get_item(Key={"output_location": output_location})
+        item = resp.get("Item")
+        if not item:
+            return None
+        return {
+            "job_id": item["job_id"],
+            "segment_index": int(item["segment_index"]),
+            "total_segments": int(item["total_segments"]),
+            "output_s3_uri": item["output_s3_uri"],
+        }
+
+    def delete(self, output_location: str) -> None:
+        """Remove the correlation. Idempotent if item does not exist."""
+        self._table.delete_item(Key={"output_location": output_location})

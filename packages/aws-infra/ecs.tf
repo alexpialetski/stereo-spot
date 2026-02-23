@@ -165,7 +165,7 @@ resource "aws_iam_role_policy" "video_worker_task" {
         {
           Effect   = "Allow"
           Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-          Resource = [aws_sqs_queue.video_worker.arn, aws_sqs_queue.segment_output.arn]
+          Resource = [aws_sqs_queue.video_worker.arn, aws_sqs_queue.output_events.arn]
         },
         {
           Effect   = "Allow"
@@ -178,11 +178,18 @@ resource "aws_iam_role_policy" "video_worker_task" {
           Resource = aws_sqs_queue.reassembly.arn
         }
       ],
-      var.inference_backend == "sagemaker" ? [{
-        Effect   = "Allow"
-        Action   = ["sagemaker:InvokeEndpoint", "sagemaker:InvokeEndpointAsync"]
-        Resource = [aws_sagemaker_endpoint.inference[0].arn]
-      }] : []
+      var.inference_backend == "sagemaker" ? [
+        {
+          Effect   = "Allow"
+          Action   = ["sagemaker:InvokeEndpoint", "sagemaker:InvokeEndpointAsync"]
+          Resource = [aws_sagemaker_endpoint.inference[0].arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:DeleteItem"]
+          Resource = [aws_dynamodb_table.inference_invocations.arn]
+        }
+      ] : []
     )
   })
 }
@@ -331,7 +338,8 @@ locals {
     { name = "INFERENCE_BACKEND", value = "sagemaker" },
     { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.inference[0].name },
     { name = "SAGEMAKER_REGION", value = local.region },
-    { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.sagemaker_instance_count) }
+    { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.sagemaker_instance_count) },
+    { name = "INFERENCE_INVOCATIONS_TABLE_NAME", value = aws_dynamodb_table.inference_invocations.name }
   ] : [
     { name = "INFERENCE_BACKEND", value = "http" },
     { name = "INFERENCE_HTTP_URL", value = local.inference_http_url }
@@ -342,7 +350,7 @@ locals {
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
     { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
     { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url },
-    { name = "SEGMENT_OUTPUT_QUEUE_URL", value = aws_sqs_queue.segment_output.url },
+    { name = "OUTPUT_EVENTS_QUEUE_URL", value = aws_sqs_queue.output_events.url },
     { name = "REASSEMBLY_TRIGGERED_TABLE_NAME", value = aws_dynamodb_table.reassembly_triggered.name },
     { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
   ], local.video_worker_inference_env)

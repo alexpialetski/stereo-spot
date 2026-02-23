@@ -30,19 +30,20 @@ architecture-beta
 ## Terraform projects
 
 - **aws-infra-setup:** S3 bucket for Terraform state, DynamoDB table for state locking. Run first; aws-infra uses it as backend.
-- **aws-infra:** All application infra: S3 buckets (input, output), SQS queues (chunking, video-worker, segment-output, reassembly) plus DLQs, DynamoDB tables (Jobs, SegmentCompletions, ReassemblyTriggered), ECS cluster and services (web-ui, media-worker, video-worker), ECR repos, CodeBuild project (stereo-inference), SageMaker model/endpoint config/endpoint (or HTTP config), ALB. Uses nx-terraform with backendProject set to aws-infra-setup.
+- **aws-infra:** All application infra: S3 buckets (input, output), SQS queues (chunking, video-worker, output-events, reassembly) plus DLQs, DynamoDB tables (Jobs, SegmentCompletions, ReassemblyTriggered, InferenceInvocations when SageMaker), ECS cluster and services (web-ui, media-worker, video-worker), ECR repos, CodeBuild project (stereo-inference), SageMaker model/endpoint config/endpoint (or HTTP config), ALB. Uses nx-terraform with backendProject set to aws-infra-setup.
 
 ## DynamoDB
 
 - **Jobs:** PK `job_id`. GSIs: `status-completed_at`, `status-created_at` for list completed / in-progress.
 - **SegmentCompletions:** PK `job_id`, SK `segment_index`. Query by `job_id` returns segments in order for reassembly.
 - **ReassemblyTriggered:** PK `job_id`. Used for video-worker trigger idempotency and media-worker reassembly lock. TTL on `ttl` attribute for expiry.
+- **InferenceInvocations:** PK `output_location` (S3 URI of SageMaker async result). Used when inference_backend=sagemaker to correlate output-events (SageMaker result) to job/segment. TTL for cleanup.
 
 ## S3 and SQS
 
 - **Input bucket:** Prefixes input/ (source uploads) and segments/ (segment files). Two S3 event notifications: input/*.mp4 to chunking queue; segments/*.mp4 to video-worker queue.
-- **Output bucket:** Prefix `jobs/<job_id>/segments/` (segment outputs), `jobs/<job_id>/final.mp4` (final file). Lifecycle: expire `jobs/*/segments/` after 1 day. CORS for playback.
-- **Queues:** Chunking, video-worker, segment-output, reassembly, deletion; optionally **ingest** when `enable_youtube_ingest` is true. Each queue has a DLQ and max receive count (e.g. 3-5). Visibility timeouts set in Terraform (chunking 15 min, video-worker 40 min, reassembly 10 min, ingest 20 min when present). Web-ui sends to deletion (job removal) and, when ingest is enabled, to ingest (create job from URL); media-worker consumes chunking, reassembly, deletion, and ingest (if configured).
+- **Output bucket:** Prefix `jobs/<job_id>/segments/` (segment outputs), `jobs/<job_id>/final.mp4` (final file). S3 event notifications to **output-events** queue: `jobs/*.mp4` (segment files) and `sagemaker-async-responses/`, `sagemaker-async-failures/` (SageMaker async results). Lifecycle: expire `jobs/*/segments/` after 1 day. CORS for playback.
+- **Queues:** Chunking, video-worker, output-events, reassembly, deletion; optionally **ingest** when `enable_youtube_ingest` is true. Each queue has a DLQ and max receive count (e.g. 3-5). Visibility timeouts set in Terraform (chunking 15 min, video-worker 40 min, reassembly 10 min, ingest 20 min when present). Web-ui sends to deletion (job removal) and, when ingest is enabled, to ingest (create job from URL); media-worker consumes chunking, reassembly, deletion, and ingest (if configured). Video-worker consumes video-worker and output-events queues.
 
 ## ECS
 

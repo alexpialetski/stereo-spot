@@ -44,7 +44,7 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 ## video-worker
 
-**Purpose:** Coordinator: consumes video-worker queue and segment-output queue. Invokes inference (stub, SageMaker, or HTTP). After each SegmentCompletion put, runs reassembly trigger (conditional create + send to reassembly queue).
+**Purpose:** Coordinator: consumes video-worker queue and output-events queue. Invokes inference (stub, SageMaker, or HTTP). With SageMaker: invokes async, records invocation in a store, deletes segment message; output-events consumer writes SegmentCompletion only when a SageMaker result event is processed. After each SegmentCompletion put, runs reassembly trigger (conditional create + send to reassembly queue).
 
 **Main targets:** `test`, `lint`, `build` (Docker), `deploy`.
 
@@ -68,7 +68,7 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 ## shared-types
 
-**Purpose:** Python library: Pydantic models for Job, queue payloads, segment key format, SegmentCompletion, API DTOs. Single source of truth; no Docker image.
+**Purpose:** Python library: Pydantic models for Job, queue payloads, segment key format, SegmentCompletion, API DTOs; plus **`configure_logging()`** for a shared log format (ISO timestamp, level, name, message) used by web-ui, media-worker, video-worker, and stereo-inference. Single source of truth; no Docker image.
 
 **Main targets:** `test`, `lint`.
 

@@ -13,7 +13,7 @@ Required env vars (match Terraform output names, uppercased with underscores):
 - REASSEMBLY_TRIGGERED_TABLE_NAME
 - CHUNKING_QUEUE_URL
 - VIDEO_WORKER_QUEUE_URL
-- SEGMENT_OUTPUT_QUEUE_URL (video-worker segment-output queue)
+- OUTPUT_EVENTS_QUEUE_URL (video-worker: segment files and SageMaker async responses)
 - REASSEMBLY_QUEUE_URL
 - DELETION_QUEUE_URL (web-ui and media-worker)
 - INGEST_QUEUE_URL (web-ui sends, media-worker consumes)
@@ -26,6 +26,8 @@ Optional:
   CloudWatch Logs Insights and Cost Explorer links.
 - LOGS_REGION: region for log links (default: AWS_REGION or us-east-1).
 - COST_EXPLORER_URL: optional override for the Cost Explorer deep link (default: App-tag filter).
+- INFERENCE_INVOCATIONS_TABLE_NAME: optional; when set (e.g. sagemaker),
+  inference_invocations_store_from_env returns a store.
 """
 
 import os
@@ -35,6 +37,7 @@ from stereo_spot_shared.interfaces import OperatorLinksProvider
 from .dynamodb_stores import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
+    InferenceInvocationsStore,
     ReassemblyTriggeredLock,
 )
 from .operator_links import AWSOperatorLinksProvider
@@ -118,14 +121,32 @@ def video_worker_queue_receiver_from_env() -> SQSQueueReceiver:
     )
 
 
-def segment_output_queue_receiver_from_env() -> SQSQueueReceiver:
-    """Build SQSQueueReceiver for segment-output queue from SEGMENT_OUTPUT_QUEUE_URL."""
-    url = os.environ["SEGMENT_OUTPUT_QUEUE_URL"]
+def output_events_queue_receiver_from_env() -> SQSQueueReceiver:
+    """Build SQSQueueReceiver for output-events queue from OUTPUT_EVENTS_QUEUE_URL."""
+    url = os.environ["OUTPUT_EVENTS_QUEUE_URL"]
     return SQSQueueReceiver(
         url,
         region_name=_get_region(),
         endpoint_url=_get_endpoint_url(),
         wait_time_seconds=_sqs_wait_time_seconds(),
+    )
+
+
+def segment_output_queue_receiver_from_env() -> SQSQueueReceiver:
+    """Alias for output_events_queue_receiver_from_env. Use OUTPUT_EVENTS_QUEUE_URL."""
+    return output_events_queue_receiver_from_env()
+
+
+def inference_invocations_store_from_env() -> InferenceInvocationsStore | None:
+    """Build InferenceInvocationsStore from INFERENCE_INVOCATIONS_TABLE_NAME when set.
+    Returns None if not set."""
+    table_name = os.environ.get("INFERENCE_INVOCATIONS_TABLE_NAME")
+    if not table_name:
+        return None
+    return InferenceInvocationsStore(
+        table_name,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
     )
 
 

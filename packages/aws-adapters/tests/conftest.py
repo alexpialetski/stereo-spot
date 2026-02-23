@@ -98,6 +98,21 @@ def reassembly_triggered_table(moto_aws):
 
 
 @pytest.fixture
+def inference_invocations_table(moto_aws):
+    """Create InferenceInvocations DynamoDB table (PK output_location, TTL)."""
+    import boto3
+
+    client = boto3.client("dynamodb", region_name="us-east-1")
+    client.create_table(
+        TableName="test-inference-invocations",
+        BillingMode="PAY_PER_REQUEST",
+        KeySchema=[{"AttributeName": "output_location", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "output_location", "AttributeType": "S"}],
+    )
+    return "test-inference-invocations"
+
+
+@pytest.fixture
 def sqs_queue(moto_aws):
     """Create an SQS queue and return its URL."""
     import boto3

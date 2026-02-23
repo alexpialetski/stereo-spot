@@ -23,11 +23,9 @@ import tempfile
 import time
 from urllib.parse import urlparse
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%SZ",
-)
+from stereo_spot_shared import configure_logging
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 NUNIF_ROOT = "/opt/nunif"

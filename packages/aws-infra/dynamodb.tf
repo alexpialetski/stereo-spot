@@ -85,3 +85,23 @@ resource "aws_dynamodb_table" "reassembly_triggered" {
 
   tags = { Name = "${local.name}-reassembly-triggered" }
 }
+
+# InferenceInvocations: PK output_location (S3 URI); correlates SageMaker async result to job/segment for output-events consumer
+resource "aws_dynamodb_table" "inference_invocations" {
+  name         = "${local.name}-inference-invocations"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key = "output_location"
+
+  attribute {
+    name = "output_location"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  tags = { Name = "${local.name}-inference-invocations" }
+}

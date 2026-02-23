@@ -20,7 +20,7 @@ High-level levers and guardrails that apply to any cloud implementation.
 
 ## Observability
 
-- **Logs:** Emit logs with **job_id** (and **segment_index** where relevant) so one job can be traced across the pipeline.
+- **Logs:** Emit logs with **job_id** (and **segment_index** where relevant) so one job can be traced across the pipeline. Log format is standardised: all services (web-ui, media-worker, video-worker, stereo-inference) call **`stereo_spot_shared.configure_logging()`** at startup so CloudWatch and other sinks see a consistent `%(asctime)s [%(levelname)s] %(name)s: %(message)s` with ISO timestamps.
 - **Metrics:** Expose or derive metrics for segment conversion duration, queue depth, and “segments completed / total_segments” per job. Add an alarm when no new segment has completed for a job for a configured threshold to detect stuck jobs.
 - **Tracing (optional):** Propagate job_id and segment_index in logs and tracing so a single job can be followed from chunking → segment processing → reassembly.
 

@@ -104,6 +104,8 @@ def integration_env(moto_aws: None) -> dict[str, str]:
     video_worker_queue_url = video_worker_resp["QueueUrl"]
     reassembly_resp = sqs.create_queue(QueueName="int-test-reassembly")
     reassembly_queue_url = reassembly_resp["QueueUrl"]
+    output_events_resp = sqs.create_queue(QueueName="int-test-output-events")
+    output_events_queue_url = output_events_resp["QueueUrl"]
     deletion_resp = sqs.create_queue(QueueName="int-test-deletion")
     deletion_queue_url = deletion_resp["QueueUrl"]
     ingest_resp = sqs.create_queue(QueueName="int-test-ingest")
@@ -120,6 +122,7 @@ def integration_env(moto_aws: None) -> dict[str, str]:
         "REASSEMBLY_TRIGGERED_TABLE_NAME": reassembly_triggered_table,
         "CHUNKING_QUEUE_URL": chunking_queue_url,
         "VIDEO_WORKER_QUEUE_URL": video_worker_queue_url,
+        "OUTPUT_EVENTS_QUEUE_URL": output_events_queue_url,
         "REASSEMBLY_QUEUE_URL": reassembly_queue_url,
         "DELETION_QUEUE_URL": deletion_queue_url,
         "INGEST_QUEUE_URL": ingest_queue_url,

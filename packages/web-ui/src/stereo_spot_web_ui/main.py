@@ -1,10 +1,9 @@
 """FastAPI app: server-rendered pages for dashboard, jobs, create, detail, play."""
 
-import logging
-
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from stereo_spot_shared import configure_logging
 
 from .config import bootstrap_env
 from .constants import STATIC_DIR, TEMPLATES_DIR
@@ -16,7 +15,7 @@ from .routers.launch import router as launch_router
 bootstrap_env()
 
 # Ensure app loggers (e.g. events stream) emit INFO; uvicorn --log-level only affects uvicorn.
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 
 app = FastAPI(title="Stereo-Spot Web UI", version="0.1.0")
 

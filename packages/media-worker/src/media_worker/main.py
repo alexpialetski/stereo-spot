@@ -21,6 +21,7 @@ from stereo_spot_aws_adapters.env_config import (
     reassembly_triggered_lock_from_env,
     segment_completion_store_from_env,
 )
+from stereo_spot_shared import configure_logging
 
 from .chunking import run_chunking_loop
 from .config import get_settings
@@ -28,11 +29,7 @@ from .deletion import run_deletion_loop
 from .ingest import run_ingest_loop
 from .reassembly import run_reassembly_loop
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%SZ",
-)
+configure_logging()
 
 
 def _setup_ytdlp_cookies_if_configured() -> None:

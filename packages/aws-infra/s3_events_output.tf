@@ -1,16 +1,30 @@
-# S3 event notifications: output bucket → segment-output queue.
-# When SageMaker (or inference) writes a segment to jobs/{job_id}/segments/{segment_index}.mp4,
-# S3 sends the event here; video-worker consumes and writes SegmentCompletion.
+# S3 event notifications: output bucket → output-events queue.
+# Segment files (jobs/*.mp4) and SageMaker async responses (sagemaker-async-responses/, sagemaker-async-failures/).
 
 resource "aws_s3_bucket_notification" "output" {
   bucket = aws_s3_bucket.output.id
 
   queue {
-    queue_arn     = aws_sqs_queue.segment_output.arn
-    events        = ["s3:ObjectCreated:*"]
+    id          = "segment-files"
+    queue_arn   = aws_sqs_queue.output_events.arn
+    events      = ["s3:ObjectCreated:*"]
     filter_prefix = "jobs/"
     filter_suffix = ".mp4"
   }
 
-  depends_on = [aws_sqs_queue_policy.segment_output_allow_s3]
+  queue {
+    id          = "sagemaker-responses"
+    queue_arn   = aws_sqs_queue.output_events.arn
+    events      = ["s3:ObjectCreated:*"]
+    filter_prefix = "sagemaker-async-responses/"
+  }
+
+  queue {
+    id          = "sagemaker-failures"
+    queue_arn   = aws_sqs_queue.output_events.arn
+    events      = ["s3:ObjectCreated:*"]
+    filter_prefix = "sagemaker-async-failures/"
+  }
+
+  depends_on = [aws_sqs_queue_policy.output_events_allow_s3]
 }

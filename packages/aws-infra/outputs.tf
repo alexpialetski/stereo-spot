@@ -33,9 +33,9 @@ output "reassembly_queue_url" {
   value       = aws_sqs_queue.reassembly.url
 }
 
-output "segment_output_queue_url" {
-  description = "URL of the segment-output SQS queue (output bucket S3 events)"
-  value       = aws_sqs_queue.segment_output.url
+output "output_events_queue_url" {
+  description = "URL of the output-events SQS queue (output bucket: segment files and SageMaker async responses)"
+  value       = aws_sqs_queue.output_events.url
 }
 
 output "deletion_queue_url" {
@@ -61,6 +61,11 @@ output "segment_completions_table_name" {
 output "reassembly_triggered_table_name" {
   description = "Name of the DynamoDB ReassemblyTriggered table"
   value       = aws_dynamodb_table.reassembly_triggered.name
+}
+
+output "inference_invocations_table_name" {
+  description = "Name of the DynamoDB InferenceInvocations table (SageMaker output_location -> job/segment)"
+  value       = aws_dynamodb_table.inference_invocations.name
 }
 
 # --- ECS / ECR ---

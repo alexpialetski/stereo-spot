@@ -17,10 +17,10 @@ resource "aws_sqs_queue" "reassembly_dlq" {
   tags = { Name = "${local.name}-reassembly-dlq" }
 }
 
-resource "aws_sqs_queue" "segment_output_dlq" {
-  name = "${local.name}-segment-output-dlq"
+resource "aws_sqs_queue" "output_events_dlq" {
+  name = "${local.name}-output-events-dlq"
 
-  tags = { Name = "${local.name}-segment-output-dlq" }
+  tags = { Name = "${local.name}-output-events-dlq" }
 }
 
 resource "aws_sqs_queue" "deletion_dlq" {
@@ -74,16 +74,16 @@ resource "aws_sqs_queue" "reassembly" {
   tags = { Name = "${local.name}-reassembly" }
 }
 
-resource "aws_sqs_queue" "segment_output" {
-  name                       = "${local.name}-segment-output"
+resource "aws_sqs_queue" "output_events" {
+  name                       = "${local.name}-output-events"
   visibility_timeout_seconds = 120 # 2 min; processing is one DynamoDB put
   message_retention_seconds  = 1209600
   redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.segment_output_dlq.arn
+    deadLetterTargetArn = aws_sqs_queue.output_events_dlq.arn
     maxReceiveCount     = var.dlq_max_receive_count
   })
 
-  tags = { Name = "${local.name}-segment-output" }
+  tags = { Name = "${local.name}-output-events" }
 }
 
 resource "aws_sqs_queue" "deletion" {
@@ -158,9 +158,9 @@ resource "aws_sqs_queue_policy" "video_worker_allow_s3" {
   })
 }
 
-# Allow S3 output bucket to send events to segment-output queue (prefix jobs/, suffix .mp4)
-resource "aws_sqs_queue_policy" "segment_output_allow_s3" {
-  queue_url = aws_sqs_queue.segment_output.id
+# Allow S3 output bucket to send events to output-events queue (segment files and SageMaker async responses)
+resource "aws_sqs_queue_policy" "output_events_allow_s3" {
+  queue_url = aws_sqs_queue.output_events.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -170,7 +170,7 @@ resource "aws_sqs_queue_policy" "segment_output_allow_s3" {
         Effect    = "Allow"
         Principal = { Service = "s3.amazonaws.com" }
         Action    = "sqs:SendMessage"
-        Resource  = aws_sqs_queue.segment_output.arn
+        Resource  = aws_sqs_queue.output_events.arn
         Condition = {
           ArnLike = {
             "aws:SourceArn" = aws_s3_bucket.output.arn

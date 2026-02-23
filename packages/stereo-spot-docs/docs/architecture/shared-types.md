@@ -60,7 +60,7 @@ flowchart TB
 
 **Purpose:** Decouple producers and consumers (chunking queue, video-worker queue, reassembly queue). Same interface for SQS, Pub/Sub, etc.
 
-**Consumers:** media-worker (chunking and reassembly queues); video-worker (video-worker queue, segment-output queue; sends to reassembly queue).
+**Consumers:** media-worker (chunking and reassembly queues); video-worker (video-worker queue, output-events queue; sends to reassembly queue).
 
 ---
 

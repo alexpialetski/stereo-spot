@@ -4,6 +4,7 @@ from .cloudwatch_metrics import get_conversion_metrics
 from .dynamodb_stores import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
+    InferenceInvocationsStore,
     ReassemblyTriggeredLock,
 )
 from .env_config import operator_links_from_env
@@ -15,6 +16,7 @@ __all__ = [
     "AWSOperatorLinksProvider",
     "DynamoDBJobStore",
     "DynamoSegmentCompletionStore",
+    "InferenceInvocationsStore",
     "ReassemblyTriggeredLock",
     "S3ObjectStorage",
     "SQSQueueReceiver",

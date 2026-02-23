@@ -17,11 +17,9 @@ import os
 import shutil
 import sys
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%SZ",
-)
+from stereo_spot_shared import configure_logging
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 WEIGHTS_DIR = os.environ.get("WEIGHTS_DIR", "/opt/ml/model/weights")

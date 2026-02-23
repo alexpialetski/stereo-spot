@@ -1,11 +1,15 @@
 """
 Inference queue consumer: receive S3 event (segment), run model (SageMaker/HTTP/stub),
 upload result or invoke async; write SegmentCompletion for stub/HTTP.
+SageMaker: invoke async, put to invocation store, delete message (completion via output-events).
 """
+
+from __future__ import annotations
 
 import logging
 import time
 
+from stereo_spot_aws_adapters.dynamodb_stores import InferenceInvocationsStore
 from stereo_spot_shared import JobStatus, SegmentCompletion, VideoWorkerPayload
 from stereo_spot_shared.interfaces import (
     JobStore,
@@ -16,11 +20,7 @@ from stereo_spot_shared.interfaces import (
 
 from .config import get_settings
 from .model_http import invoke_http_endpoint
-from .model_sagemaker import (
-    check_async_response_once,
-    invoke_sagemaker_async,
-    invoke_sagemaker_endpoint,
-)
+from .model_sagemaker import invoke_sagemaker_async
 from .model_stub import process_segment
 from .output_key import build_output_segment_key, build_output_segment_uri
 from .s3_event import parse_s3_event_body
@@ -102,26 +102,10 @@ def process_one_message(
     completed_at = int(time.time())
 
     if _use_sagemaker_backend():
-        s = get_settings()
-        if not s.sagemaker_endpoint_name:
-            raise ValueError("INFERENCE_BACKEND=sagemaker requires SAGEMAKER_ENDPOINT_NAME")
-        region_name = s.sagemaker_region or None
-        invoke_sagemaker_endpoint(
-            payload.segment_s3_uri,
-            output_s3_uri,
-            s.sagemaker_endpoint_name,
-            mode=payload.mode.value,
-            region_name=region_name,
+        raise ValueError(
+            "SageMaker backend uses event-driven completion; use run_loop with invocation_store."
         )
-        # SegmentCompletion is written by the segment-output consumer when the file appears in S3
-        logger.info(
-            "video-worker: job_id=%s segment_index=%s/%s invoked (completion via segment-output)",
-            payload.job_id,
-            payload.segment_index,
-            payload.total_segments,
-        )
-        return True
-    elif _use_http_backend():
+    if _use_http_backend():
         http_url = get_settings().inference_http_url
         if not http_url:
             raise ValueError("INFERENCE_BACKEND=http requires INFERENCE_HTTP_URL")
@@ -164,11 +148,6 @@ def _max_in_flight() -> int:
     return get_settings().inference_max_in_flight
 
 
-def _invocation_timeout_sec() -> float:
-    """SageMaker invocation timeout for per-message deadline (seconds)."""
-    return float(get_settings().sagemaker_invoke_timeout_seconds)
-
-
 def run_loop(
     receiver: QueueReceiver,
     storage: ObjectStorage,
@@ -176,20 +155,23 @@ def run_loop(
     output_bucket: str,
     job_store: JobStore | None = None,
     *,
+    invocation_store: InferenceInvocationsStore | None = None,
     poll_interval_sec: float = 5.0,
 ) -> None:
     """Long-running loop: receive messages, process each, delete on success.
-    When backend=sagemaker, keeps up to INFERENCE_MAX_IN_FLIGHT async invocations in flight.
+    When backend=sagemaker: invoke async, put store, delete message (completion via output-events).
     When job_store is set and processing raises, the job is marked failed."""
     backend = get_settings().inference_backend
     logger.info("video-worker loop started (backend=%s)", backend)
 
     if _use_sagemaker_backend():
-        _run_loop_sagemaker_in_flight(
+        if invocation_store is None:
+            raise ValueError("INFERENCE_BACKEND=sagemaker requires invocation_store")
+        _run_loop_sagemaker_fire_and_forget(
             receiver,
-            segment_store,
             output_bucket,
             job_store,
+            invocation_store,
             poll_interval_sec=poll_interval_sec,
         )
         return
@@ -223,15 +205,15 @@ def run_loop(
             time.sleep(poll_interval_sec)
 
 
-def _run_loop_sagemaker_in_flight(
+def _run_loop_sagemaker_fire_and_forget(
     receiver: QueueReceiver,
-    segment_store: SegmentCompletionStore,
     output_bucket: str,
     job_store: JobStore | None,
+    invocation_store: InferenceInvocationsStore,
     *,
     poll_interval_sec: float,
 ) -> None:
-    """SageMaker-only loop: up to N async invocations in flight; poll S3 for completion."""
+    """SageMaker-only: invoke async, put store, delete. Completion via output-events queue."""
     import boto3
 
     s = get_settings()
@@ -240,91 +222,56 @@ def _run_loop_sagemaker_in_flight(
         raise ValueError("INFERENCE_BACKEND=sagemaker requires SAGEMAKER_ENDPOINT_NAME")
     region_name = s.sagemaker_region or None
     max_in_flight = _max_in_flight()
-    timeout_sec = _invocation_timeout_sec()
-    poll_interval = float(s.sagemaker_async_poll_interval_seconds)
-    s3_client = boto3.client("s3", region_name=region_name)
     sagemaker_client = boto3.client("sagemaker-runtime", region_name=region_name)
 
-    # in_flight: list of (receipt_handle, body, payload, output_location, deadline)
-    in_flight: list[tuple[str, str | bytes, VideoWorkerPayload, str, float]] = []
-
     while True:
-        # Receive up to cap
-        while len(in_flight) < max_in_flight:
-            want = max(1, max_in_flight - len(in_flight))
-            messages = receiver.receive(max_messages=min(want, 10))
-            if not messages:
-                break
-            for msg in messages:
-                body = msg.body
-                payload = parse_s3_event_body(body)
-                if payload is None:
-                    _log_job_id_from_inference_body(
-                        body, "video-worker: job_id=%s invalid S3 event body"
-                    )
-                    continue
-                logger.info(
-                    "video-worker: job_id=%s segment_index=%s/%s invoking SageMaker async",
-                    payload.job_id,
-                    payload.segment_index,
-                    payload.total_segments,
-                )
-                output_s3_uri = build_output_segment_uri(
-                    output_bucket, payload.job_id, payload.segment_index
-                )
-                try:
-                    output_location = invoke_sagemaker_async(
-                        payload.segment_s3_uri,
-                        output_s3_uri,
-                        endpoint_name,
-                        mode=payload.mode.value,
-                        region_name=region_name,
-                        client=sagemaker_client,
-                    )
-                except Exception as e:
-                    logger.exception(
-                        "video-worker: job_id=%s segment_index=%s invoke_async failed: %s",
-                        payload.job_id, payload.segment_index, e,
-                    )
-                    _mark_job_failed(job_store, payload)
-                    continue
-                deadline = time.monotonic() + timeout_sec
-                in_flight.append((msg.receipt_handle, body, payload, output_location, deadline))
-
-        # Poll each in-flight item (non-blocking check)
-        still_in_flight: list[tuple[str, str | bytes, VideoWorkerPayload, str, float]] = []
-        for receipt_handle, body, payload, output_location, deadline in in_flight:
-            if time.monotonic() > deadline:
-                logger.warning(
-                    "video-worker: job_id=%s segment_index=%s async response timeout (no delete)",
-                    payload.job_id, payload.segment_index,
+        want = max(1, max_in_flight)
+        messages = receiver.receive(max_messages=min(want, 10))
+        if not messages:
+            time.sleep(poll_interval_sec)
+            continue
+        for msg in messages:
+            body = msg.body
+            payload = parse_s3_event_body(body)
+            if payload is None:
+                _log_job_id_from_inference_body(
+                    body, "video-worker: job_id=%s invalid S3 event body"
                 )
                 continue
+            logger.info(
+                "video-worker: job_id=%s segment_index=%s/%s invoking SageMaker async",
+                payload.job_id,
+                payload.segment_index,
+                payload.total_segments,
+            )
+            output_s3_uri = build_output_segment_uri(
+                output_bucket, payload.job_id, payload.segment_index
+            )
             try:
-                status = check_async_response_once(output_location, s3_client)
+                output_location = invoke_sagemaker_async(
+                    payload.segment_s3_uri,
+                    output_s3_uri,
+                    endpoint_name,
+                    mode=payload.mode.value,
+                    region_name=region_name,
+                    client=sagemaker_client,
+                )
             except Exception as e:
                 logger.exception(
-                    "video-worker: job_id=%s segment_index=%s check_async_response_once failed: %s",
+                    "video-worker: job_id=%s segment_index=%s invoke_async failed: %s",
                     payload.job_id, payload.segment_index, e,
                 )
+                _mark_job_failed(job_store, payload)
                 continue
-            if status == "pending":
-                still_in_flight.append((receipt_handle, body, payload, output_location, deadline))
-                continue
-            if status == "error":
-                logger.warning(
-                    "video-worker: job_id=%s segment_index=%s container error "
-                    "(no delete, will retry)",
-                    payload.job_id, payload.segment_index,
-                )
-                continue
-            # success
-            receiver.delete(receipt_handle)
+            invocation_store.put(
+                output_location,
+                payload.job_id,
+                payload.segment_index,
+                payload.total_segments,
+                output_s3_uri,
+            )
+            receiver.delete(msg.receipt_handle)
             logger.info(
-                "video-worker: job_id=%s segment_index=%s/%s invoked "
-                "(completion via segment-output)",
+                "video-worker: job_id=%s segment_index=%s/%s invoked (done via output-events)",
                 payload.job_id, payload.segment_index, payload.total_segments,
             )
-        in_flight = still_in_flight
-
-        time.sleep(poll_interval)
