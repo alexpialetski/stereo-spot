@@ -14,7 +14,7 @@ from .routers.launch import router as launch_router
 # Load .env from STEREOSPOT_ENV_FILE if set (e.g. by nx run web-ui:serve). Unset in ECS.
 bootstrap_env()
 
-# Ensure app loggers (e.g. events stream) emit INFO; uvicorn --log-level only affects uvicorn.
+# Root logger level (events stream logs at DEBUG); uvicorn --log-level only affects uvicorn.
 configure_logging()
 
 app = FastAPI(title="Stereo-Spot Web UI", version="0.1.0")

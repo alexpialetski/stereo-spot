@@ -232,7 +232,14 @@ def application(environ, start_response):
         except (ValueError, KeyError):
             body = b""
         response_body, status_code = invocations_handler(body)
-        start_response(f"{status_code} OK", [("Content-Type", "application/json")])
-        return [response_body.encode("utf-8")]
+        response_bytes = response_body.encode("utf-8")
+        start_response(
+            f"{status_code} OK",
+            [
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(response_bytes))),
+            ],
+        )
+        return [response_bytes]
     start_response("404 Not Found", [("Content-Type", "text/plain")])
     return [b"Not Found"]

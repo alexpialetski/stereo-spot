@@ -64,9 +64,17 @@ def process_one_output_event_message(
     parsed = parse_s3_event_bucket_key(payload_str)
     if parsed is None:
         job_id, seg = _job_id_segment_from_body(payload_str)
+        raw = (
+            payload_str.decode("utf-8", errors="replace")
+            if isinstance(payload_str, bytes)
+            else payload_str
+        )
+        body_preview = raw[:500]
         logger.warning(
-            "output-events: job_id=%s segment_index=%s invalid S3 event body",
-            job_id, seg,
+            "output-events: job_id=%s segment_index=%s invalid S3 event body (preview=%s)",
+            job_id,
+            seg,
+            body_preview,
         )
         return True  # delete to avoid poison
 

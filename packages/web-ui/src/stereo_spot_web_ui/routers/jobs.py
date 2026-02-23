@@ -275,7 +275,7 @@ async def job_progress_events(
     Polls job + segment completions every few seconds; closes when completed or timeout.
     """
     async def generate() -> str:
-        logger.info("job_id=%s events stream started", job_id)
+        logger.debug("job_id=%s events stream started", job_id)
         start = time.monotonic()
         last_keepalive = start
         last_percent = -1
@@ -302,12 +302,12 @@ async def job_progress_events(
                     if last_percent != 100 or last_label != "Completed":
                         payload = {"progress_percent": 100, "stage_label": "Completed"}
                         yield f"data: {json.dumps(payload)}\n\n"
-                    logger.info("job_id=%s events stream ended (completed)", job_id)
+                    logger.debug("job_id=%s events stream ended (completed)", job_id)
                     return
                 await asyncio.sleep(PROGRESS_POLL_SEC)
-            logger.info("job_id=%s events stream ended (timeout)", job_id)
+            logger.debug("job_id=%s events stream ended (timeout)", job_id)
         except asyncio.CancelledError:
-            logger.info("job_id=%s events stream ended (client disconnect)", job_id)
+            logger.debug("job_id=%s events stream ended (client disconnect)", job_id)
             raise
 
     return StreamingResponse(

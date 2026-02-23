@@ -6,12 +6,13 @@ running on AWS to show "Open logs" and "Cost" links without embedding AWS URLs
 in the app package.
 """
 
-# CloudWatch Logs Insights: job_id filter and ECS + SageMaker log groups.
+# CloudWatch Logs Insights: INFO/WARNING/ERROR only, job_id filter, ECS + SageMaker log groups.
+# Query: level filter to exclude DEBUG (e.g. SSE events); job_id to scope to one job.
 # Placeholders: *3cJOB_ID*3e (encoded <JOB_ID> in query), {name_prefix}, {region}.
 _CLOUDWATCH_LOGS_INSIGHTS_TEMPLATE = (
     "https://{region}.console.aws.amazon.com/cloudwatch/home?region={region}"
     "#logsV2:logs-insights$3FqueryDetail$3D~(end~0~start~-3600~timeType~'RELATIVE~tz~'UTC~unit~'seconds"
-    "~editorString~'fields*20*40timestamp*2c*20*40logStream*2c*20*40message*0a*7c*20filter*20*40message*20like*20*2fjob_id*3d*3cJOB_ID*3e*2f*0a*7c*20sort*20*40timestamp*20asc"
+    "~editorString~'fields*20*40timestamp*2c*20*40message*0a*7c*20filter*20*40message*20like*20*2f*5c*5b*28INFO*7cWARNING*7cERROR*29*5c*5d*2f*20and*20*40message*20like*20*2fjob_id*3d*3cJOB_ID*3e*2f*0a*7c*20sort*20*40timestamp*20asc"
     "~queryId~'3680fbd4-54f9-473b-a087-ba0443c8c5b4~source~(~'*2fecs*2f{name_prefix}*2fweb-ui~'*2fecs*2f{name_prefix}*2fvideo-worker~'*2fecs*2f{name_prefix}*2fmedia-worker~'*2faws*2fsagemaker*2fEndpoints*2f{name_prefix}-inference)"
     "~lang~'CWLI~logClass~'STANDARD~queryBy~'logGroupName)"
 )
