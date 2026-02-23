@@ -37,6 +37,12 @@ resource "aws_sqs_queue" "ingest_dlq" {
   tags = { Name = "${local.name}-ingest-dlq" }
 }
 
+resource "aws_sqs_queue" "job_events_dlq" {
+  name = "${local.name}-job-events-dlq"
+
+  tags = { Name = "${local.name}-job-events-dlq" }
+}
+
 # Main queues with redrive to DLQ
 resource "aws_sqs_queue" "chunking" {
   name                       = "${local.name}-chunking"
@@ -110,6 +116,18 @@ resource "aws_sqs_queue" "ingest" {
   })
 
   tags = { Name = "${local.name}-ingest" }
+}
+
+resource "aws_sqs_queue" "job_events" {
+  name                       = "${local.name}-job-events"
+  visibility_timeout_seconds = 60 # 1 min; web-ui consumes quickly
+  message_retention_seconds  = 1209600
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.job_events_dlq.arn
+    maxReceiveCount     = var.dlq_max_receive_count
+  })
+
+  tags = { Name = "${local.name}-job-events" }
 }
 
 # Allow S3 input bucket to send events to chunking queue (prefix input/, suffix .mp4)

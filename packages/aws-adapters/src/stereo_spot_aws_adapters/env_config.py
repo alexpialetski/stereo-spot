@@ -237,6 +237,19 @@ def ingest_queue_receiver_from_env_or_none() -> SQSQueueReceiver | None:
     )
 
 
+def job_events_queue_receiver_from_env_or_none() -> SQSQueueReceiver | None:
+    """Build SQSQueueReceiver for job-events queue when JOB_EVENTS_QUEUE_URL is set; else None."""
+    url = os.environ.get("JOB_EVENTS_QUEUE_URL")
+    if not url:
+        return None
+    return SQSQueueReceiver(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=20,
+    )
+
+
 def ingest_queue_receiver_from_env() -> SQSQueueReceiver:
     """Build SQSQueueReceiver for ingest queue from INGEST_QUEUE_URL."""
     url = os.environ["INGEST_QUEUE_URL"]

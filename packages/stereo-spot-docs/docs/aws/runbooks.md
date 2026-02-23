@@ -106,14 +106,26 @@ When the SageMaker endpoint logs **"Failed to download object (bucket: …, key:
 
 ## 7. Progress / SSE not updating to completed
 
-The job detail page uses Server-Sent Events (SSE) to poll progress. If the UI stays at "Processing segments" after the job has completed:
+The job detail page uses Server-Sent Events (SSE) for progress. When **JOB_EVENTS_QUEUE_URL** is set (e.g. ECS), the flow is event-driven: initial state from the store, then updates from the **job-events** queue (fed by EventBridge Pipes from DynamoDB streams). If the UI stays at "Processing segments" after the job has completed:
 
-1. **Consistent read:** The web-ui events endpoint uses **strongly consistent** reads for the job store so the completion status is seen as soon as the reassembly worker updates it. If you are on an older deploy, redeploy so the backend uses `consistent_read=True` for the progress stream.
-2. **Load balancer idle timeout:** If the ALB (or proxy) idle timeout is shorter than the time to complete, the SSE connection may close before the final event. Increase the ALB idle timeout (e.g. 600s) so long-running conversions keep the stream open until completion.
+1. **EventBridge Pipes:** Confirm both Pipes exist and are **RUNNING** (jobs stream and segment_completions stream to job-events queue). In the AWS console, open EventBridge → Pipes and check the two job-events pipes.
+2. **Job-events queue:** Confirm the web-ui task has **JOB_EVENTS_QUEUE_URL**, **JOBS_TABLE_STREAM_ARN**, and **SEGMENT_COMPLETIONS_TABLE_STREAM_ARN** and can receive from the queue (IAM: `sqs:ReceiveMessage`, `sqs:DeleteMessage`). If messages pile up, the consumer may be failing; check web-ui logs for "job-events receive failed" or "job-events message handling failed".
+3. **Consistent read:** The initial state and consumer progress logic use strongly consistent reads where needed.
+4. **Load balancer idle timeout:** If the ALB idle timeout is shorter than the time to complete, the SSE connection may close. Increase it (e.g. 600s) so long-running conversions keep the stream open.
+
+**Job-events DLQ:** If the web-ui consumer fails repeatedly to process messages, they go to **stereo-spot-job-events-dlq**. Inspect with `aws sqs receive-message --queue-url <DLQ_URL>` (use the DLQ URL from Terraform output). A CloudWatch alarm fires when the job-events DLQ has messages.
 
 ---
 
-## 8. Logs by job_id
+## 8. Job-events Pipes and Web Push
+
+- **EventBridge Pipes:** Two Pipes (Terraform: `pipes_job_events.tf`) feed the job-events SQS queue from the jobs and segment_completions DynamoDB streams. No Lambda; the web-ui consumer normalizes stream records and computes progress in-process, then pushes to SSE and Web Push.
+- **Web-ui env (for job-events):** **JOB_EVENTS_QUEUE_URL**, **JOBS_TABLE_STREAM_ARN**, **SEGMENT_COMPLETIONS_TABLE_STREAM_ARN** (and **JOBS_TABLE_NAME**, **SEGMENT_COMPLETIONS_TABLE_NAME**, **AWS_REGION** for stores). Set by Terraform for the web-ui ECS task.
+- **Web Push (optional):** Desktop notifications when jobs complete or fail require a secure context (HTTPS or localhost). The web UI serves the VAPID public key at **GET /api/vapid-public-key** only when the request is over HTTPS (direct or `X-Forwarded-Proto: https`); over HTTP it returns an empty key, so the notification prompt is not shown. Terraform creates a Secrets Manager secret for the VAPID keypair (`secrets.tf`: `vapid-web-push`) and populates it at apply time; the web-ui ECS task receives **VAPID_SECRET_ARN** and loads **VAPID_PUBLIC_KEY** and **VAPID_PRIVATE_KEY** at startup. Push subscriptions are stored in the **push_subscriptions** DynamoDB table. To enable Web Push in production, enable ALB HTTPS (place **alb-certificate.pem** and **alb-private-key.pem** at the project root, then apply) and use **WEB_UI_URL** (HTTPS when certs are present). For local dev, set **VAPID_PUBLIC_KEY** and **VAPID_PRIVATE_KEY** in env.
+
+---
+
+## 9. Logs by job_id
 
 CloudWatch Logs: log groups for web-ui, media-worker, video-worker (e.g. `/ecs/stereo-spot-web-ui`, etc.). In **Logs Insights**, select those groups and query:
 
@@ -125,4 +137,4 @@ fields @timestamp, @logStream, @message
 
 Replace `<JOB_ID>` with the job UUID. When the web UI is configured with `NAME_PREFIX` (and region, e.g. via ECS), the job detail page shows an **Open logs** link that opens Logs Insights with these log groups and the above query pre-filled for that job.
 
-**SSE progress stream (web-ui):** To see how each progress stream ended, filter for `events stream` in the web-ui log group. You should see one of: `events stream started`, then later `events stream ended (completed)`, `events stream ended (timeout)`, or `events stream ended (client disconnect)`. Use this to confirm whether the server saw the job as completed or the stream timed out / client disconnected.
+**SSE progress stream (web-ui):** Filter for `events stream` in the web-ui log group. You should see `events stream started`, then (when event-driven) updates from the job-events consumer, or (when polling) keepalives until `events stream ended (completed)`, `events stream ended (timeout)`, or `events stream ended (client disconnect)`.

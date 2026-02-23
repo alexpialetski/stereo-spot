@@ -34,3 +34,30 @@ resource "aws_secretsmanager_secret_version" "ytdlp_cookies_placeholder" {
   secret_id     = aws_secretsmanager_secret.ytdlp_cookies[0].id
   secret_string = jsonencode({ cookies = "REPLACE_ME" })
 }
+
+# VAPID keypair for Web Push (web-ui). Generated in Terraform (tls_private_key + PEM-to-VAPID script) and stored in Secrets Manager.
+resource "aws_secretsmanager_secret" "vapid" {
+  name        = "${local.name}/vapid-web-push"
+  description = "VAPID public/private keypair for Web Push notifications (web-ui)"
+  tags        = { Name = "${local.name}/vapid-web-push" }
+}
+
+resource "tls_private_key" "vapid" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
+data "external" "vapid_keys" {
+  program = ["python3", "${path.module}/scripts/pem_to_vapid.py"]
+  query = {
+    private_key_pem = tls_private_key.vapid.private_key_pem
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "vapid" {
+  secret_id = aws_secretsmanager_secret.vapid.id
+  secret_string = jsonencode({
+    vapid_public_key  = data.external.vapid_keys.result.vapid_public_key
+    vapid_private_key = data.external.vapid_keys.result.vapid_private_key
+  })
+}

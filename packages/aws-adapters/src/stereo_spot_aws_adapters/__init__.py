@@ -9,6 +9,7 @@ from .dynamodb_stores import (
 )
 from .env_config import operator_links_from_env
 from .operator_links import AWSOperatorLinksProvider
+from .push_subscriptions import PushSubscriptionsStore
 from .s3_storage import S3ObjectStorage
 from .sqs_queues import SQSQueueReceiver, SQSQueueSender
 
@@ -17,6 +18,7 @@ __all__ = [
     "DynamoDBJobStore",
     "DynamoSegmentCompletionStore",
     "InferenceInvocationsStore",
+    "PushSubscriptionsStore",
     "ReassemblyTriggeredLock",
     "S3ObjectStorage",
     "SQSQueueReceiver",

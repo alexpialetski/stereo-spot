@@ -1,7 +1,7 @@
 """Pydantic models for jobs, segments, queue payloads, and API DTOs."""
 
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -165,6 +165,34 @@ class PresignedPlaybackResponse(BaseModel):
     """Response with presigned GET URL for playback (or redirect target)."""
 
     playback_url: str = Field(..., description="Presigned GET URL for jobs/{job_id}/final.mp4")
+
+
+# --- Job events (bridge: stream -> normalized event -> JobEvent for SSE/Web Push) ---
+
+
+class JobTableChange(BaseModel):
+    """Normalized event: job table row changed (DynamoDB NewImage or equivalent)."""
+
+    job_id: str = Field(..., description="Job identifier")
+    new_image: dict[str, Any] = Field(..., description="New row image (dict for Job)")
+
+
+class SegmentCompletionInsert(BaseModel):
+    """Normalized event: segment completion row inserted."""
+
+    job_id: str = Field(..., description="Job identifier")
+    segment_index: int = Field(..., ge=0, description="Segment index")
+
+
+class JobEvent(BaseModel):
+    """Event sent to job-events queue / consumed by web-ui (SSE + Web Push)."""
+
+    job_id: str = Field(..., description="Job identifier")
+    status: str = Field(..., description="Job status value (e.g. completed, failed)")
+    progress_percent: int = Field(..., ge=0, le=100, description="0-100 progress")
+    stage_label: str = Field(..., description="Human-readable stage (e.g. Completed, Failed)")
+    title: str | None = Field(None, description="Job title if available")
+    completed_at: int | None = Field(None, description="Unix timestamp when completed")
 
 
 # --- Analytics (conversion metrics for LLM / history) ---

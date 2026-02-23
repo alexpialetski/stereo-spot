@@ -1,54 +1,197 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
-    <title>{% block title %}Stereo-Spot{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <style>
-        /* Compact, elegant overrides: smaller type and spacing */
-        :root {
-            --pico-font-size: 14px;
-            --pico-line-height: 1.4;
-        }
-        body { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
-        nav.container { padding-top: 0.75rem; padding-bottom: 0.75rem; }
-        nav ul { margin-bottom: 0; }
-        nav a { font-size: 0.9rem; }
-        main.container { padding-top: 1rem; padding-bottom: 2rem; }
-        h1 { font-size: 1.5rem; margin-bottom: 0.25rem; font-weight: 600; }
-        h2 { font-size: 1.15rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
-        article { padding: 1rem 1.25rem; margin-bottom: 1rem; }
-        p { margin-bottom: 0.75rem; }
-        label { font-size: 0.875rem; margin-bottom: 0.25rem; }
-        input, select, button, [role="button"] {
-            font-size: 0.875rem;
-            padding: 0.4rem 0.75rem;
-            min-height: auto;
-        }
-        button, [role="button"] { padding: 0.4rem 1rem; }
-        table { font-size: 0.875rem; }
-        table th, table td { padding: 0.4rem 0.75rem; }
-        table code { font-size: 0.8rem; padding: 0.15rem 0.4rem; }
-        .upload-url { word-break: break-all; font-size: 0.8rem; }
-        progress[value] { width: 100%; height: 1.25rem; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/static/favicon.png" type="image/png">
+  <title>{% block title %}Stereo-Spot{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    /* Compact, elegant overrides: smaller type and spacing */
+    :root {
+      --pico-font-size: 14px;
+      --pico-line-height: 1.4;
+    }
+
+    body {
+      max-width: 48rem;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+
+    nav.container {
+      padding-top: 0.75rem;
+      padding-bottom: 0.75rem;
+    }
+
+    nav ul {
+      margin-bottom: 0;
+    }
+
+    nav a {
+      font-size: 0.9rem;
+    }
+
+    main.container {
+      padding-top: 1rem;
+      padding-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.25rem;
+      font-weight: 600;
+    }
+
+    h2 {
+      font-size: 1.15rem;
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    article {
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    p {
+      margin-bottom: 0.75rem;
+    }
+
+    label {
+      font-size: 0.875rem;
+      margin-bottom: 0.25rem;
+    }
+
+    input,
+    select,
+    button,
+    [role="button"] {
+      font-size: 0.875rem;
+      padding: 0.4rem 0.75rem;
+      min-height: auto;
+    }
+
+    button,
+    [role="button"] {
+      padding: 0.4rem 1rem;
+    }
+
+    table {
+      font-size: 0.875rem;
+    }
+
+    table th,
+    table td {
+      padding: 0.4rem 0.75rem;
+    }
+
+    table code {
+      font-size: 0.8rem;
+      padding: 0.15rem 0.4rem;
+    }
+
+    .upload-url {
+      word-break: break-all;
+      font-size: 0.8rem;
+    }
+
+    progress[value] {
+      width: 100%;
+      height: 1.25rem;
+    }
+  </style>
 </head>
+
 <body>
-    <nav class="container">
-        <ul>
-            <li><strong><a href="/">Stereo-Spot</a></strong></li>
-        </ul>
-        <ul>
-            <li><a href="/jobs">All videos</a></li>
-            {% if cost_explorer_url %}
-            <li><a href="{{ cost_explorer_url }}" target="_blank" rel="noopener noreferrer">Cost</a></li>
-            {% endif %}
-        </ul>
-    </nav>
-    <main class="container">
-        {% block content %}{% endblock %}
-    </main>
+  <nav class="container">
+    <ul>
+      <li><strong><a href="/">Stereo-Spot</a></strong></li>
+    </ul>
+    <ul>
+      <li><a href="/jobs">All videos</a></li>
+      {% if cost_explorer_url %}
+      <li><a href="{{ cost_explorer_url }}" target="_blank" rel="noopener noreferrer">Cost</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <div id="notification-prompt" role="dialog" aria-label="Notifications"
+    style="display: none; position: fixed; bottom: 1rem; right: 1rem; max-width: 20rem; padding: 1rem; background: var(--pico-card-background-color, #fff); border: 1px solid var(--pico-muted-border-color); border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <p style="margin: 0 0 0.75rem 0; font-size: 0.875rem;">Get notified when jobs finish?</p>
+    <button type="button" id="notification-enable">Enable</button>
+    <button type="button" id="notification-dismiss" data-theme="secondary">Not now</button>
+  </div>
+  <script>
+    (function () {
+      var promptEl = document.getElementById("notification-prompt");
+      var enableBtn = document.getElementById("notification-enable");
+      var dismissBtn = document.getElementById("notification-dismiss");
+
+      if (!promptEl || !enableBtn || !dismissBtn) return;
+
+      if (!("Notification" in window)) return;
+      if (!("serviceWorker" in navigator)) {
+        console.info("Stereo-Spot: Web Push requires a secure context (HTTPS or localhost). Notifications are unavailable.");
+        return;
+      }
+
+      if (Notification.permission !== "default") return;
+      if (localStorage.getItem("stereo_spot_notification_asked")) return;
+
+      fetch("/api/vapid-public-key")
+        .then(r => r.json())
+        .then(data => {
+          if (!data.vapid_public_key) return;
+
+          return navigator.serviceWorker.register("/static/sw.js", { scope: "/" })
+            .then(() => data);
+        }).then(function (data) {
+          if (!data) return;
+
+          promptEl.style.display = "block";
+
+          dismissBtn.addEventListener("click", function () {
+            promptEl.style.display = "none";
+            localStorage.setItem("stereo_spot_notification_asked", "1");
+          });
+
+          enableBtn.addEventListener("click", function () {
+            Notification.requestPermission()
+              .then(function (perm) {
+                promptEl.style.display = "none";
+                localStorage.setItem("stereo_spot_notification_asked", "1");
+
+                if (perm !== "granted") return null;
+
+                return navigator.serviceWorker.ready;
+              })
+              .then(function (reg) {
+                if (!reg) return null;
+
+                return reg.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: data.vapid_public_key
+                });
+              })
+              .then(function (sub) {
+                if (!sub) return;
+
+                return fetch("/api/push-subscriptions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(sub.toJSON ? sub.toJSON() : sub)
+                });
+              })
+              .catch(function () { });
+          });
+        }).catch(function () { });
+    })();
+  </script>
 </body>
+
 </html>

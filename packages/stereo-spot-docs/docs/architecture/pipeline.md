@@ -48,6 +48,18 @@ stateDiagram-v2
 
 Only the job store is authoritative for status.
 
+## Job events and real-time updates
+
+Job status changes (and segment completions) are pushed to the web-ui for **live progress** (SSE) and **desktop notifications** (Web Push) without polling the job store.
+
+1. **DynamoDB streams** — The **jobs** table and **segment_completions** table have streams enabled. Any insert or update produces a stream record.
+2. **EventBridge Pipes** — Two Pipes (jobs stream and segment_completions stream) send raw DynamoDB stream events to the **job-events SQS queue** (pass-through, no enrichment). Message bodies are the stream event (single record or `Records` array).
+3. **Job-events queue** — One SQS queue. The web-ui long-polls it in a background task.
+4. **Web-ui** — The consumer receives each message, **normalizes** each stream record (aws-adapters, using stream ARNs to distinguish tables), **computes progress in-process** (same logic as the job detail page), and pushes to registered SSE connections and Web Push via an **in-process sink**. On **SSE** connect (`GET /jobs/{job_id}/events`), the server sends **initial state** (one read from the job store and segment store), then registers the connection. No polling of DynamoDB for progress when the queue is configured. When the job-events queue is not configured (e.g. local dev), the SSE endpoint falls back to polling the store.
+5. **Web Push** — When the consumer sees a **completed** or **failed** event (from the in-process sink), it loads push subscriptions from the **push_subscriptions** DynamoDB table and sends a desktop notification (via pywebpush and VAPID). Users can subscribe on first visit (prompt in the web UI); the service worker shows the notification and opens the job page on click.
+
+So the **single source of truth** remains DynamoDB; the **single event path** is streams → Pipes → job-events queue → web-ui (normalize + handle + SSE + Web Push).
+
 ## Segment key convention
 
 Segment object keys follow **one** format so chunking and segment-processing workers stay in sync. The **parser lives only in shared-types**; both media-worker (when building keys) and video-worker (when parsing events) use it. Example pattern:

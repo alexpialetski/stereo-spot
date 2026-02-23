@@ -18,6 +18,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "httpx>=0.24",
     "uvicorn[standard]>=0.22",
+    "pywebpush>=1.14",
 ]
 
 [project.optional-dependencies]

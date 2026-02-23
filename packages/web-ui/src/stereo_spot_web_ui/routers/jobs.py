@@ -40,6 +40,7 @@ from ..deps import (
     get_object_storage,
     get_operator_links_provider,
     get_output_bucket,
+    get_push_subscriptions_store,
     get_segment_completion_store,
     get_templates,
 )
@@ -264,29 +265,81 @@ async def ingest_job_from_url(
     logger.info("job_id=%s ingest-from-url queued", job_id)
 
 
+def _send_initial_state(
+    job_id: str,
+    job_store: JobStore,
+    segment_store: SegmentCompletionStore,
+) -> dict:
+    """One-time read: return progress_percent and stage_label for SSE initial event."""
+    job = job_store.get(job_id, consistent_read=True)
+    if job is None:
+        return {"progress_percent": 0, "stage_label": "Not found"}
+    percent, label = compute_progress(job, segment_store)
+    return {"progress_percent": percent, "stage_label": label}
+
+
 @router.get("/jobs/{job_id}/events")
 async def job_progress_events(
+    request: Request,
     job_id: str,
     job_store: JobStore = Depends(get_job_store),
     segment_store: SegmentCompletionStore = Depends(get_segment_completion_store),
 ):
     """
     Server-Sent Events stream: progress_percent and stage_label.
-    Polls job + segment completions every few seconds; closes when completed or timeout.
+    Sends initial state from store, then event-driven updates from job-events queue when configured;
+    otherwise falls back to polling (e.g. local dev without queue).
     """
+    registry: dict = getattr(request.app.state, "job_events_registry", None)
+    receiver = getattr(request.app.state, "job_events_receiver", None)
+
     async def generate() -> str:
         logger.debug("job_id=%s events stream started", job_id)
+        payload = _send_initial_state(job_id, job_store, segment_store)
+        yield f"data: {json.dumps(payload)}\n\n"
+        if payload.get("stage_label") == "Not found":
+            return
+        if payload.get("progress_percent", 0) >= 100 or payload.get("stage_label") == "Failed":
+            return
+        if receiver and registry is not None:
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+            registry.setdefault(job_id, []).append(queue)
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(
+                            queue.get(),
+                            timeout=PROGRESS_KEEPALIVE_SEC,
+                        )
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        continue
+                    payload = event
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    pct = payload.get("progress_percent", 0)
+                    if pct >= 100 or payload.get("stage_label") == "Failed":
+                        break
+            except asyncio.CancelledError:
+                raise
+            finally:
+                if job_id in registry:
+                    lst = registry[job_id]
+                    try:
+                        lst.remove(queue)
+                    except ValueError:
+                        pass
+                    if not lst:
+                        del registry[job_id]
+            return
+        # Fallback: polling when job-events queue not configured
         start = time.monotonic()
         last_keepalive = start
-        last_percent = -1
-        last_label = ""
+        last_percent = payload.get("progress_percent", -1)
+        last_label = payload.get("stage_label", "")
         try:
             while (time.monotonic() - start) < PROGRESS_STREAM_TIMEOUT_SEC:
                 job = job_store.get(job_id, consistent_read=True)
                 if job is None:
-                    logger.warning("job_id=%s events stream: job not found", job_id)
-                    payload = {"progress_percent": 0, "stage_label": "Not found"}
-                    yield f"data: {json.dumps(payload)}\n\n"
                     return
                 percent, label = compute_progress(job, segment_store)
                 if percent != last_percent or label != last_label:
@@ -300,14 +353,10 @@ async def job_progress_events(
                     last_keepalive = time.monotonic()
                 if job.status == JobStatus.COMPLETED:
                     if last_percent != 100 or last_label != "Completed":
-                        payload = {"progress_percent": 100, "stage_label": "Completed"}
-                        yield f"data: {json.dumps(payload)}\n\n"
-                    logger.debug("job_id=%s events stream ended (completed)", job_id)
+                        yield f"data: {json.dumps({'progress_percent': 100, 'stage_label': 'Completed'})}\n\n"  # noqa: E501
                     return
                 await asyncio.sleep(PROGRESS_POLL_SEC)
-            logger.debug("job_id=%s events stream ended (timeout)", job_id)
         except asyncio.CancelledError:
-            logger.debug("job_id=%s events stream ended (client disconnect)", job_id)
             raise
 
     return StreamingResponse(
@@ -315,6 +364,39 @@ async def job_progress_events(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _is_secure_request(request: Request) -> bool:
+    """True if client-facing connection is HTTPS (direct or via X-Forwarded-Proto behind ALB)."""
+    if request.url.scheme == "https":
+        return True
+    return request.headers.get("x-forwarded-proto", "").strip().lower() == "https"
+
+
+@router.get("/api/vapid-public-key")
+async def vapid_public_key(request: Request) -> dict:
+    """Return VAPID public key for Web Push (or empty when not configured or not HTTPS)."""
+    if not _is_secure_request(request):
+        return {"vapid_public_key": ""}
+    key = getattr(request.app.state, "vapid_public_key", None)
+    if key is None:
+        import os
+        key = os.environ.get("VAPID_PUBLIC_KEY", "")
+    return {"vapid_public_key": key or ""}
+
+
+@router.post("/api/push-subscriptions", status_code=204)
+async def register_push_subscription(
+    request: Request,
+    store=Depends(get_push_subscriptions_store),
+):
+    """Register a Web Push subscription (endpoint + keys). No-op when store not configured."""
+    if store is None:
+        return
+    body = await request.json()
+    if isinstance(body, dict) and body.get("endpoint"):
+        store.put(body)
+    return None
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)

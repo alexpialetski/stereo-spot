@@ -1,4 +1,5 @@
 # Jobs table: PK job_id; GSI status-completed_at for completed; GSI status-created_at for in-progress
+# Stream enabled for EventBridge Pipes (jobs stream -> job-events queue)
 resource "aws_dynamodb_table" "jobs" {
   name         = "${local.name}-jobs"
   billing_mode = "PAY_PER_REQUEST"
@@ -38,6 +39,9 @@ resource "aws_dynamodb_table" "jobs" {
     range_key       = "created_at"
     projection_type = "ALL"
   }
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   tags = { Name = "${local.name}-jobs" }
 }
@@ -104,4 +108,19 @@ resource "aws_dynamodb_table" "inference_invocations" {
   }
 
   tags = { Name = "${local.name}-inference-invocations" }
+}
+
+# Push subscriptions: Web Push subscription payloads for job-events notifications (web-ui stores, reads for sending)
+resource "aws_dynamodb_table" "push_subscriptions" {
+  name         = "${local.name}-push-subscriptions"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key = "endpoint"
+
+  attribute {
+    name = "endpoint"
+    type = "S"
+  }
+
+  tags = { Name = "${local.name}-push-subscriptions" }
 }

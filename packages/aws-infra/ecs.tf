@@ -80,6 +80,21 @@ resource "aws_iam_role_policy" "web_ui_task" {
           Effect   = "Allow"
           Action   = ["sqs:SendMessage"]
           Resource = [aws_sqs_queue.deletion.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+          Resource = [aws_sqs_queue.job_events.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query"]
+          Resource = [aws_dynamodb_table.push_subscriptions.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue"]
+          Resource = [aws_secretsmanager_secret.vapid.arn]
         }
       ],
       var.enable_youtube_ingest ? [{
@@ -207,6 +222,13 @@ resource "aws_security_group" "web_ui_alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -285,10 +307,41 @@ resource "aws_lb_target_group" "web_ui" {
   tags = { Name = "${local.name}-web-ui" }
 }
 
-resource "aws_lb_listener" "web_ui" {
+# Single port-80 listener: forward to TG when HTTP-only, redirect to HTTPS when certs present (avoids destroy+create race).
+resource "aws_lb_listener" "web_ui_http" {
   load_balancer_arn = aws_lb.web_ui.arn
   port              = "80"
   protocol          = "HTTP"
+
+  dynamic "default_action" {
+    for_each = local.enable_alb_https ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.web_ui.arn
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = local.enable_alb_https ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+}
+
+resource "aws_lb_listener" "web_ui_https" {
+  count = local.enable_alb_https ? 1 : 0
+
+  load_balancer_arn = aws_lb.web_ui.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate.web_ui_alb[0].arn
 
   default_action {
     type             = "forward"
@@ -312,7 +365,13 @@ locals {
       { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
       { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
       { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url },
-      { name = "NAME_PREFIX", value = var.name_prefix }
+      { name = "JOB_EVENTS_QUEUE_URL", value = aws_sqs_queue.job_events.url },
+      { name = "JOBS_TABLE_STREAM_ARN", value = aws_dynamodb_table.jobs.stream_arn },
+      { name = "SEGMENT_COMPLETIONS_TABLE_STREAM_ARN", value = aws_dynamodb_table.segment_completions.stream_arn },
+      { name = "PUSH_SUBSCRIPTIONS_TABLE_NAME", value = aws_dynamodb_table.push_subscriptions.name },
+      { name = "NAME_PREFIX", value = var.name_prefix },
+      { name = "VAPID_SECRET_ARN", value = aws_secretsmanager_secret.vapid.arn },
+      { name = "WEB_UI_URL", value = local.alb_url }
     ],
     var.enable_youtube_ingest ? [{ name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url }] : []
   )

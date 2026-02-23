@@ -99,3 +99,25 @@ def get_operator_links_provider(request: Request) -> OperatorLinksProvider | Non
     from stereo_spot_aws_adapters.env_config import operator_links_from_env
 
     return operator_links_from_env()
+
+
+def get_job_events_receiver(request: Request):
+    """Return job-events queue receiver from app state or build from env (JOB_EVENTS_QUEUE_URL)."""
+    receiver = getattr(request.app.state, "job_events_receiver", None)
+    if receiver is not None:
+        return receiver
+    from stereo_spot_aws_adapters.env_config import job_events_queue_receiver_from_env_or_none
+
+    return job_events_queue_receiver_from_env_or_none()
+
+
+def get_push_subscriptions_store(request: Request):
+    """Return push store from app state or build from env (PUSH_SUBSCRIPTIONS_TABLE_NAME)."""
+    store = getattr(request.app.state, "push_subscriptions_store", None)
+    if store is not None:
+        return store
+    from stereo_spot_aws_adapters.push_subscriptions import (
+        push_subscriptions_store_from_env_or_none,
+    )
+
+    return push_subscriptions_store_from_env_or_none()

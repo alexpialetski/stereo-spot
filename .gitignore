@@ -73,3 +73,7 @@ packages/web-ui/src/stereo_spot_web_ui/static/3d_setup.exe
 
 # yt-dlp cookies (Netscape format); do not commit; set via update-ytdlp-cookies
 ytdlp_cookies.txt
+
+# ALB HTTPS certs; do not commit; provide at project root to enable HTTPS (see packages/aws-infra/README.md)
+alb-certificate.pem
+alb-private-key.pem

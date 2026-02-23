@@ -48,6 +48,11 @@ output "ingest_queue_url" {
   value       = var.enable_youtube_ingest ? aws_sqs_queue.ingest[0].url : null
 }
 
+output "job_events_queue_url" {
+  description = "URL of the job-events SQS queue (Pipes feed stream records; web-ui consumes and does normalization + SSE + Web Push)"
+  value       = aws_sqs_queue.job_events.url
+}
+
 output "jobs_table_name" {
   description = "Name of the DynamoDB Jobs table"
   value       = aws_dynamodb_table.jobs.name
@@ -68,6 +73,11 @@ output "inference_invocations_table_name" {
   value       = aws_dynamodb_table.inference_invocations.name
 }
 
+output "push_subscriptions_table_name" {
+  description = "Name of the DynamoDB Push subscriptions table (Web Push subscription payloads)"
+  value       = aws_dynamodb_table.push_subscriptions.name
+}
+
 # --- ECS / ECR ---
 
 output "ecs_cluster_name" {
@@ -81,13 +91,13 @@ output "ecs_cluster_arn" {
 }
 
 output "web_ui_alb_dns_name" {
-  description = "ALB DNS name for web-ui (HTTP)"
+  description = "ALB DNS name for web-ui"
   value       = aws_lb.web_ui.dns_name
 }
 
 output "web_ui_url" {
-  description = "Web UI URL (http://ALB DNS)"
-  value       = "http://${aws_lb.web_ui.dns_name}"
+  description = "Web UI URL (HTTPS when certs at project root, else HTTP); used for Web Push notification links and WEB_UI_URL in ECS"
+  value       = local.alb_url
 }
 
 output "ecr_web_ui_url" {
@@ -152,6 +162,11 @@ output "hf_token_secret_arn" {
 output "ytdlp_cookies_secret_arn" {
   description = "ARN of the Secrets Manager secret for yt-dlp cookies (set via update-ytdlp-cookies); null when enable_youtube_ingest=false"
   value       = var.enable_youtube_ingest ? aws_secretsmanager_secret.ytdlp_cookies[0].arn : null
+}
+
+output "vapid_secret_arn" {
+  description = "ARN of the Secrets Manager secret for VAPID Web Push keys (set via deploy-vapid-to-secrets-manager)"
+  value       = aws_secretsmanager_secret.vapid.arn
 }
 
 # --- CodeBuild ---
