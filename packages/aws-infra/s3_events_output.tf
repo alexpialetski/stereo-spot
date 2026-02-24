@@ -1,15 +1,24 @@
 # S3 event notifications: output bucket → output-events queue.
-# Segment files (jobs/*.mp4) and SageMaker async responses (sagemaker-async-responses/, sagemaker-async-failures/).
+# Segment files and final (jobs/*.mp4), reassembly-done sentinel (jobs/*/.reassembly-done),
+# SageMaker async responses (sagemaker-async-responses/, sagemaker-async-failures/).
 
 resource "aws_s3_bucket_notification" "output" {
   bucket = aws_s3_bucket.output.id
 
   queue {
-    id          = "segment-files"
-    queue_arn   = aws_sqs_queue.output_events.arn
-    events      = ["s3:ObjectCreated:*"]
+    id            = "segment-files"
+    queue_arn     = aws_sqs_queue.output_events.arn
+    events        = ["s3:ObjectCreated:*"]
     filter_prefix = "jobs/"
     filter_suffix = ".mp4"
+  }
+
+  queue {
+    id            = "reassembly-done"
+    queue_arn     = aws_sqs_queue.output_events.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "jobs/"
+    filter_suffix = ".reassembly-done"
   }
 
   queue {

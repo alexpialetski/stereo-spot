@@ -18,12 +18,46 @@ def test_segment_file_event_no_completion() -> None:
 
 
 def test_segment_file_final_mp4_ack_only() -> None:
-    """Non-segment key (final.mp4): return True, no put."""
+    """Non-segment key (final.mp4) without job_store: return True, no put."""
     segment_store = MagicMock()
     body = make_s3_event_body("output-bucket", "jobs/job-abc/final.mp4")
     result = process_one_output_event_message(body, segment_store, "output-bucket")
     assert result is True
     segment_store.put.assert_not_called()
+
+
+def test_final_mp4_event_with_job_store_sets_completed() -> None:
+    """final.mp4 event with job_store: video-worker sets job completed."""
+    segment_store = MagicMock()
+    job_store = MagicMock()
+    body = make_s3_event_body("output-bucket", "jobs/job-xyz/final.mp4")
+    result = process_one_output_event_message(
+        body, segment_store, "output-bucket", job_store=job_store
+    )
+    assert result is True
+    segment_store.put.assert_not_called()
+    job_store.update.assert_called_once()
+    call_args = job_store.update.call_args
+    assert call_args[0][0] == "job-xyz"
+    assert call_args[1]["status"] == JobStatus.COMPLETED.value
+    assert "completed_at" in call_args[1]
+
+
+def test_reassembly_done_sentinel_event_sets_completed() -> None:
+    """.reassembly-done sentinel event with job_store: video-worker sets job completed."""
+    segment_store = MagicMock()
+    job_store = MagicMock()
+    body = make_s3_event_body("output-bucket", "jobs/job-abc/.reassembly-done")
+    result = process_one_output_event_message(
+        body, segment_store, "output-bucket", job_store=job_store
+    )
+    assert result is True
+    segment_store.put.assert_not_called()
+    job_store.update.assert_called_once()
+    call_args = job_store.update.call_args
+    assert call_args[0][0] == "job-abc"
+    assert call_args[1]["status"] == JobStatus.COMPLETED.value
+    assert "completed_at" in call_args[1]
 
 
 def test_sagemaker_success_event_puts_completion_and_deletes_from_store() -> None:
@@ -134,6 +168,25 @@ def test_sagemaker_failure_event_deletes_from_store_optional_mark_failed() -> No
     invocation_store.delete.assert_called_once_with(
         "s3://output-bucket/sagemaker-async-failures/fail-id"
     )
+
+
+def test_sagemaker_failure_event_no_record_releases_semaphore() -> None:
+    """Failure event with no invocation record: release semaphore to avoid slot leak."""
+    segment_store = MagicMock()
+    invocation_store = MagicMock()
+    invocation_store.get.return_value = None  # store keyed by success URI, not failure
+    inference_semaphore = MagicMock()
+    body = make_s3_event_body("output-bucket", "sagemaker-async-failures/some-id-error.out")
+    result = process_one_output_event_message(
+        body,
+        segment_store,
+        "output-bucket",
+        invocation_store=invocation_store,
+        inference_semaphore=inference_semaphore,
+    )
+    assert result is True
+    segment_store.put.assert_not_called()
+    inference_semaphore.release.assert_called_once()
 
 
 def test_invalid_body_returns_true_delete_poison() -> None:

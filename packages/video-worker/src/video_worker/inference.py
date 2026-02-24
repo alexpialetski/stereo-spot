@@ -2,11 +2,13 @@
 Inference queue consumer: receive S3 event (segment), run model (SageMaker/HTTP/stub),
 upload result or invoke async; write SegmentCompletion for stub/HTTP.
 SageMaker: invoke async, put to invocation store, delete message (completion via output-events).
+Backpressure: optional semaphore limits in-flight invocations; output-events releases on completion.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from stereo_spot_aws_adapters.dynamodb_stores import InferenceInvocationsStore
@@ -156,11 +158,13 @@ def run_loop(
     job_store: JobStore | None = None,
     *,
     invocation_store: InferenceInvocationsStore | None = None,
+    inference_semaphore: threading.Semaphore | None = None,
     poll_interval_sec: float = 5.0,
 ) -> None:
     """Long-running loop: receive messages, process each, delete on success.
     When backend=sagemaker: invoke async, put store, delete message (completion via output-events).
-    When job_store is set and processing raises, the job is marked failed."""
+    inference_semaphore: when set, acquire before each SageMaker invoke; output-events releases on
+    completion (backpressure). job_store: on processing raise, job is marked failed."""
     backend = get_settings().inference_backend
     logger.info("video-worker loop started (backend=%s)", backend)
 
@@ -172,6 +176,7 @@ def run_loop(
             output_bucket,
             job_store,
             invocation_store,
+            inference_semaphore=inference_semaphore,
             poll_interval_sec=poll_interval_sec,
         )
         return
@@ -211,9 +216,11 @@ def _run_loop_sagemaker_fire_and_forget(
     job_store: JobStore | None,
     invocation_store: InferenceInvocationsStore,
     *,
-    poll_interval_sec: float,
+    inference_semaphore: threading.Semaphore | None = None,
+    poll_interval_sec: float = 5.0,
 ) -> None:
-    """SageMaker-only: invoke async, put store, delete. Completion via output-events queue."""
+    """SageMaker-only: invoke async, put store, delete. Completion via output-events queue.
+    If inference_semaphore is set, acquire before invoke (backpressure); output-events releases."""
     import boto3
 
     s = get_settings()
@@ -238,6 +245,8 @@ def _run_loop_sagemaker_fire_and_forget(
                     body, "video-worker: job_id=%s invalid S3 event body"
                 )
                 continue
+            if inference_semaphore is not None:
+                inference_semaphore.acquire()
             logger.info(
                 "video-worker: job_id=%s segment_index=%s/%s invoking SageMaker async",
                 payload.job_id,
@@ -257,6 +266,8 @@ def _run_loop_sagemaker_fire_and_forget(
                     client=sagemaker_client,
                 )
             except Exception as e:
+                if inference_semaphore is not None:
+                    inference_semaphore.release()
                 logger.exception(
                     "video-worker: job_id=%s segment_index=%s invoke_async failed: %s",
                     payload.job_id, payload.segment_index, e,

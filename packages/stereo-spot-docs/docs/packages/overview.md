@@ -38,7 +38,7 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 **Env:** Job store, segment-completion store, queue receiver (chunking + reassembly), object storage (input/output buckets). See aws-adapters for AWS env vars.
 
-**Dependencies:** shared-types, aws-adapters. Writes segment keys in canonical format; updates job to chunking_complete; builds concat list from SegmentCompletions.
+**Dependencies:** shared-types, aws-adapters. Writes segment keys in canonical format; updates job to chunking_complete; for reassembly, downloads segments via **download_file** (stream to disk) to avoid OOM on large jobs, then builds concat list from SegmentCompletions and runs ffmpeg concat.
 
 ---
 

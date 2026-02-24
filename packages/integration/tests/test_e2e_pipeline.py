@@ -27,6 +27,7 @@ from stereo_spot_aws_adapters.env_config import (
 from stereo_spot_shared import JobStatus, build_segment_key
 from stereo_spot_web_ui.main import app
 from video_worker.inference import process_one_message
+from video_worker.output_events import process_one_output_event_message
 from video_worker.reassembly_trigger import maybe_trigger_reassembly
 
 
@@ -150,6 +151,14 @@ def test_e2e_pipeline_create_upload_chunking_video_reassembly_completed(
     )
     assert ok is True
     reassembly_receiver.delete(msg.receipt_handle)
+
+    # 7b. Simulate video-worker output-events: final.mp4 created → set job completed
+    process_one_output_event_message(
+        _make_s3_event_body(output_bucket, f"jobs/{job_id}/final.mp4"),
+        segment_store,
+        output_bucket,
+        job_store=job_store,
+    )
 
     # 8. Assert Job completed and final.mp4 exists
     job = job_store.get(job_id)

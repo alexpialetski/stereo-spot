@@ -43,6 +43,7 @@ def test_maybe_trigger_reassembly_sends_when_last_segment() -> None:
     reassembly_sender.send.assert_called_once_with(
         ReassemblyPayload(job_id="job-1").model_dump_json()
     )
+    job_store.update.assert_called_once_with("job-1", status=JobStatus.REASSEMBLING.value)
 
 
 def test_maybe_trigger_reassembly_skips_when_not_chunking_complete() -> None:

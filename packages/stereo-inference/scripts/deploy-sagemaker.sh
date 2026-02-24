@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Deploy the stereo-inference ECR image to the SageMaker endpoint.
-# Creates a new model and endpoint config, then updates the endpoint so it pulls the latest image.
-# The endpoint is async inference (same as Terraform); the config must include AsyncInferenceConfig
-# or AWS will reject the update (cannot remove AsyncInferenceConfig from an existing endpoint).
+# Clones the current endpoint config (from Terraform or a previous deploy), swaps in the new
+# model (latest ECR image), creates a new endpoint config, and updates the endpoint.
+# This avoids drift: async config (e.g. MaxConcurrentInvocationsPerInstance) and production
+# variant settings (instance type, count) stay whatever the endpoint currently uses.
 #
 # Usage: deploy-sagemaker.sh <path-to-env-file>
-#   <path-to-env-file>: path to aws-infra .env (from terraform-output). Sourced to get SAGEMAKER_*, ECR_INFERENCE_URL, REGION, OUTPUT_BUCKET_NAME, HF_TOKEN_SECRET_ARN.
+#   <path-to-env-file>: path to aws-infra .env (from terraform-output). Sourced for
+#   SAGEMAKER_ENDPOINT_NAME, ECR_INFERENCE_URL, REGION, SAGEMAKER_ENDPOINT_ROLE_ARN,
+#   SAGEMAKER_IW3_VIDEO_CODEC, HF_TOKEN_SECRET_ARN.
 
 set -euo pipefail
 
@@ -26,23 +29,27 @@ fi
 # shellcheck source=/dev/null
 . "$ENV_FILE"
 
-# Terraform output may be OUTPUT_BUCKET_NAME or output_bucket_name depending on output format
-OUTPUT_BUCKET_NAME="${OUTPUT_BUCKET_NAME:-${output_bucket_name:-}}"
-if [[ -z "$OUTPUT_BUCKET_NAME" ]]; then
-  echo "Error: OUTPUT_BUCKET_NAME (or output_bucket_name) not set in $ENV_FILE. Run: nx run aws-infra:terraform-output" >&2
-  exit 1
-fi
-
 IMAGE_URI="${ECR_INFERENCE_URL}:latest"
 SUFFIX=$(date +%s)
 MODEL_NAME="${SAGEMAKER_ENDPOINT_NAME}-${SUFFIX}"
 CONFIG_NAME="${SAGEMAKER_ENDPOINT_NAME}-config-${SUFFIX}"
 
-# Async inference: same S3 paths as Terraform (sagemaker.tf async_inference_config).
-# Required so UpdateEndpoint accepts the new config (cannot remove AsyncInferenceConfig).
-S3_OUTPUT_PATH="s3://${OUTPUT_BUCKET_NAME}/sagemaker-async-responses/"
-S3_FAILURE_PATH="s3://${OUTPUT_BUCKET_NAME}/sagemaker-async-failures/"
-ASYNC_CONFIG="{\"OutputConfig\":{\"S3OutputPath\":\"${S3_OUTPUT_PATH}\",\"S3FailurePath\":\"${S3_FAILURE_PATH}\"}}"
+echo "Reading current endpoint config for ${SAGEMAKER_ENDPOINT_NAME}..."
+CURRENT_CONFIG_NAME=$(aws sagemaker describe-endpoint \
+  --endpoint-name "$SAGEMAKER_ENDPOINT_NAME" \
+  --region "$REGION" \
+  --query 'EndpointConfigName' \
+  --output text)
+CONFIG_JSON=$(aws sagemaker describe-endpoint-config \
+  --endpoint-config-name "$CURRENT_CONFIG_NAME" \
+  --region "$REGION" \
+  --output json)
+
+# New production variants: same as current but with new model name.
+PRODUCTION_VARIANTS_JSON=$(echo "$CONFIG_JSON" | jq -c --arg model "$MODEL_NAME" \
+  '[.ProductionVariants[] | {VariantName, ModelName: $model, InstanceType, InitialInstanceCount, InitialVariantWeight}]')
+# Async inference config: use current config as-is (OutputConfig, ClientConfig, etc.).
+ASYNC_CONFIG_JSON=$(echo "$CONFIG_JSON" | jq -c '.AsyncInferenceConfig')
 
 # Model environment: match Terraform (sagemaker.tf). IW3_VIDEO_CODEC from .env (terraform-output).
 IW3_VIDEO_CODEC="${SAGEMAKER_IW3_VIDEO_CODEC:-libx264}"
@@ -59,11 +66,11 @@ aws sagemaker create-model \
   --primary-container "$PRIMARY_CONTAINER" \
   --region "$REGION"
 
-echo "Creating endpoint config ${CONFIG_NAME} (async inference)..."
+echo "Creating endpoint config ${CONFIG_NAME} (clone of ${CURRENT_CONFIG_NAME}, new model)..."
 aws sagemaker create-endpoint-config \
   --endpoint-config-name "$CONFIG_NAME" \
-  --production-variants "[{\"VariantName\":\"AllTraffic\",\"ModelName\":\"${MODEL_NAME}\",\"InstanceType\":\"${SAGEMAKER_INSTANCE_TYPE}\",\"InitialInstanceCount\":${SAGEMAKER_INSTANCE_COUNT},\"InitialVariantWeight\":1}]" \
-  --async-inference-config "$ASYNC_CONFIG" \
+  --production-variants "$PRODUCTION_VARIANTS_JSON" \
+  --async-inference-config "$ASYNC_CONFIG_JSON" \
   --region "$REGION"
 
 echo "Updating endpoint ${SAGEMAKER_ENDPOINT_NAME} to use ${CONFIG_NAME}..."

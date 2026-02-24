@@ -112,6 +112,10 @@ resource "aws_sagemaker_endpoint_configuration" "inference" {
       s3_output_path  = "s3://${aws_s3_bucket.output.id}/sagemaker-async-responses/"
       s3_failure_path  = "s3://${aws_s3_bucket.output.id}/sagemaker-async-failures/"
     }
+    # One invocation per instance so requests spread across instances (pull-based queue).
+    client_config {
+      max_concurrent_invocations_per_instance = 1
+    }
   }
 
   tags = { Name = "${local.name}-inference" }

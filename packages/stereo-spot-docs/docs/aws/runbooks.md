@@ -28,7 +28,7 @@ aws sqs delete-message --queue-url <DLQ_URL> --receipt-handle <receipt_handle>
 ## 2. ECS scaling and visibility timeout
 
 - **Max capacity:** In Terraform (`ecs.tf`): e.g. `aws_appautoscaling_target.media_worker.max_capacity`, or variable `ecs_video_worker_max_capacity` for video-worker.
-- **Visibility timeout:** In `packages/aws-infra/sqs.tf` (chunking 900s, video-worker 2400s, reassembly 600s). Increase and `terraform apply` if workers need more time.
+- **Visibility timeout:** In `packages/aws-infra/sqs.tf` (chunking 900s, video-worker 2400s, reassembly 3600s). Reassembly is 1 h so download + concat + upload of large segments can finish; increase and `terraform apply` if needed.
 - **Force one task (testing):** Load `packages/aws-infra/.env`, then:
   ```bash
   aws ecs update-service --cluster $ECS_CLUSTER_NAME --service media-worker --desired-count 1 --region us-east-1
@@ -41,7 +41,7 @@ aws sqs delete-message --queue-url <DLQ_URL> --receipt-handle <receipt_handle>
 
 1. **Check queues** (load `.env`): `aws sqs get-queue-attributes --queue-url $VIDEO_WORKER_QUEUE_URL ...` and same for reassembly. Check ECS/CloudWatch logs for media-worker and video-worker.
 2. **Check SegmentCompletions:** Query DynamoDB for the job_id; count should equal `Job.total_segments`. If so, video-worker should have sent to reassembly queue when the last completion was written.
-3. **Check ReassemblyTriggered:** `aws dynamodb get-item --table-name $REASSEMBLY_TRIGGERED_TABLE_NAME --key '{"job_id":{"S":"<JOB_ID>"}}'`
+3. **Check ReassemblyTriggered:** `aws dynamodb get-item --table-name $REASSEMBLY_TRIGGERED_TABLE_NAME --key '{"job_id":{"S":"<JOB_ID>"}}'` If the item has `reassembly_started_at` but the job never completed, a worker likely hit **reassembly queue visibility timeout** (message became visible again, another worker acked it without doing work). Fix: set reassembly queue `VisibilityTimeout` to 3600 (e.g. `aws sqs set-queue-attributes --queue-url $REASSEMBLY_QUEUE_URL --attributes VisibilityTimeout=3600`), delete the ReassemblyTriggered item, put a fresh item (same as below), then send the message again.
 4. **Manual reassembly trigger (one-off):**
    ```bash
    aws dynamodb put-item --table-name $REASSEMBLY_TRIGGERED_TABLE_NAME \
@@ -50,6 +50,26 @@ aws sqs delete-message --queue-url <DLQ_URL> --receipt-handle <receipt_handle>
    aws sqs send-message --queue-url $REASSEMBLY_QUEUE_URL --message-body '{"job_id":"<JOB_ID>"}' --region us-east-1
    ```
    Replace `<JOB_ID>`. Then refresh the job in the web UI.
+
+**Only one SegmentCompletion despite all segments succeeding (video-worker):** If SageMaker logs show all segments "invocations complete" but only one `output-events: ... SageMaker success -> ...` appears (e.g. only segment 2), the success S3 events for the other segments either never reached the output-events queue or were processed after the **invocation store TTL** (2 h). When the store record is missing, the worker logs "no invocation record for ... (idempotent delete)" and does not write a SegmentCompletion. Fix: add the missing SegmentCompletions manually and trigger reassembly (see step 4 above). To reduce recurrence for long-running inference, increase inference invocations TTL (e.g. in `stereo_spot_aws_adapters.dynamodb_stores`: `INFERENCE_INVOCATIONS_TTL_SECONDS`) and redeploy the video-worker.
+
+**"no invocation record for failure" (video-worker):** These WARNINGs refer to **sagemaker-async-failures/** objects. The invocation store is keyed by the **success** response URI (`sagemaker-async-responses/...`), so failure events never find a record. The worker releases the inference semaphore when it sees a failure with no record (to avoid leaking slots). If a job has one segment never scheduled (e.g. segment 2 of 3; video-worker queue has 1 message), the running task may be stuck holding all semaphore slots—**restart the video-worker service** so the pending message is picked up by a fresh task.
+
+**What’s inside sagemaker-async-failures/*.out:** Download one (e.g. `aws s3 cp s3://$OUTPUT_BUCKET_NAME/sagemaker-async-failures/<id>-error.out -`). The body is usually **"Timed out uploading object (bucket: ..., key: sagemaker-async-responses/...)"**. That means the async invocation (container run + uploading the result to S3) exceeded **InvocationTimeoutSeconds**. So no success object is written—only the failure—and the video-worker never gets a success event (so no SegmentCompletion and, before the semaphore fix, the slot stayed held). **Fix:** Increase the timeout so long segments succeed. Set **SAGEMAKER_INVOKE_TIMEOUT_SECONDS=3600** (1 hour, max allowed) in the video-worker ECS task environment (Terraform or console). Default in code is 1200 (20 min); if a segment takes longer (e.g. 27 min), the invocation times out and you get these failures. After increasing the timeout and redeploying the video-worker, new invocations will use the higher limit.
+
+**Reassembly logged "concat 3 segments" but no "completed":** Check S3 for `jobs/<job_id>/final.mp4`. **If it exists**, the video-worker should set the job to completed when it sees the S3 event; if the job is still chunking_complete (e.g. event was missed), update the job manually: `aws dynamodb update-item --table-name $JOBS_TABLE_NAME --key '{"job_id":{"S":"<JOB_ID>"}}' --update-expression "SET #st = :st, #ca = :ca" --expression-attribute-names '{"#st":"status","#ca":"completed_at"}' --expression-attribute-values '{":st":{"S":"completed"},":ca":{"N":"'$(date +%s)'"}}' --region us-east-1`. **If final.mp4 is missing** (e.g. media-worker OOM during concat/upload), the ReassemblyTriggered item has `reassembly_started_at` set so new messages get "lock not acquired". Reset and re-trigger reassembly:
+
+   ```bash
+   # 1. Delete the lock so a worker can run reassembly again
+   aws dynamodb delete-item --table-name $REASSEMBLY_TRIGGERED_TABLE_NAME \
+     --key '{"job_id":{"S":"<JOB_ID>"}}' --region us-east-1
+   # 2. Put a fresh lock item (no reassembly_started_at) and send message
+   aws dynamodb put-item --table-name $REASSEMBLY_TRIGGERED_TABLE_NAME \
+     --item '{"job_id":{"S":"<JOB_ID>"},"triggered_at":{"N":"'$(date +%s)'"},"ttl":{"N":"'$(($(date +%s) + 7776000))'"}}' \
+     --condition-expression "attribute_not_exists(job_id)" --region us-east-1
+   aws sqs send-message --queue-url $REASSEMBLY_QUEUE_URL --message-body '{"job_id":"<JOB_ID>"}' --region us-east-1
+   ```
+   Replace `<JOB_ID>`. To reduce OOM risk, increase the media-worker ECS task memory (e.g. in Terraform `ecs.tf`: `media_worker` task definition `memory`) and redeploy.
 
 ---
 

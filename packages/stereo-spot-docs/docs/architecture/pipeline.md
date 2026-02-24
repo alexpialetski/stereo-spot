@@ -23,7 +23,7 @@ flowchart LR
 3. **Segment processing** — Object-created events for segment files feed a **video-worker queue**. Workers invoke the **inference backend** (stub, managed GPU endpoint, or HTTP) per segment. Inference reads the segment and writes the result to the output bucket.
 4. **Segment completion** — When the inference backend writes a segment (and, for SageMaker, the async result), S3 sends events to the **output-events queue**. The video-worker consumes them: **segment file** events are acknowledged only; **SageMaker result** events trigger a **SegmentCompletion** write. So completion is recorded only when the worker processes a SageMaker success event (single source of truth).
 5. **Reassembly trigger** — After each SegmentCompletion put, the video-worker runs **trigger-on-write**: if the job has **status = chunking_complete** and **count(SegmentCompletions) == total_segments**, it conditionally creates a reassembly lock and sends **job_id** to the **reassembly queue**.
-6. **Reassembly** — A worker consumes the reassembly queue, builds the concat list from the segment-completion store (no object list), runs ffmpeg concat, uploads **final.mp4**, and updates the job to **status = completed**.
+6. **Reassembly** — The **video-worker** sets job **status = reassembling** when it sends the job to the reassembly queue. A **media-worker** consumes the reassembly queue: downloads each segment via streaming, builds the concat list from the segment-completion store, runs ffmpeg concat, and uploads **final.mp4** (it does not update job status). If **final.mp4** already exists (idempotent), the media-worker writes a **.reassembly-done** sentinel object so an S3 event is emitted. The **video-worker** consumes output-events; when it sees an S3 event for **jobs/{job_id}/final.mp4** or **jobs/{job_id}/.reassembly-done**, it sets the job to **status = completed** and **completed_at**. So only the video-worker sets **reassembling** and **completed** for this phase.
 
 ## Job status lifecycle
 
@@ -35,7 +35,8 @@ stateDiagram-v2
   created --> chunking_in_progress: optional
   created --> chunking_complete: chunking done
   chunking_in_progress --> chunking_complete: total_segments + status updated
-  chunking_complete --> completed: reassembly done, final.mp4 written
+  chunking_complete --> reassembling: video-worker sends to reassembly queue
+  reassembling --> completed: video-worker sees final.mp4 or .reassembly-done
   completed --> [*]
   ingesting --> failed: ingest download/upload error
 ```
@@ -44,7 +45,8 @@ stateDiagram-v2
 - **ingesting** — Set when the media-worker ingest loop starts fetching from the source URL. When the worker finishes, it uploads to S3 and updates the job to **created** (with title, uploaded_at, source_file_size_bytes); the S3 event then drives chunking. On failure, the job is set to **failed**.
 - **chunking_in_progress** — Set when chunking starts (optional; helps recovery tools find stuck jobs).
 - **chunking_complete** — Set in one atomic update when chunking finishes (**total_segments** and **status**).
-- **completed** — Set by the reassembly worker after writing the final file.
+- **reassembling** — Set by the video-worker when it sends the job to the reassembly queue (after all segment completions are in).
+- **completed** — Set by the video-worker when it sees an output-events S3 notification for **final.mp4** or **.reassembly-done** (media-worker only writes those objects; it does not update job status).
 
 Only the job store is authoritative for status.
 

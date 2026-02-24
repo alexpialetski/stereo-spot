@@ -43,6 +43,14 @@ def main() -> None:
     reassembly_sender = reassembly_queue_sender_from_env()
     invocation_store = inference_invocations_store_from_env()
 
+    # Backpressure: limit in-flight SageMaker invocations to match endpoint instance count.
+    settings = get_settings()
+    inference_semaphore = (
+        threading.Semaphore(settings.inference_max_in_flight)
+        if settings.use_sagemaker_backend
+        else None
+    )
+
     def run_inference_loop() -> None:
         run_loop(
             inference_receiver,
@@ -51,6 +59,7 @@ def main() -> None:
             output_bucket,
             job_store=job_store,
             invocation_store=invocation_store,
+            inference_semaphore=inference_semaphore,
         )
 
     def run_output_events_loop_thread() -> None:
@@ -62,6 +71,7 @@ def main() -> None:
             reassembly_triggered=reassembly_triggered,
             reassembly_sender=reassembly_sender,
             invocation_store=invocation_store,
+            inference_semaphore=inference_semaphore,
         )
 
     inference_thread = threading.Thread(target=run_inference_loop, daemon=True)

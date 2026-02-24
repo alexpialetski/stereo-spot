@@ -4,6 +4,7 @@ exactly one reassembly run and one final.mp4; the other run skips (conditional u
 on ReassemblyTriggered fails) and deletes the message without overwriting.
 """
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -20,6 +21,7 @@ from stereo_spot_aws_adapters.env_config import (
     segment_completion_store_from_env,
 )
 from stereo_spot_shared import Job, JobStatus, ReassemblyPayload, SegmentCompletion, StereoMode
+from video_worker.output_events import process_one_output_event_message
 
 
 @pytest.mark.skipif(
@@ -32,8 +34,8 @@ def test_reassembly_idempotency_two_messages_one_winner(
 ) -> None:
     """
     For a job with all segments complete, send two reassembly messages and process both.
-    Assert: exactly one reassembly run produces final.mp4 and updates Job to completed;
-    the other run skips (try_acquire fails) and deletes the message without overwriting.
+    Assert: exactly one reassembly run produces final.mp4; the other run skips (try_acquire fails).
+    Video-worker sets job completed when it sees final.mp4 (simulated here).
     """
     import boto3
 
@@ -124,6 +126,24 @@ def test_reassembly_idempotency_two_messages_one_winner(
     # Both return True (first did work, second skipped idempotently)
     assert first_ok is True
     assert second_ok is True
+
+    # 5b. Simulate video-worker output-events: final.mp4 → set job completed
+    s3_event_body = json.dumps({
+        "Records": [
+            {
+                "s3": {
+                    "bucket": {"name": output_bucket},
+                    "object": {"key": final_key},
+                }
+            }
+        ]
+    })
+    process_one_output_event_message(
+        s3_event_body,
+        segment_store,
+        output_bucket,
+        job_store=job_store,
+    )
 
     # 6. Assert: exactly one final.mp4, Job completed
     assert storage.exists(output_bucket, final_key)

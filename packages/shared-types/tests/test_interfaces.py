@@ -1,5 +1,7 @@
 """Tests for cloud abstraction interfaces (mock implementations)."""
 
+from pathlib import Path
+
 from stereo_spot_shared import (
     Job,
     JobListItem,
@@ -83,6 +85,7 @@ class MockJobStore:
             JobStatus.CREATED,
             JobStatus.CHUNKING_IN_PROGRESS,
             JobStatus.CHUNKING_COMPLETE,
+            JobStatus.REASSEMBLING,
             JobStatus.FAILED,
         }
         items = [
@@ -181,6 +184,10 @@ class MockObjectStorage:
     def download(self, bucket: str, key: str) -> bytes:
         return self._objects.get((bucket, key), b"")
 
+    def download_file(self, bucket: str, key: str, path: str) -> None:
+        data = self._objects.get((bucket, key), b"")
+        Path(path).write_bytes(data)
+
     def delete(self, bucket: str, key: str) -> None:
         self._objects.pop((bucket, key), None)
 
@@ -246,3 +253,12 @@ def test_mock_object_storage() -> None:
     assert "mock-download" in url_get
     storage.upload("bucket", "key", b"hello")
     assert storage.download("bucket", "key") == b"hello"
+
+
+def test_mock_object_storage_download_file(tmp_path) -> None:
+    """Mock ObjectStorage.download_file writes object content to path."""
+    storage: ObjectStorage = MockObjectStorage()
+    storage.upload("bucket", "key", b"streamed content")
+    local = tmp_path / "out.bin"
+    storage.download_file("bucket", "key", str(local))
+    assert local.read_bytes() == b"streamed content"

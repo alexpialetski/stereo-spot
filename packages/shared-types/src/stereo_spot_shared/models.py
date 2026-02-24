@@ -20,6 +20,7 @@ class JobStatus(str, Enum):
     INGESTING = "ingesting"
     CHUNKING_IN_PROGRESS = "chunking_in_progress"
     CHUNKING_COMPLETE = "chunking_complete"
+    REASSEMBLING = "reassembling"
     COMPLETED = "completed"
     FAILED = "failed"
     DELETED = "deleted"

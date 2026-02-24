@@ -70,7 +70,7 @@ resource "aws_sqs_queue" "video_worker" {
 
 resource "aws_sqs_queue" "reassembly" {
   name                       = "${local.name}-reassembly"
-  visibility_timeout_seconds = 600 # 10 min
+  visibility_timeout_seconds = 3600 # 1 h; download + concat + upload of large segments can exceed 10 min
   message_retention_seconds  = 1209600
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.reassembly_dlq.arn

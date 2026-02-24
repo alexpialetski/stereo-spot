@@ -56,7 +56,8 @@ class JobStore(Protocol):
     def list_in_progress(self, limit: int = 20) -> list[Job]:
         """
         List jobs with status in (created, ingesting, chunking_in_progress,
-        chunking_complete, failed), ordered by created_at descending. Returns up to limit items.
+        chunking_complete, reassembling, failed), ordered by created_at descending.
+        Returns up to limit items.
         """
         ...
 
@@ -147,6 +148,10 @@ class ObjectStorage(Protocol):
 
     def download(self, bucket: str, key: str) -> bytes:
         """Download object from bucket/key and return its body as bytes."""
+        ...
+
+    def download_file(self, bucket: str, key: str, path: str) -> None:
+        """Download object to a local file; streams to disk to avoid loading object into RAM."""
         ...
 
     def delete(self, bucket: str, key: str) -> None:

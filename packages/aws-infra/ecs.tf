@@ -398,7 +398,9 @@ locals {
     { name = "SAGEMAKER_ENDPOINT_NAME", value = aws_sagemaker_endpoint.inference[0].name },
     { name = "SAGEMAKER_REGION", value = local.region },
     { name = "INFERENCE_MAX_IN_FLIGHT", value = tostring(var.sagemaker_instance_count) },
-    { name = "INFERENCE_INVOCATIONS_TABLE_NAME", value = aws_dynamodb_table.inference_invocations.name }
+    { name = "INFERENCE_INVOCATIONS_TABLE_NAME", value = aws_dynamodb_table.inference_invocations.name },
+    # 1 hour so long segments (e.g. 27+ min) don't hit "Timed out uploading object" → sagemaker-async-failures
+    { name = "SAGEMAKER_INVOKE_TIMEOUT_SECONDS", value = "3600" }
   ] : [
     { name = "INFERENCE_BACKEND", value = "http" },
     { name = "INFERENCE_HTTP_URL", value = local.inference_http_url }

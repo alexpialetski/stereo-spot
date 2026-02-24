@@ -11,9 +11,19 @@ from media_worker.concat import build_concat_list_paths, concat_segments_to_file
 def test_build_concat_list_paths_orders_by_segment_index(
     tmp_path: Path,
 ) -> None:
-    """build_concat_list_paths downloads segments in completion order and returns paths."""
+    """build_concat_list_paths streams segments to disk in completion order and returns paths."""
     storage = MagicMock()
-    storage.download.side_effect = [b"seg0", b"seg1", b"seg2"]
+
+    def write_segment_to_path(bucket: str, key: str, path: str) -> None:
+        # Simulate streaming: write known content by key for assertions
+        key_to_content = {
+            "jobs/job-1/segments/0.mp4": b"seg0",
+            "jobs/job-1/segments/1.mp4": b"seg1",
+            "jobs/job-1/segments/2.mp4": b"seg2",
+        }
+        Path(path).write_bytes(key_to_content.get(key, b""))
+
+    storage.download_file.side_effect = write_segment_to_path
     completions = [
         SegmentCompletion(
             job_id="job-1",
@@ -45,8 +55,8 @@ def test_build_concat_list_paths_orders_by_segment_index(
     assert paths[0].read_bytes() == b"seg0"
     assert paths[1].read_bytes() == b"seg1"
     assert paths[2].read_bytes() == b"seg2"
-    assert storage.download.call_count == 3
-    assert storage.download.call_args_list[0][0][1] == "jobs/job-1/segments/0.mp4"
+    assert storage.download_file.call_count == 3
+    assert storage.download_file.call_args_list[0][0][1] == "jobs/job-1/segments/0.mp4"
 
 
 def test_concat_segments_to_file_writes_list_and_calls_ffmpeg(

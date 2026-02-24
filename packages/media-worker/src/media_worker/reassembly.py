@@ -1,5 +1,8 @@
 """
-Reassembly loop: receive job_id, acquire lock, concat segments, upload final, update Job.
+Reassembly loop: receive job_id, acquire lock, concat segments, upload final.mp4
+(and .reassembly-done sentinel when final already exists). Video-worker sets job
+completed on S3 events for final.mp4 or .reassembly-done; this worker does not
+update job status.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from stereo_spot_shared.interfaces import (
 )
 
 from .concat import build_concat_list_paths, concat_segments_to_file
-from .output_key import build_final_key
+from .output_key import build_final_key, build_reassembly_done_key
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,7 @@ def process_one_reassembly_message(
     if not reassembly_lock.try_acquire(job_id):
         logger.info("reassembly: job_id=%s lock not acquired (another worker)", job_id)
         return True
+    logger.debug("reassembly: job_id=%s lock acquired", job_id)
 
     job = job_store.get(job_id)
     if job is None:
@@ -79,14 +83,15 @@ def process_one_reassembly_message(
     final_key = build_final_key(job_id)
     if storage.exists(output_bucket, final_key):
         logger.info("reassembly: job_id=%s final.mp4 already exists (idempotent)", job_id)
-        job_store.update(
-            job_id,
-            status=JobStatus.COMPLETED.value,
-            completed_at=int(time.time()),
-        )
+        # Write sentinel so video-worker gets S3 event and sets job completed
+        sentinel_key = build_reassembly_done_key(job_id)
+        if not storage.exists(output_bucket, sentinel_key):
+            storage.upload(output_bucket, sentinel_key, b"")
+            logger.debug("reassembly: job_id=%s wrote .reassembly-done sentinel", job_id)
         return True
 
     completions = segment_store.query_by_job(job_id)
+    logger.debug("reassembly: job_id=%s found %s segment completion(s)", job_id, len(completions))
     if not completions:
         logger.warning("reassembly: job_id=%s no segment completions", job_id)
         return False
@@ -102,19 +107,36 @@ def process_one_reassembly_message(
 
     with tempfile.TemporaryDirectory(prefix="reassembly_") as tmpdir:
         segment_dir = Path(tmpdir)
+        logger.debug("reassembly: job_id=%s downloading segments to temp dir", job_id)
         segment_paths = build_concat_list_paths(
             completions, storage, output_bucket, segment_dir
         )
+        logger.debug("reassembly: job_id=%s running ffmpeg concat", job_id)
         final_local = segment_dir / "final.mp4"
         concat_segments_to_file(segment_paths, final_local)
-        storage.upload_file(output_bucket, final_key, str(final_local))
+        try:
+            final_size_mb = final_local.stat().st_size / (1024 * 1024)
+            logger.info(
+                "reassembly: job_id=%s uploading final.mp4 (%.1f MiB) to %s",
+                job_id,
+                final_size_mb,
+                final_key,
+            )
+            storage.upload_file(output_bucket, final_key, str(final_local))
+            logger.info("reassembly: job_id=%s upload done", job_id)
+        except Exception as e:
+            logger.exception(
+                "reassembly: job_id=%s upload failed: %s",
+                job_id,
+                e,
+            )
+            raise
 
-    job_store.update(
+    # Video-worker sets job to completed when it sees final.mp4 S3 event (coordinator owns status)
+    logger.info(
+        "reassembly: job_id=%s completed (video-worker sets status on final.mp4 event)",
         job_id,
-        status=JobStatus.COMPLETED.value,
-        completed_at=int(time.time()),
     )
-    logger.info("reassembly: job_id=%s completed", job_id)
     return True
 
 

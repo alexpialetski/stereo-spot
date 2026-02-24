@@ -23,7 +23,7 @@ Each main queue has a **dead-letter queue (DLQ)**. After a configured number of 
 
 ## Job stuck at chunking_complete
 
-When a job shows **status = chunking_complete** but never moves to **completed**, the pipeline after chunking is failing. Flow: segments → segment queue → segment worker (writes completions) → **reassembly trigger** (after each completion put) → reassembly queue → reassembly worker → final file and job completed.
+When a job shows **status = chunking_complete** but never moves to **completed**, the pipeline after chunking is failing. Flow: segments → segment queue → segment worker (writes completions) → **reassembly trigger** (after each completion put; video-worker sets **reassembling**) → reassembly queue → media-worker (writes final.mp4 or .reassembly-done) → output-events → video-worker sets **completed**.
 
 1. **Check queues:** Are messages stuck in the segment queue, or in the reassembly queue? Check worker logs for the relevant service.
 2. **Check completions:** Count segment-completion records for the job; it should equal **total_segments**. If so, the trigger logic should have sent to the reassembly queue when the last completion was written.

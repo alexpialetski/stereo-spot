@@ -43,12 +43,17 @@ sequenceDiagram
 4. **Stub/HTTP:** Worker writes **SegmentCompletion** and deletes the message.
 5. **SageMaker:** Worker calls **InvokeEndpointAsync**, records the invocation (output_location → job/segment) in a store, and **deletes the segment message immediately**. No polling. When SageMaker writes the async result to S3, an event feeds the **output-events queue**; the video-worker consumes it and only then writes **SegmentCompletion** and triggers reassembly. Segment file events on the same queue are acknowledged only (no SegmentCompletion).
 
-## Concurrency
+## Concurrency and backpressure
 
-The **video-worker** keeps up to **INFERENCE_MAX_IN_FLIGHT** async invocations in flight: it sends multiple `InvokeEndpointAsync` calls and deletes each message after recording the invocation.
+The **video-worker** limits in-flight SageMaker invocations to **INFERENCE_MAX_IN_FLIGHT** using an in-process **semaphore** shared between the inference loop and the output-events loop:
 
-- **SageMaker**: Infra sets **INFERENCE_MAX_IN_FLIGHT** from the endpoint **instance count** (`sagemaker_instance_count`) so the worker’s in-flight cap matches backend capacity. With one instance you get one in flight; with two instances, two. Each instance runs the inference container with gunicorn `--workers 1`, so one request at a time per instance. To get parallel inference, increase `sagemaker_instance_count` in Terraform; the video-worker will automatically use that value as its max in flight.
-- **HTTP**: **INFERENCE_MAX_IN_FLIGHT** can be set via env (1–20); default is 5. Effective parallelism also depends on your server’s workers/threads.
+- **Inference loop:** acquires the semaphore before each `InvokeEndpointAsync` (blocks when at capacity), releases on invoke failure.
+- **Output-events loop:** releases the semaphore when a SageMaker success or failure result is processed (one slot freed per completion).
+
+This ensures the worker never sends more concurrent requests than the endpoint can handle.
+
+- **SageMaker**: Infra sets **INFERENCE_MAX_IN_FLIGHT** from the endpoint **instance count** (`sagemaker_instance_count`). The SageMaker async endpoint is configured with **max_concurrent_invocations_per_instance = 1** (Terraform `async_inference_config.client_config`) so each instance pulls one request at a time from the internal queue; with two instances you get two parallel inferences. To scale, increase `sagemaker_instance_count` in Terraform; the video-worker and endpoint config stay aligned.
+- **HTTP**: **INFERENCE_MAX_IN_FLIGHT** can be set via env (1–20); default is 5. No semaphore is used (stub/HTTP process one message at a time in the loop).
 
 ## Package
 

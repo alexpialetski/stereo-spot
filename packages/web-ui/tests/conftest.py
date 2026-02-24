@@ -1,5 +1,7 @@
 """Pytest fixtures: app with mocked JobStore, ObjectStorage, SegmentCompletionStore."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from stereo_spot_shared import (
@@ -87,6 +89,7 @@ class MockJobStore:
             JobStatus.INGESTING,
             JobStatus.CHUNKING_IN_PROGRESS,
             JobStatus.CHUNKING_COMPLETE,
+            JobStatus.REASSEMBLING,
             JobStatus.FAILED,
         }
         items = [
@@ -130,6 +133,9 @@ class MockObjectStorage:
 
     def download(self, bucket: str, key: str) -> bytes:
         return b""
+
+    def download_file(self, bucket: str, key: str, path: str) -> None:
+        Path(path).write_bytes(b"")
 
     def delete(self, bucket: str, key: str) -> None:
         pass

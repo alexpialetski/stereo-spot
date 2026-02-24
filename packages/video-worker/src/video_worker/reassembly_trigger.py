@@ -64,3 +64,12 @@ def maybe_trigger_reassembly(
         job_id,
     )
     reassembly_sender.send(ReassemblyPayload(job_id=job_id).model_dump_json())
+    try:
+        job_store.update(job_id, status=JobStatus.REASSEMBLING.value)
+        logger.debug("reassembly-trigger: job_id=%s status=reassembling", job_id)
+    except Exception as e:
+        logger.warning(
+            "reassembly-trigger: job_id=%s failed to set reassembling: %s",
+            job_id,
+            e,
+        )

@@ -9,6 +9,7 @@ from stereo_spot_aws_adapters import (
     InferenceInvocationsStore,
     ReassemblyTriggeredLock,
 )
+from stereo_spot_aws_adapters.dynamodb_stores import INFERENCE_INVOCATIONS_TTL_SECONDS
 
 
 class TestDynamoDBJobStore:
@@ -373,4 +374,5 @@ class TestInferenceInvocationsStore:
         )
         item = table.get_item(Key={"output_location": output_location})["Item"]
         assert "ttl" in item
-        assert before + 7200 <= item["ttl"] <= after + 7200 + 2
+        ttl = INFERENCE_INVOCATIONS_TTL_SECONDS
+        assert before + ttl <= item["ttl"] <= after + ttl + 2

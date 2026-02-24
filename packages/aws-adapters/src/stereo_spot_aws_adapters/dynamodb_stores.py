@@ -161,6 +161,7 @@ class DynamoDBJobStore:
             JobStatus.INGESTING.value,
             JobStatus.CHUNKING_IN_PROGRESS.value,
             JobStatus.CHUNKING_COMPLETE.value,
+            JobStatus.REASSEMBLING.value,
             JobStatus.FAILED.value,
         ]
         merged: list[Job] = []
@@ -292,8 +293,8 @@ class ReassemblyTriggeredLock:
         self._table.delete_item(Key={"job_id": job_id})
 
 
-# TTL for inference invocations: 2h so stale entries expire if result event never arrives
-INFERENCE_INVOCATIONS_TTL_SECONDS = 7200
+# TTL for inference invocations: 4h so delayed success events still find the record
+INFERENCE_INVOCATIONS_TTL_SECONDS = 14400
 
 
 class InferenceInvocationsStore:

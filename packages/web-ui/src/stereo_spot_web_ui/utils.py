@@ -54,6 +54,8 @@ def compute_progress(
         segments_done = len(completions)
         pct = 25 + int(50 * segments_done / total)
         return min(75, pct), "Processing segments"
+    if job.status == JobStatus.REASSEMBLING:
+        return 85, "Reassembling…"
     if job.status == JobStatus.FAILED:
         return 0, "Failed"
     return 0, "Unknown"

@@ -41,3 +41,13 @@ class TestS3ObjectStorage:
         storage.upload_file(output_bucket, "jobs/j1/final.mp4", str(f))
         data = storage.download(output_bucket, "jobs/j1/final.mp4")
         assert data == b"small file content"
+
+    def test_download_file(self, s3_buckets, tmp_path):
+        """download_file streams object to local path without loading into memory."""
+        _, output_bucket = s3_buckets
+        storage = S3ObjectStorage(region_name="us-east-1")
+        content = b"streamed segment content"
+        storage.upload(output_bucket, "jobs/j1/segments/0.mp4", content)
+        local_path = tmp_path / "seg_00000.mp4"
+        storage.download_file(output_bucket, "jobs/j1/segments/0.mp4", str(local_path))
+        assert local_path.read_bytes() == content

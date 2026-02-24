@@ -17,14 +17,14 @@ _CLOUDWATCH_LOGS_INSIGHTS_TEMPLATE = (
     "~lang~'CWLI~logClass~'STANDARD~queryBy~'logGroupName)"
 )
 
-# Cost Explorer: App tag filter, month-to-date. Placeholder: {app_tag_value}.
+# Cost Explorer: App tag filter, month-to-date, daily granularity. Placeholder: {app_tag_value}.
 _DEFAULT_COST_EXPLORER_TEMPLATE = (
     "https://us-east-1.console.aws.amazon.com/costmanagement/home?region=us-east-1"
     "#/cost-explorer?chartStyle=STACK&costAggregate=unBlendedCost&excludeForecasting=false"
     "&filter=%5B%7B%22dimension%22:%7B%22id%22:%22TagKey%22,%22displayValue%22:%22Tag%22%7D,"
     "%22operator%22:%22INCLUDES%22,%22values%22:%5B%7B%22value%22:%22{app_tag_value}%22,"
     "%22displayValue%22:%22{app_tag_value}%22%7D%5D,%22growableValue%22:%7B%22value%22:%22App%22,"
-    "%22displayValue%22:%22App%22%7D%7D%5D&futureRelativeRange=CUSTOM&granularity=Monthly"
+    "%22displayValue%22:%22App%22%7D%7D%5D&futureRelativeRange=CUSTOM&granularity=Daily"
     "&groupBy=%5B%22Service%22%5D&historicalRelativeRange=MONTH_TO_DATE&isDefault=true"
     "&reportMode=STANDARD&reportName=New%20cost%20and%20usage%20report"
     "&showOnlyUncategorized=false&showOnlyUntagged=false&usageAggregate=undefined&useNormalizedUnits=false"
@@ -51,7 +51,7 @@ class AWSOperatorLinksProvider:
         return url.format(name_prefix=self._name_prefix, region=self._region)
 
     def get_cost_dashboard_url(self) -> str | None:
-        """Return Cost Explorer deep link (App tag filter, month-to-date), or override if set."""
+        """Cost Explorer deep link (App tag, month-to-date, daily); or override if set."""
         if self._cost_explorer_url is not None:
             return self._cost_explorer_url
         return _DEFAULT_COST_EXPLORER_TEMPLATE.format(app_tag_value=self._name_prefix)

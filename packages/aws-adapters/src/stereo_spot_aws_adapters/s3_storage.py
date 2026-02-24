@@ -124,6 +124,10 @@ class S3ObjectStorage:
         resp = self._client.get_object(Bucket=bucket, Key=key)
         return resp["Body"].read()
 
+    def download_file(self, bucket: str, key: str, path: str) -> None:
+        """Download object to a local file; streams to disk to avoid loading object into RAM."""
+        self._client.download_file(Bucket=bucket, Key=key, Filename=path)
+
     def delete(self, bucket: str, key: str) -> None:
         """Delete the object at bucket/key. Idempotent if object does not exist."""
         self._client.delete_object(Bucket=bucket, Key=key)

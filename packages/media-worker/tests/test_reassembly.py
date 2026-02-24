@@ -30,6 +30,7 @@ def mock_storage() -> MagicMock:
     s.exists.return_value = False
     s.download.return_value = b"fake"
     s.upload_file.return_value = None
+    s.upload.return_value = None
     return s
 
 
@@ -84,7 +85,7 @@ def test_process_one_reassembly_message_idempotency_when_final_exists(
     mock_storage: MagicMock,
     mock_lock: MagicMock,
 ) -> None:
-    """When final.mp4 already exists, update Job to completed and return True."""
+    """When final.mp4 exists, write .reassembly-done sentinel; video-worker sets completed."""
     mock_lock.try_acquire.return_value = True
     mock_job_store.get.return_value = Job(
         job_id="job-1",
@@ -92,7 +93,8 @@ def test_process_one_reassembly_message_idempotency_when_final_exists(
         status=JobStatus.CHUNKING_COMPLETE,
         total_segments=2,
     )
-    mock_storage.exists.return_value = True  # final already present
+    # final exists, sentinel does not -> upload sentinel
+    mock_storage.exists.side_effect = lambda b, k: k == "jobs/job-1/final.mp4"
     result = process_one_reassembly_message(
         _make_message("job-1"),
         mock_job_store,
@@ -102,11 +104,40 @@ def test_process_one_reassembly_message_idempotency_when_final_exists(
         "output-bucket",
     )
     assert result is True
-    mock_job_store.update.assert_called_once()
-    call_kw = mock_job_store.update.call_args[1]
-    assert call_kw["status"] == JobStatus.COMPLETED.value
-    assert "completed_at" in call_kw
+    mock_job_store.update.assert_not_called()
+    mock_storage.upload.assert_called_once_with(
+        "output-bucket", "jobs/job-1/.reassembly-done", b""
+    )
     mock_segment_store.query_by_job.assert_not_called()
+    mock_storage.upload_file.assert_not_called()
+
+
+def test_process_one_reassembly_message_idempotency_when_final_and_sentinel_exist(
+    mock_job_store: MagicMock,
+    mock_segment_store: MagicMock,
+    mock_storage: MagicMock,
+    mock_lock: MagicMock,
+) -> None:
+    """When final.mp4 and .reassembly-done already exist, return True without uploading."""
+    mock_lock.try_acquire.return_value = True
+    mock_job_store.get.return_value = Job(
+        job_id="job-1",
+        mode=StereoMode.ANAGLYPH,
+        status=JobStatus.CHUNKING_COMPLETE,
+        total_segments=2,
+    )
+    mock_storage.exists.return_value = True  # both final and sentinel exist
+    result = process_one_reassembly_message(
+        _make_message("job-1"),
+        mock_job_store,
+        mock_segment_store,
+        mock_storage,
+        mock_lock,
+        "output-bucket",
+    )
+    assert result is True
+    mock_job_store.update.assert_not_called()
+    mock_storage.upload.assert_not_called()
     mock_storage.upload_file.assert_not_called()
 
 
@@ -204,7 +235,6 @@ def test_process_one_reassembly_message_mock_pipeline(
             "output-bucket",
         )
     assert result is True
-    mock_job_store.update.assert_called_once()
-    assert mock_job_store.update.call_args[1]["status"] == JobStatus.COMPLETED.value
+    mock_job_store.update.assert_not_called()  # video-worker sets completed on final.mp4 event
     mock_storage.upload_file.assert_called_once()
     assert mock_storage.upload_file.call_args[0][1] == "jobs/job-1/final.mp4"
