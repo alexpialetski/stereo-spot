@@ -16,8 +16,9 @@ All packages live under **`packages/`**. The **root project** `stereo-spot` prov
 | **media-worker** | Chunking + reassembly (ffmpeg, queues) |
 | **video-worker** | Segment processing, inference, reassembly trigger |
 | **stereo-inference** | Inference container (iw3/nunif), SageMaker/HTTP |
-| **shared-types** | Pydantic models, segment keys, single source of truth |
-| **aws-adapters** | DynamoDB, SQS, S3 implementations |
+| **shared-types** | Pydantic models, cloud-agnostic interfaces |
+| **adapters** | Platform facade: selects aws-adapters or gcp-adapters by `PLATFORM` env |
+| **aws-adapters** | DynamoDB, SQS, S3 implementations (used when `PLATFORM=aws`) |
 | **aws-infra** | Terraform: ECS, S3, SQS, DynamoDB, SageMaker, ALB |
 | **aws-infra-setup** | Terraform state bucket, lock table |
 
@@ -55,4 +56,4 @@ Pipeline logic uses **shared-types** and thin interfaces for:
 - **Object storage** — presign upload/download, upload/download
 - **Operator links (optional)** — job logs URL, cost dashboard URL (e.g. web-ui “Open logs”, “Cost” nav link)
 
-**AWS** implementations live in **aws-adapters**. App and workers depend on the abstractions and get the implementation by config (e.g. `STORAGE_ADAPTER=aws`). Terraform remains per-cloud; application and worker code stay the same.
+**AWS** implementations live in **aws-adapters**. The **adapters** package is the single composition root: it reads **`PLATFORM`** (default `aws`) and exposes `*_from_env()` factories that delegate to aws-adapters or, when added, gcp-adapters. Apps and workers import from **adapters** and stay cloud-agnostic. See [Platform adapter facade](/docs/architecture/platform-adapters). Terraform remains per-cloud; application and worker code stay the same.

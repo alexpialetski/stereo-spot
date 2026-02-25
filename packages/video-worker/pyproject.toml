@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "stereo-spot-shared",
     "stereo-spot-aws-adapters",
+    "stereo-spot-adapters",
     "pydantic-settings>=2.0",
 ]
 

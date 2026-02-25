@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from media_worker.chunking import process_one_chunking_message
 from media_worker.reassembly import process_one_reassembly_message
-from stereo_spot_aws_adapters.env_config import (
+from stereo_spot_adapters.env_config import (
     chunking_queue_receiver_from_env,
     chunking_queue_sender_from_env,
     job_store_from_env,

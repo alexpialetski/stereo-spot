@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from media_worker.reassembly import process_one_reassembly_message
-from stereo_spot_aws_adapters.env_config import (
+from stereo_spot_adapters.env_config import (
     job_store_from_env,
     object_storage_from_env,
     output_bucket_name,

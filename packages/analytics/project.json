@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "packages/analytics",
-  "implicitDependencies": ["shared-types", "aws-adapters", "aws-infra"],
+  "implicitDependencies": ["shared-types", "aws-adapters", "adapters", "aws-infra"],
   "targets": {
     "gather": {
       "executor": "nx:run-commands",

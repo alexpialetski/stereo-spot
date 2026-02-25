@@ -8,7 +8,7 @@
     "install-deps": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pip install -e \"packages/shared-types[dev]\" -e \"packages/aws-adapters[dev]\" -e \"packages/web-ui[dev]\" -e \"packages/media-worker[dev]\" -e \"packages/video-worker[dev]\" -e \"packages/analytics[dev]\" -e \"packages/integration[dev]\" -q",
+        "command": "pip install -e \"packages/shared-types[dev]\" -e \"packages/aws-adapters[dev]\" -e \"packages/adapters[dev]\" -e \"packages/web-ui[dev]\" -e \"packages/media-worker[dev]\" -e \"packages/video-worker[dev]\" -e \"packages/analytics[dev]\" -e \"packages/integration[dev]\" -q",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
@@ -19,8 +19,9 @@
         "{workspaceRoot}/packages/web-ui/pyproject.toml",
         "{workspaceRoot}/packages/media-worker/pyproject.toml",
         "{workspaceRoot}/packages/video-worker/pyproject.toml",
-        "{workspaceRoot}/packages/analytics/pyproject.toml",
-        "{workspaceRoot}/packages/integration/pyproject.toml"
+"{workspaceRoot}/packages/adapters/pyproject.toml",
+    "{workspaceRoot}/packages/analytics/pyproject.toml",
+    "{workspaceRoot}/packages/integration/pyproject.toml"
       ]
     }
   }

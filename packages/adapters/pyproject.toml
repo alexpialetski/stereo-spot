@@ -3,25 +3,19 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stereo-spot-integration"
+name = "stereo-spot-adapters"
 version = "0.1.0"
-description = "End-to-end and integration tests for the stereo-spot pipeline"
+description = "Platform adapter facade: selects aws-adapters or gcp-adapters by PLATFORM env"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "stereo-spot-shared",
     "stereo-spot-aws-adapters",
-    "stereo-spot-adapters",
-    "stereo-spot-web-ui",
-    "stereo-spot-media-worker",
-    "stereo-spot-video-worker",
-    "httpx>=0.24",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "moto[dynamodb,sqs,s3]>=4.0",
     "ruff>=0.1.0",
 ]
 

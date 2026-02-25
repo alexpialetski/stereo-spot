@@ -61,9 +61,13 @@ ENV NUNIF_HOME=/opt/nunif_data
 RUN mkdir -p "$NUNIF_HOME" && python -m iw3.download_models
 
 WORKDIR /opt/ml/code
-# Shared logging config (and types) so serve.py can use configure_logging()
+# Shared types and platform adapters so storage.py can use object_storage_from_env()
 COPY packages/shared-types /shared-types
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir -e /shared-types
+COPY packages/aws-adapters /aws-adapters
+RUN . /opt/venv/bin/activate && pip install --no-cache-dir -e /aws-adapters
+COPY packages/adapters /adapters
+RUN . /opt/venv/bin/activate && pip install --no-cache-dir -e /adapters
 COPY packages/stereo-inference/*.py .
 
 # Optional: set IW3_LOW_VRAM=1 for smaller GPU instances (e.g. g5.xlarge) to reduce OOM risk (iw3.md)

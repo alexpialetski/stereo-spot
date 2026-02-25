@@ -9,7 +9,7 @@ import logging
 import os
 import threading
 
-from stereo_spot_aws_adapters.env_config import (
+from stereo_spot_adapters.env_config import (
     chunking_queue_receiver_from_env,
     deletion_queue_receiver_from_env,
     ingest_queue_receiver_from_env_or_none,

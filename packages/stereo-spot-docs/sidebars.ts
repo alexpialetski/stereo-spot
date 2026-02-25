@@ -11,6 +11,7 @@ const sidebars: SidebarsConfig = {
         'architecture/overview',
         'architecture/pipeline',
         'architecture/shared-types',
+        'architecture/platform-adapters',
         'architecture/inference',
       ],
     },

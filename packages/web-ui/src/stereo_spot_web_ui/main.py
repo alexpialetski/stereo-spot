@@ -58,13 +58,12 @@ async def lifespan(app: FastAPI):
     segment_store = None
     normalizer = None
     try:
-        from stereo_spot_aws_adapters.env_config import (
+        from stereo_spot_adapters.env_config import (
+            job_events_normalizer_from_env,
             job_events_queue_receiver_from_env_or_none,
             job_store_from_env,
-            segment_completion_store_from_env,
-        )
-        from stereo_spot_aws_adapters.push_subscriptions import (
             push_subscriptions_store_from_env_or_none,
+            segment_completion_store_from_env,
         )
 
         receiver = job_events_queue_receiver_from_env_or_none()
@@ -72,8 +71,6 @@ async def lifespan(app: FastAPI):
         if receiver:
             job_store = job_store_from_env()
             segment_store = segment_completion_store_from_env()
-            from stereo_spot_aws_adapters.job_events import job_events_normalizer_from_env
-
             normalizer = job_events_normalizer_from_env()
     except Exception:
         pass

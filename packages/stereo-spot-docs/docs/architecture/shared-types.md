@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Shared types and interfaces
 
-The **`shared-types`** library defines Pydantic models and **cloud-agnostic interfaces** for the pipeline. Application and worker code depend on these interfaces; concrete implementations (e.g. AWS) are provided by adapter packages and wired via configuration (e.g. `STORAGE_ADAPTER=aws`).
+The **`shared-types`** library defines Pydantic models and **cloud-agnostic interfaces** for the pipeline. Application and worker code depend on these interfaces; concrete implementations (e.g. AWS) are provided by adapter packages and wired via the **platform adapter facade** (see [Platform adapter facade](/docs/architecture/platform-adapters)), which reads **`PLATFORM`** (default `aws`) and delegates to aws-adapters or gcp-adapters.
 
 ```mermaid
 flowchart TB
@@ -84,5 +84,6 @@ flowchart TB
 
 ## Implementation
 
-- **AWS:** Implementations in **aws-adapters** (DynamoDB, SQS, S3). Used when `STORAGE_ADAPTER=aws` (or equivalent).
-- **GCP (future):** Same interfaces with Firestore, Pub/Sub, GCS in a separate package; pipeline code unchanged.
+- **Platform selection:** The **adapters** package reads **`PLATFORM`** (default `aws`) and delegates to the corresponding adapter. Apps call `stereo_spot_adapters.env_config.*_from_env()` and do not reference aws-adapters or gcp-adapters directly for wiring.
+- **AWS:** Implementations in **aws-adapters** (DynamoDB, SQS, S3). Used when `PLATFORM=aws`.
+- **GCP (future):** Same interfaces in a **gcp-adapters** package (Firestore, Pub/Sub, GCS); the facade will delegate when `PLATFORM=gcp`; pipeline code unchanged.

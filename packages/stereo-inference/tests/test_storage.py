@@ -1,72 +1,55 @@
-"""Tests for storage facade: URI scheme and provider selection."""
+"""Tests for storage facade: URI parsing and platform adapter delegation."""
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import storage
 
 
-def test_scheme_for_uri_s3() -> None:
-    assert storage._scheme_for_uri("s3://bucket/key") == "s3"
-    assert storage._scheme_for_uri("S3://b/k") == "s3"
+def test_parse_uri_s3() -> None:
+    bucket, key = storage._parse_uri("s3://my-bucket/path/to/obj.mp4")
+    assert bucket == "my-bucket"
+    assert key == "path/to/obj.mp4"
 
 
-def test_scheme_for_uri_gs() -> None:
-    assert storage._scheme_for_uri("gs://bucket/path") == "gs"
+def test_parse_uri_s3_root_key() -> None:
+    bucket, key = storage._parse_uri("s3://b/file")
+    assert bucket == "b"
+    assert key == "file"
 
 
-def test_scheme_for_uri_empty() -> None:
-    assert storage._scheme_for_uri("no-scheme") == ""
+def test_parse_uri_gs() -> None:
+    bucket, key = storage._parse_uri("gs://my-bucket/path/to/obj.mp4")
+    assert bucket == "my-bucket"
+    assert key == "path/to/obj.mp4"
 
 
-def test_get_provider_for_uri_s3() -> None:
-    assert storage._get_provider_for_uri("s3://b/k") == "aws"
-
-
-def test_get_provider_for_uri_gs() -> None:
-    assert storage._get_provider_for_uri("gs://b/k") == "gcp"
-
-
-def test_get_provider_for_uri_unsupported() -> None:
+def test_parse_uri_unsupported_scheme() -> None:
     with pytest.raises(ValueError, match="Unsupported URI scheme"):
-        storage._get_provider_for_uri("http://example.com/path")
+        storage._parse_uri("http://example.com/path")
 
 
-def test_download_uses_aws_when_s3_uri() -> None:
-    with patch("storage_aws.download") as mock_aws:
+def test_parse_uri_invalid_no_netloc() -> None:
+    with pytest.raises(ValueError, match="Invalid storage URI"):
+        storage._parse_uri("s3:///key")
+
+
+def test_download_calls_storage_download_file() -> None:
+    mock_storage = MagicMock()
+    import storage as storage_mod
+    storage_mod._storage = None
+    with patch("stereo_spot_adapters.env_config.object_storage_from_env", return_value=mock_storage):
         storage.download("s3://bucket/key", "/tmp/p")
-        mock_aws.assert_called_once_with("s3://bucket/key", "/tmp/p")
+    mock_storage.download_file.assert_called_once_with("bucket", "key", "/tmp/p")
 
 
-def test_download_uses_gcp_when_gs_uri() -> None:
-    with patch("storage_gcp.download") as mock_gcp:
-        storage.download("gs://bucket/key", "/tmp/p")
-        mock_gcp.assert_called_once_with("gs://bucket/key", "/tmp/p")
-
-
-def test_download_uses_storage_provider_over_uri() -> None:
-    with patch.dict("os.environ", {"STORAGE_PROVIDER": "gcp"}):
-        with patch("storage_gcp.download") as mock_gcp:
-            storage.download("s3://bucket/key", "/tmp/p")
-            mock_gcp.assert_called_once_with("s3://bucket/key", "/tmp/p")
-
-
-def test_upload_uses_aws_when_s3_uri() -> None:
-    with patch("storage_aws.upload") as mock_aws:
+def test_upload_calls_storage_upload_file() -> None:
+    mock_storage = MagicMock()
+    import storage as storage_mod
+    storage_mod._storage = None
+    with patch("stereo_spot_adapters.env_config.object_storage_from_env", return_value=mock_storage):
         storage.upload("/tmp/p", "s3://bucket/key")
-        mock_aws.assert_called_once_with("/tmp/p", "s3://bucket/key")
-
-
-def test_upload_uses_gcp_when_gs_uri() -> None:
-    with patch("storage_gcp.upload") as mock_gcp:
-        storage.upload("/tmp/p", "gs://bucket/key")
-        mock_gcp.assert_called_once_with("/tmp/p", "gs://bucket/key")
-
-
-def test_download_unsupported_provider() -> None:
-    with patch.dict("os.environ", {"STORAGE_PROVIDER": "azure"}):
-        with pytest.raises(ValueError, match="Unsupported STORAGE_PROVIDER"):
-            storage.download("s3://b/k", "/tmp/p")
+    mock_storage.upload_file.assert_called_once_with("bucket", "key", "/tmp/p")

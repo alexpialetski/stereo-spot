@@ -6,6 +6,7 @@
   "implicitDependencies": [
     "shared-types",
     "aws-adapters",
+    "adapters",
     "web-ui",
     "media-worker",
     "video-worker"

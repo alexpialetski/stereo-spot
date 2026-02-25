@@ -16,7 +16,7 @@ def get_job_store(request: Request) -> JobStore:
     store = getattr(request.app.state, "job_store", None)
     if store is not None:
         return store
-    from stereo_spot_aws_adapters.env_config import job_store_from_env
+    from stereo_spot_adapters.env_config import job_store_from_env
 
     return job_store_from_env()
 
@@ -26,7 +26,7 @@ def get_object_storage(request: Request) -> ObjectStorage:
     storage = getattr(request.app.state, "object_storage", None)
     if storage is not None:
         return storage
-    from stereo_spot_aws_adapters.env_config import object_storage_from_env
+    from stereo_spot_adapters.env_config import object_storage_from_env
 
     return object_storage_from_env()
 
@@ -36,7 +36,7 @@ def get_input_bucket(request: Request) -> str:
     name = getattr(request.app.state, "input_bucket_name", None)
     if name is not None:
         return name
-    from stereo_spot_aws_adapters.env_config import input_bucket_name
+    from stereo_spot_adapters.env_config import input_bucket_name
 
     return input_bucket_name()
 
@@ -46,7 +46,7 @@ def get_output_bucket(request: Request) -> str:
     name = getattr(request.app.state, "output_bucket_name", None)
     if name is not None:
         return name
-    from stereo_spot_aws_adapters.env_config import output_bucket_name
+    from stereo_spot_adapters.env_config import output_bucket_name
 
     return output_bucket_name()
 
@@ -56,7 +56,7 @@ def get_segment_completion_store(request: Request) -> SegmentCompletionStore:
     store = getattr(request.app.state, "segment_completion_store", None)
     if store is not None:
         return store
-    from stereo_spot_aws_adapters.env_config import segment_completion_store_from_env
+    from stereo_spot_adapters.env_config import segment_completion_store_from_env
 
     return segment_completion_store_from_env()
 
@@ -66,7 +66,7 @@ def get_deletion_queue_sender(request: Request) -> QueueSender:
     sender = getattr(request.app.state, "deletion_queue_sender", None)
     if sender is not None:
         return sender
-    from stereo_spot_aws_adapters.env_config import deletion_queue_sender_from_env
+    from stereo_spot_adapters.env_config import deletion_queue_sender_from_env
 
     return deletion_queue_sender_from_env()
 
@@ -76,7 +76,7 @@ def get_ingest_queue_sender(request: Request) -> QueueSender:
     sender = getattr(request.app.state, "ingest_queue_sender", None)
     if sender is not None:
         return sender
-    from stereo_spot_aws_adapters.env_config import ingest_queue_sender_from_env
+    from stereo_spot_adapters.env_config import ingest_queue_sender_from_env
 
     return ingest_queue_sender_from_env()
 
@@ -86,7 +86,7 @@ def get_ingest_queue_sender_optional(request: Request) -> QueueSender | None:
     sender = getattr(request.app.state, "ingest_queue_sender", None)
     if sender is not None:
         return sender
-    from stereo_spot_aws_adapters.env_config import ingest_queue_sender_from_env_or_none
+    from stereo_spot_adapters.env_config import ingest_queue_sender_from_env_or_none
 
     return ingest_queue_sender_from_env_or_none()
 
@@ -96,7 +96,7 @@ def get_operator_links_provider(request: Request) -> OperatorLinksProvider | Non
     provider = getattr(request.app.state, "operator_links_provider", None)
     if provider is not None:
         return provider
-    from stereo_spot_aws_adapters.env_config import operator_links_from_env
+    from stereo_spot_adapters.env_config import operator_links_from_env
 
     return operator_links_from_env()
 
@@ -106,7 +106,7 @@ def get_job_events_receiver(request: Request):
     receiver = getattr(request.app.state, "job_events_receiver", None)
     if receiver is not None:
         return receiver
-    from stereo_spot_aws_adapters.env_config import job_events_queue_receiver_from_env_or_none
+    from stereo_spot_adapters.env_config import job_events_queue_receiver_from_env_or_none
 
     return job_events_queue_receiver_from_env_or_none()
 
@@ -116,8 +116,6 @@ def get_push_subscriptions_store(request: Request):
     store = getattr(request.app.state, "push_subscriptions_store", None)
     if store is not None:
         return store
-    from stereo_spot_aws_adapters.push_subscriptions import (
-        push_subscriptions_store_from_env_or_none,
-    )
+    from stereo_spot_adapters.env_config import push_subscriptions_store_from_env_or_none
 
     return push_subscriptions_store_from_env_or_none()

@@ -7,7 +7,7 @@ inference queue (invoke SageMaker/HTTP/stub) and output-events queue
 import logging
 import threading
 
-from stereo_spot_aws_adapters.env_config import (
+from stereo_spot_adapters.env_config import (
     inference_invocations_store_from_env,
     job_store_from_env,
     object_storage_from_env,
