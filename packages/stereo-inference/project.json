@@ -34,36 +34,28 @@
     "inference-build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "PLATFORM=${PLATFORM:-aws} python scripts/inference_build.py",
+        "command": "python scripts/inference_build.py",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {
         "no-cache": {
-          "command": "PLATFORM=${PLATFORM:-aws} python scripts/inference_build.py --no-cache",
+          "command": "python scripts/inference_build.py --no-cache",
           "cwd": "{workspaceRoot}"
         }
       },
       "dependsOn": [
         "aws-infra:terraform-output"
-      ],
-      "inputs": [
-        "default",
-        "{workspaceRoot}/packages/aws-infra/.env"
       ]
     },
     "inference-redeploy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "PLATFORM=${PLATFORM:-aws} python scripts/inference_redeploy.py",
+        "command": "python scripts/inference_redeploy.py",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
       "dependsOn": [
         "aws-infra:terraform-output"
-      ],
-      "inputs": [
-        "default",
-        "{workspaceRoot}/packages/aws-infra/.env"
       ]
     }
   }
