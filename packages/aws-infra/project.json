@@ -44,17 +44,6 @@
       "cache": false,
       "dependsOn": ["aws-infra:terraform-output"],
       "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
-    },
-    "update-ytdlp-cookies": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": ". packages/aws-infra/.env && aws secretsmanager put-secret-value --secret-id \"$YTDLP_COOKIES_SECRET_ARN\" --secret-string \"$(jq -n --rawfile c \"$YTDLP_COOKIES_FILE\" '{cookies_base64: ($c | @base64)}')\"",
-        "cwd": "{workspaceRoot}"
-      },
-      "configurations": {},
-      "cache": false,
-      "dependsOn": ["aws-infra:terraform-output"],
-      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
     }
   }
 }

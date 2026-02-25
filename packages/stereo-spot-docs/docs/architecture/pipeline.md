@@ -89,7 +89,7 @@ Cleanup (S3 and DynamoDB) is asynchronous; the user sees "Job removed. Cleanup i
 
 ## Create job from URL
 
-On AWS, **YouTube URL ingest** is optional and controlled by the Terraform variable **`enable_youtube_ingest`**. When it is disabled, the ingest queue and related resources are not created; the web UI shows only the upload option and the media-worker does not run the ingest loop. The following describes behavior when URL ingest is enabled.
+On AWS, **YouTube URL ingest** is optional and driven by file presence at the project root (like ALB HTTPS): when **`ytdlp_cookies.txt`** exists, Terraform creates the ingest queue and yt-dlp cookies secret; when the file is absent, the ingest queue and related resources are not created, the web UI shows only the upload option, and the media-worker does not run the ingest loop. The following describes behavior when URL ingest is enabled.
 
 Users can provide source video via **paste a video URL** (e.g. YouTube) instead of uploading a file:
 

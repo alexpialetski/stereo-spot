@@ -97,7 +97,7 @@ resource "aws_iam_role_policy" "web_ui_task" {
           Resource = [aws_secretsmanager_secret.vapid.arn]
         }
       ],
-      var.enable_youtube_ingest ? [{
+      local.enable_youtube_ingest ? [{
         Effect   = "Allow"
         Action   = ["sqs:SendMessage"]
         Resource = [aws_sqs_queue.ingest[0].arn]
@@ -135,11 +135,11 @@ resource "aws_iam_role_policy" "media_worker_task" {
           Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
           Resource = concat(
             [aws_sqs_queue.chunking.arn, aws_sqs_queue.reassembly.arn, aws_sqs_queue.deletion.arn],
-            var.enable_youtube_ingest ? [aws_sqs_queue.ingest[0].arn] : []
+            local.enable_youtube_ingest ? [aws_sqs_queue.ingest[0].arn] : []
           )
         }
       ],
-      var.enable_youtube_ingest ? [{
+      local.enable_youtube_ingest ? [{
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = [aws_secretsmanager_secret.ytdlp_cookies[0].arn]
@@ -373,7 +373,7 @@ locals {
       { name = "VAPID_SECRET_ARN", value = aws_secretsmanager_secret.vapid.arn },
       { name = "WEB_UI_URL", value = local.alb_url }
     ],
-    var.enable_youtube_ingest ? [{ name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url }] : []
+    local.enable_youtube_ingest ? [{ name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url }] : []
   )
   media_worker_env = concat(
     local.ecs_env_common,
@@ -387,7 +387,7 @@ locals {
       { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
       { name = "DELETION_QUEUE_URL", value = aws_sqs_queue.deletion.url }
     ],
-    var.enable_youtube_ingest ? [
+    local.enable_youtube_ingest ? [
       { name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url },
       { name = "YTDLP_COOKIES_SECRET_ARN", value = aws_secretsmanager_secret.ytdlp_cookies[0].arn }
     ] : []

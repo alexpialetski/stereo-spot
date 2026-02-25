@@ -30,7 +30,7 @@ resource "aws_sqs_queue" "deletion_dlq" {
 }
 
 resource "aws_sqs_queue" "ingest_dlq" {
-  count = var.enable_youtube_ingest ? 1 : 0
+  count = local.enable_youtube_ingest ? 1 : 0
 
   name = "${local.name}-ingest-dlq"
 
@@ -105,7 +105,7 @@ resource "aws_sqs_queue" "deletion" {
 }
 
 resource "aws_sqs_queue" "ingest" {
-  count = var.enable_youtube_ingest ? 1 : 0
+  count = local.enable_youtube_ingest ? 1 : 0
 
   name                       = "${local.name}-ingest"
   visibility_timeout_seconds = 1200 # 20 min for URL download
@@ -201,7 +201,7 @@ resource "aws_sqs_queue_policy" "output_events_allow_s3" {
 
 # Allow web-ui task role to send to ingest queue (URL / YouTube jobs)
 resource "aws_sqs_queue_policy" "ingest_allow_web_ui" {
-  count = var.enable_youtube_ingest ? 1 : 0
+  count = local.enable_youtube_ingest ? 1 : 0
 
   queue_url = aws_sqs_queue.ingest[0].id
 

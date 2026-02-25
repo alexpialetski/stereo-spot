@@ -9,8 +9,8 @@
 
 {% if upload_url %}
 {% if ingest_from_url_available %}
-<div class="source-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-  <article id="source-upload-block">
+<div class="source-options" style="display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1.5rem;">
+  <article id="source-upload-block" style="flex: 1 1 300px; min-width: 0;">
     <h2>Upload your video</h2>
     <div id="upload-area" data-upload-url="{{ upload_url }}" data-job-id="{{ job.job_id }}"{% if show_eta %} data-eta-seconds-per-mb="{{ eta_seconds_per_mb }}" data-eta-cloud="aws"{% endif %}>
       <label for="source-file">Choose an MP4 file:</label>
@@ -23,7 +23,7 @@
     </div>
     <p>After uploading, the chunking worker will process the file automatically. Progress will update below.</p>
   </article>
-  <article id="source-url-block">
+  <article id="source-url-block" style="flex: 1 1 300px; min-width: 0;">
     <h2>Or paste a video URL</h2>
     <p>Enter a YouTube URL and we will fetch it and run the conversion.</p>
     <div id="url-submit-area">

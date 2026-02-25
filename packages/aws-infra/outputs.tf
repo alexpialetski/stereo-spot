@@ -44,8 +44,8 @@ output "deletion_queue_url" {
 }
 
 output "ingest_queue_url" {
-  description = "URL of the ingest SQS queue (URL / YouTube source jobs); null when enable_youtube_ingest=false"
-  value       = var.enable_youtube_ingest ? aws_sqs_queue.ingest[0].url : null
+  description = "URL of the ingest SQS queue (URL / YouTube source jobs); null when ytdlp_cookies.txt not at project root"
+  value       = local.enable_youtube_ingest ? aws_sqs_queue.ingest[0].url : null
 }
 
 output "job_events_queue_url" {
@@ -160,8 +160,8 @@ output "hf_token_secret_arn" {
 }
 
 output "ytdlp_cookies_secret_arn" {
-  description = "ARN of the Secrets Manager secret for yt-dlp cookies (set via update-ytdlp-cookies); null when enable_youtube_ingest=false"
-  value       = var.enable_youtube_ingest ? aws_secretsmanager_secret.ytdlp_cookies[0].arn : null
+  description = "ARN of the Secrets Manager secret for yt-dlp cookies (set via AWS CLI); null when ytdlp_cookies.txt not at project root"
+  value       = local.enable_youtube_ingest ? aws_secretsmanager_secret.ytdlp_cookies[0].arn : null
 }
 
 output "vapid_secret_arn" {

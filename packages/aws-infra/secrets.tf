@@ -19,9 +19,9 @@ resource "aws_secretsmanager_secret_version" "hf_token_placeholder" {
   })
 }
 
-# yt-dlp cookies for YouTube (Netscape format). Only when enable_youtube_ingest. Set value via: nx run aws-infra:update-ytdlp-cookies
+# yt-dlp cookies for YouTube (Netscape format). Only when ytdlp_cookies.txt exists at project root. Set value via AWS CLI (see docs).
 resource "aws_secretsmanager_secret" "ytdlp_cookies" {
-  count = var.enable_youtube_ingest ? 1 : 0
+  count = local.enable_youtube_ingest ? 1 : 0
 
   name        = "${local.name}/ytdlp-cookies"
   description = "yt-dlp cookies file (Netscape format) for YouTube; used by media-worker ingest"
@@ -29,7 +29,7 @@ resource "aws_secretsmanager_secret" "ytdlp_cookies" {
 }
 
 resource "aws_secretsmanager_secret_version" "ytdlp_cookies_placeholder" {
-  count = var.enable_youtube_ingest ? 1 : 0
+  count = local.enable_youtube_ingest ? 1 : 0
 
   secret_id     = aws_secretsmanager_secret.ytdlp_cookies[0].id
   secret_string = jsonencode({ cookies = "REPLACE_ME" })

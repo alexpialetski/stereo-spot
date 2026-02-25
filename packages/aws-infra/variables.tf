@@ -16,11 +16,7 @@ variable "dlq_max_receive_count" {
   default     = 5
 }
 
-variable "enable_youtube_ingest" {
-  description = "When true, create ingest queue and yt-dlp cookies secret so users can paste YouTube URLs. When false, only file upload is available; no ingest queue or cookies secret."
-  type        = bool
-  default     = true
-}
+# YouTube ingest is enabled when ytdlp_cookies.txt exists at project root (see acm.tf locals).
 
 # --- ECS compute ---
 

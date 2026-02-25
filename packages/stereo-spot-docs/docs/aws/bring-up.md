@@ -20,7 +20,7 @@ The **`packages/aws-infra/.env`** file holds Terraform outputs (bucket names, qu
 - **How you get it:** Run **`nx run aws-infra:terraform-output`** after Terraform has been applied. This target reads the current Terraform state and writes variable assignments to that file.
 - **When to use it:** Deploy targets and scripts load it automatically; you do not need to source it in your shell.
 - **Optional (SageMaker):** You may add **`HF_TOKEN`** (your [Hugging Face token](https://huggingface.co/settings/tokens)) to this file so the inference container can download the model. Use the **`update-hf-token`** target to write it to AWS Secrets Manager (see step 4 below).
-- **Optional (when YouTube URL ingest is enabled):** To avoid "Sign in to confirm you're not a bot" when fetching YouTube URLs, add **`YTDLP_COOKIES_FILE`** (path to a Netscape-format cookies file, e.g. `ytdlp_cookies.txt` at workspace root) and run **`update-ytdlp-cookies`** to push it to Secrets Manager. See [Optional: YouTube URL ingest](#optional-youtube-url-ingest) and [Optional: yt-dlp cookies](#optional-yt-dlp-cookies) below.
+- **Optional (YouTube URL ingest):** To enable "paste a video URL" (YouTube), place **`ytdlp_cookies.txt`** (Netscape-format cookies file) at the **project root**, then apply again and push the file to Secrets Manager via AWS CLI. See [Optional: YouTube URL ingest](#optional-youtube-url-ingest) and [Optional: yt-dlp cookies](#optional-yt-dlp-cookies) below.
 
 If you change infra (e.g. run `terraform-apply` again), re-run `nx run aws-infra:terraform-output` to refresh it.
 
@@ -103,39 +103,32 @@ If you use **HTTP inference** instead of SageMaker, skip this step and run your 
 
 ### Optional: YouTube URL ingest
 
-**YouTube URL ingest** (paste a video URL on the job page instead of uploading a file) is **optional** and controlled by the Terraform variable **`enable_youtube_ingest`** (default: `true`).
+**YouTube URL ingest** (paste a video URL on the job page instead of uploading a file) is **optional** and driven by a file at the project root, like ALB HTTPS.
 
-- **When `enable_youtube_ingest = true`** (default): Terraform creates the ingest SQS queue, the yt-dlp cookies secret (placeholder), and passes `INGEST_QUEUE_URL` to web-ui and media-worker. The web UI shows "Or paste a video URL"; the media-worker runs the ingest loop. Prerequisites for a good experience: see [Optional: yt-dlp cookies](#optional-yt-dlp-cookies) below (cookies reduce "Sign in to confirm you're not a bot" from YouTube).
-- **When `enable_youtube_ingest = false`**: No ingest queue or cookies secret is created; `INGEST_QUEUE_URL` is not set. The web UI shows only the upload option; the media-worker skips the ingest loop. Use this if you only want file-upload jobs (e.g. to avoid YouTube rate limits or to simplify operations).
+- **When `ytdlp_cookies.txt` exists at the project root:** Terraform creates the ingest SQS queue, the yt-dlp cookies secret (placeholder), and passes `INGEST_QUEUE_URL` to web-ui and media-worker. The web UI shows "Or paste a video URL"; the media-worker runs the ingest loop. After apply, push the cookie file to Secrets Manager (see [Optional: yt-dlp cookies](#optional-yt-dlp-cookies) below).
+- **When the file is absent:** No ingest queue or cookies secret is created; `INGEST_QUEUE_URL` is not set. The web UI shows only the upload option; the media-worker skips the ingest loop.
 
-To disable the feature, set in `packages/aws-infra/.env` or Terraform variables (e.g. `tfvars`):
-
-```bash
-enable_youtube_ingest=false
-```
-
-Then run `terraform-apply` and `terraform-output`; re-deploy web-ui and media-worker so they pick up the new env (no `INGEST_QUEUE_URL`).
+To enable the feature: place **`ytdlp_cookies.txt`** at the project root (exact name), then run `terraform-apply` and `terraform-output`; push cookies to Secrets Manager; re-deploy web-ui and media-worker. To disable: remove the file, apply and output, then re-deploy.
 
 ### Optional: yt-dlp cookies
 
-When YouTube URL ingest is enabled and users paste a YouTube URL, the media-worker downloads the video with yt-dlp. Some videos trigger YouTube’s "Sign in to confirm you're not a bot" when no cookies are sent. To fix that, use a **dedicated** Google/YouTube account (not your personal one), export its cookies, and store them in Secrets Manager.
+When YouTube URL ingest is enabled (because **`ytdlp_cookies.txt`** was at the project root at apply time) and users paste a YouTube URL, the media-worker downloads the video with yt-dlp. Some videos trigger YouTube’s "Sign in to confirm you're not a bot" when no cookies are sent. To fix that, use a **dedicated** Google/YouTube account (not your personal one), export its cookies, and store them in Secrets Manager.
 
 1. **Export cookies (Netscape format)**  
    - In Chrome: install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc). Log in to YouTube with the dedicated account, open the extension, export cookies for the current site in Netscape / cookies.txt format.  
-   - Save the file (e.g. as `ytdlp_cookies.txt` at the workspace root). Do **not** commit it (`ytdlp_cookies.txt` is in `.gitignore`).
+   - Save the file as **`ytdlp_cookies.txt`** at the **project root** (exact name). Do **not** commit it (`ytdlp_cookies.txt` is in `.gitignore`).
 
-2. **Add to `packages/aws-infra/.env`**  
-   - Set `YTDLP_COOKIES_FILE` to the path to that file (e.g. `ytdlp_cookies.txt` if at workspace root; the target runs with `cwd` at workspace root).  
-   - After `terraform-output`, the same `.env` will contain `YTDLP_COOKIES_SECRET_ARN`.
+2. **Apply and output**  
+   - Run `terraform-apply` (so the ytdlp-cookies secret exists), then `terraform-output`. The file **`packages/aws-infra/.env`** will contain **`YTDLP_COOKIES_SECRET_ARN`**.
 
 3. **Push to Secrets Manager**  
-   - Run:  
+   - From the workspace root, with `packages/aws-infra/.env` loaded, run (requires **jq** on your PATH):  
      ```bash
-     nx run aws-infra:update-ytdlp-cookies
+     . packages/aws-infra/.env && aws secretsmanager put-secret-value --secret-id "$YTDLP_COOKIES_SECRET_ARN" --secret-string "$(jq -n --rawfile c ytdlp_cookies.txt '{cookies_base64: ($c | @base64)}')"
      ```  
-   - Requires **jq** on your PATH. This reads the file and stores it in the secret at `YTDLP_COOKIES_SECRET_ARN`. The media-worker fetches the secret at startup and passes the cookies to yt-dlp.
+   The media-worker fetches the secret at startup and passes the cookies to yt-dlp.
 
-Cookies expire; re-export and run `update-ytdlp-cookies` periodically if downloads start failing again.
+Cookies expire; re-export and re-run the AWS CLI command above periodically if downloads start failing again.
 
 ## Verify
 
