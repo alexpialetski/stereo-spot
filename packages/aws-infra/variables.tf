@@ -16,7 +16,19 @@ variable "dlq_max_receive_count" {
   default     = 5
 }
 
-# YouTube ingest is enabled when ytdlp_cookies.txt exists at project root (see acm.tf locals).
+# Feature flags: set via root .env (TF_VAR_*) or CLI. Scripts at repo root can update root .env.
+
+variable "enable_youtube_ingest" {
+  description = "Enable YouTube URL ingest (ingest queue and ytdlp-cookies secret). Secret value is set out-of-band via root script."
+  type        = bool
+  default     = false
+}
+
+variable "load_balancer_certificate_id" {
+  description = "When set, enable load balancer HTTPS listener and HTTP→HTTPS redirect. On AWS this is the ACM certificate ARN. Set by root update-alb-certificates script. Empty = HTTP only."
+  type        = string
+  default     = ""
+}
 
 # --- ECS compute ---
 

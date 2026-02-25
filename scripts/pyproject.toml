@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stereo-spot-scripts"
+version = "0.1.0"
+description = "Root-level scripts for infra secrets and .env (HF token, ytdlp cookies, ALB certs)"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv>=1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["stereo_spot_scripts*"]

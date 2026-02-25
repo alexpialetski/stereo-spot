@@ -19,7 +19,7 @@ resource "aws_secretsmanager_secret_version" "hf_token_placeholder" {
   })
 }
 
-# yt-dlp cookies for YouTube (Netscape format). Only when ytdlp_cookies.txt exists at project root. Set value via AWS CLI (see docs).
+# yt-dlp cookies for YouTube (Netscape format). Only when enable_youtube_ingest is true. Set value via root update-ytdlp-cookies target (see docs).
 resource "aws_secretsmanager_secret" "ytdlp_cookies" {
   count = local.enable_youtube_ingest ? 1 : 0
 
