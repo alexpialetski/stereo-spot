@@ -75,10 +75,10 @@ aws sqs delete-message --queue-url <DLQ_URL> --receipt-handle <receipt_handle>
 
 ## 4. SageMaker endpoint update
 
-When `inference_backend=sagemaker`: build and push the image (`nx run stereo-inference:sagemaker-build`), then update the endpoint:
+When `inference_backend=sagemaker`: build and push the image (`nx run stereo-inference:inference-build`), then update the endpoint:
 
 ```bash
-nx run stereo-inference:sagemaker-deploy
+nx run stereo-inference:inference-redeploy
 ```
 
 Or manually: create/update endpoint config with new image, then `aws sagemaker update-endpoint --endpoint-name <name> --endpoint-config-name <new_config_name>`.
@@ -100,7 +100,7 @@ If conversion is still too slow, check CloudWatch metrics for the endpoint (e.g.
 
 **iw3 fails with "Cannot load libnvidia-encode.so.1"** — Library not found. The image installs `libnvidia-encode-470` and sets `LD_LIBRARY_PATH`; if it still fails, use **`libx264`**.
 
-**iw3 fails with "Driver does not support the required nvenc API version. Required: 13.0 Found: 11.1"** — The loaded libavcodec was built for NVENC 13.0 (e.g. from a PyAV **binary wheel** or an old image). The inference image is intended to build FFmpeg 5.1 from source with **nv-codec-headers n11.1.5.2** (API 11.1) and PyAV **from source** (`--no-binary av`) so **h264_nvenc** works on ml.g4dn (driver 470). Fix: **rebuild the image without cache** so the av layer is built from source against `/usr/local` FFmpeg, then **redeploy** the endpoint (e.g. `nx run stereo-inference:sagemaker-build` with cache disabled or clear CodeBuild cache, then `nx run stereo-inference:sagemaker-deploy`). If using CodeBuild, trigger a build with cache cleared so the `pip install --no-binary av` layer is not reused from a previous run that may have used a wheel.
+**iw3 fails with "Driver does not support the required nvenc API version. Required: 13.0 Found: 11.1"** — The loaded libavcodec was built for NVENC 13.0 (e.g. from a PyAV **binary wheel** or an old image). The inference image is intended to build FFmpeg 5.1 from source with **nv-codec-headers n11.1.5.2** (API 11.1) and PyAV **from source** (`--no-binary av`) so **h264_nvenc** works on ml.g4dn (driver 470). Fix: **rebuild the image without cache** so the av layer is built from source against `/usr/local` FFmpeg, then **redeploy** the endpoint (e.g. `nx run stereo-inference:inference-build --configuration=no-cache`, then `nx run stereo-inference:inference-redeploy`). If using CodeBuild, trigger a build with cache cleared so the `pip install --no-binary av` layer is not reused from a previous run that may have used a wheel.
 
 ---
 

@@ -80,8 +80,9 @@ resource "aws_sagemaker_model" "inference" {
     model_data_url = null
     environment = merge(
       {
-        HF_TOKEN_ARN    = aws_secretsmanager_secret.hf_token.arn
-        IW3_VIDEO_CODEC = var.sagemaker_iw3_video_codec
+        PLATFORM         = "aws"
+        HF_TOKEN_ARN     = aws_secretsmanager_secret.hf_token.arn
+        IW3_VIDEO_CODEC  = var.sagemaker_iw3_video_codec
       },
       var.sagemaker_iw3_video_codec == "h264_nvenc" ? { NVIDIA_DRIVER_CAPABILITIES = "all" } : {}
     )

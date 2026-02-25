@@ -61,7 +61,7 @@ ENV NUNIF_HOME=/opt/nunif_data
 RUN mkdir -p "$NUNIF_HOME" && python -m iw3.download_models
 
 WORKDIR /opt/ml/code
-# Shared types and platform adapters so storage.py can use object_storage_from_env()
+# Shared types and platform adapters (storage + conversion metrics from env)
 COPY packages/shared-types /shared-types
 RUN . /opt/venv/bin/activate && pip install --no-cache-dir -e /shared-types
 COPY packages/aws-adapters /aws-adapters

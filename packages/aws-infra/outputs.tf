@@ -128,7 +128,7 @@ output "sagemaker_endpoint_name" {
 }
 
 output "sagemaker_endpoint_role_arn" {
-  description = "IAM role ARN for SageMaker endpoint (for stereo-inference:sagemaker-deploy)"
+  description = "IAM role ARN for SageMaker endpoint (for stereo-inference:inference-redeploy)"
   value       = var.inference_backend == "sagemaker" ? aws_iam_role.sagemaker_endpoint[0].arn : null
 }
 
@@ -143,7 +143,7 @@ output "sagemaker_instance_count" {
 }
 
 output "sagemaker_iw3_video_codec" {
-  description = "iw3 video codec for SageMaker model (for stereo-inference:sagemaker-deploy)"
+  description = "iw3 video codec for SageMaker model (for stereo-inference:inference-redeploy)"
   value       = var.sagemaker_iw3_video_codec
 }
 
@@ -160,8 +160,8 @@ output "hf_token_secret_arn" {
 }
 
 output "ytdlp_cookies_secret_arn" {
-  description = "ARN of the Secrets Manager secret for yt-dlp cookies (set via root update-ytdlp-cookies target); null when enable_youtube_ingest is false"
-  value       = local.enable_youtube_ingest ? aws_secretsmanager_secret.ytdlp_cookies[0].arn : null
+  description = "ARN of the Secrets Manager secret for yt-dlp cookies (set via root update-ytdlp-cookies target)"
+  value       = aws_secretsmanager_secret.ytdlp_cookies.arn
 }
 
 output "vapid_secret_arn" {
@@ -172,6 +172,6 @@ output "vapid_secret_arn" {
 # --- CodeBuild ---
 
 output "codebuild_project_name" {
-  description = "Name of the CodeBuild project for stereo-inference (for nx run stereo-inference:sagemaker-build)"
+  description = "Name of the CodeBuild project for stereo-inference (for nx run stereo-inference:inference-build)"
   value       = aws_codebuild_project.inference.name
 }

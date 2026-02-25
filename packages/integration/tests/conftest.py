@@ -16,12 +16,13 @@ from moto import mock_aws
 
 @pytest.fixture(scope="function")
 def aws_credentials() -> None:
-    """Set fake AWS credentials for moto."""
+    """Set fake AWS credentials for moto and platform for adapters facade."""
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
     os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+    os.environ["PLATFORM"] = "aws"
 
 
 @pytest.fixture

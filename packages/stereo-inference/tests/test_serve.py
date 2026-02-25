@@ -71,11 +71,12 @@ def test_invocations_handler_accepts_input_uri_output_uri() -> None:
     with patch("storage.download", side_effect=_write_one_byte):
         with patch("storage.upload"):
             with patch("serve.run_iw3_pipeline"):
-                with patch("metrics.emit_conversion_metrics") as mock_metrics:
+                with patch("serve._get_metrics_emitter") as mock_get_emitter:
+                    mock_emitter = mock_get_emitter.return_value
                     resp, status = serve.invocations_handler(body)
     assert status == 200
     assert json.loads(resp) == {"status": "ok"}
-    mock_metrics.assert_called_once()
+    mock_emitter.emit_conversion_metrics.assert_called_once()
 
 
 def test_invocations_handler_success_with_s3_uris() -> None:
@@ -86,7 +87,8 @@ def test_invocations_handler_success_with_s3_uris() -> None:
     with patch("storage.download", side_effect=_write_one_byte):
         with patch("storage.upload"):
             with patch("serve.run_iw3_pipeline"):
-                with patch("metrics.emit_conversion_metrics"):
+                with patch("serve._get_metrics_emitter") as mock_get_emitter:
+                    mock_get_emitter.return_value.emit_conversion_metrics = lambda *a, **k: None
                     resp, status = serve.invocations_handler(body)
     assert status == 200
     assert json.loads(resp) == {"status": "ok"}

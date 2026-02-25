@@ -30,6 +30,17 @@ logger = logging.getLogger(__name__)
 
 NUNIF_ROOT = "/opt/nunif"
 
+_metrics_emitter = None
+
+
+def _get_metrics_emitter():
+    """Return ConversionMetricsEmitter from adapters (cached per process)."""
+    global _metrics_emitter
+    if _metrics_emitter is None:
+        from stereo_spot_adapters.env_config import conversion_metrics_emitter_from_env
+        _metrics_emitter = conversion_metrics_emitter_from_env()
+    return _metrics_emitter
+
 
 def _check_nvenc_available() -> None:
     """
@@ -204,8 +215,7 @@ def invocations_handler(body: bytes) -> tuple[str, int]:
             segment_index or "?",
             duration_seconds,
         )
-        import metrics
-        metrics.emit_conversion_metrics(duration_seconds, size_bytes)
+        _get_metrics_emitter().emit_conversion_metrics(duration_seconds, size_bytes)
         return json.dumps({"status": "ok"}), 200
     except Exception as e:
         logger.exception("job_id=%s segment_index=%s invocations failed: %s", job_id or "?", segment_index or "?", e)

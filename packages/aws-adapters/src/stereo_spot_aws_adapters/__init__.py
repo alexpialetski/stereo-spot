@@ -1,5 +1,6 @@
 """AWS implementations of stereo-spot cloud interfaces."""
 
+from .conversion_metrics import CloudWatchConversionMetricsEmitter
 from .dynamodb_stores import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
@@ -14,6 +15,7 @@ from .sqs_queues import SQSQueueReceiver, SQSQueueSender
 
 __all__ = [
     "AWSOperatorLinksProvider",
+    "CloudWatchConversionMetricsEmitter",
     "DynamoDBJobStore",
     "DynamoSegmentCompletionStore",
     "InferenceInvocationsStore",

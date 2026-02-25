@@ -1,7 +1,7 @@
 """
 Minimal SageMaker container stub: GET /ping and POST /invocations on port 8080.
 Used so the SageMaker endpoint can reach InService on first Terraform apply;
-replace with the real inference image via sagemaker-build and sagemaker-deploy.
+replace with the real inference image via inference-build and inference-redeploy.
 """
 from http.server import BaseHTTPRequestHandler, HTTPServer
 

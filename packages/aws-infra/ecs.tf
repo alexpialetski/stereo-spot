@@ -142,7 +142,7 @@ resource "aws_iam_role_policy" "media_worker_task" {
       local.enable_youtube_ingest ? [{
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [aws_secretsmanager_secret.ytdlp_cookies[0].arn]
+        Resource = [aws_secretsmanager_secret.ytdlp_cookies.arn]
       }] : []
     )
   })
@@ -326,8 +326,11 @@ resource "aws_lb_listener" "web_ui_http" {
     content {
       type = "redirect"
       redirect {
+        host        = "#{host}"
+        path        = "/#{path}"
         port        = "443"
         protocol    = "HTTPS"
+        query       = "#{query}"
         status_code = "HTTP_301"
       }
     }
@@ -355,7 +358,8 @@ locals {
   media_worker_image = "${aws_ecr_repository.media_worker.repository_url}:${var.ecs_image_tag}"
   video_worker_image = "${aws_ecr_repository.video_worker.repository_url}:${var.ecs_image_tag}"
   ecs_env_common = [
-    { name = "AWS_REGION", value = local.region }
+    { name = "AWS_REGION", value = local.region },
+    { name = "PLATFORM", value = "aws" }
   ]
   web_ui_env = concat(
     local.ecs_env_common,
@@ -389,7 +393,7 @@ locals {
     ],
     local.enable_youtube_ingest ? [
       { name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url },
-      { name = "YTDLP_COOKIES_SECRET_ARN", value = aws_secretsmanager_secret.ytdlp_cookies[0].arn }
+      { name = "YTDLP_COOKIES_SECRET_ARN", value = aws_secretsmanager_secret.ytdlp_cookies.arn }
     ] : []
   )
   inference_http_url = var.inference_backend == "http" ? var.inference_http_url : ""

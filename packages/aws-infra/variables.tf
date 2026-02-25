@@ -116,7 +116,7 @@ variable "sagemaker_instance_type" {
 variable "sagemaker_instance_count" {
   description = "Number of instances for the SageMaker endpoint"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "sagemaker_iw3_video_codec" {

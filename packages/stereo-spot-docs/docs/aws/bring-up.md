@@ -31,9 +31,9 @@ flowchart TB
   A[Apply aws-infra-setup] --> B[Apply aws-infra]
   B -->   C[terraform-output]
   C --> E[run-many deploy: web-ui, media-worker, video-worker]
-  E --> F[sagemaker-build]
+  E --> F[inference-build]
   F --> G[Wait for CodeBuild]
-  G --> H[sagemaker-deploy]
+  G --> H[inference-redeploy]
 ```
 
 Do these steps in order from the **workspace root**.
@@ -88,7 +88,7 @@ Then:
 1. **Trigger the build** (CodeBuild builds and pushes the image to ECR):
 
    ```bash
-   nx run stereo-inference:sagemaker-build
+   nx run stereo-inference:inference-build
    ```
 
 2. **Wait** for the CodeBuild job to finish (check the AWS CodeBuild console or pipeline).
@@ -96,7 +96,7 @@ Then:
 3. **Update the SageMaker endpoint** to use the new image:
 
    ```bash
-   nx run stereo-inference:sagemaker-deploy
+   nx run stereo-inference:inference-redeploy
    ```
 
 If you use **HTTP inference** instead of SageMaker, skip this step and run your own inference server; point the video-worker at it via `INFERENCE_HTTP_URL` (set in Terraform / `.env`).
@@ -105,8 +105,8 @@ If you use **HTTP inference** instead of SageMaker, skip this step and run your 
 
 **YouTube URL ingest** (paste a video URL on the job page instead of uploading a file) is **optional** and driven by the Terraform variable **`TF_VAR_enable_youtube_ingest`** (set in the **root** `.env`).
 
-- **When `TF_VAR_enable_youtube_ingest=true`:** Terraform creates the ingest SQS queue, the yt-dlp cookies secret (placeholder), and passes `INGEST_QUEUE_URL` to web-ui and media-worker. The web UI shows "Or paste a video URL"; the media-worker runs the ingest loop. Push the cookie file to Secrets Manager with the root **`update-ytdlp-cookies`** target (see [Optional: yt-dlp cookies](#optional-yt-dlp-cookies) below).
-- **When the variable is false or unset:** No ingest queue or cookies secret is created; `INGEST_QUEUE_URL` is not set. The web UI shows only the upload option; the media-worker skips the ingest loop.
+- **When `TF_VAR_enable_youtube_ingest=true`:** Terraform creates the ingest SQS queue and passes `INGEST_QUEUE_URL` and `YTDLP_COOKIES_SECRET_ARN` to web-ui and media-worker. The web UI shows "Or paste a video URL"; the media-worker runs the ingest loop. Push the cookie file to Secrets Manager with the root **`update-ytdlp-cookies`** target (see [Optional: yt-dlp cookies](#optional-yt-dlp-cookies) below).
+- **When the variable is false or unset:** No ingest queue is created; `INGEST_QUEUE_URL` is not set for media-worker. The web UI shows only the upload option; the media-worker skips the ingest loop. The yt-dlp cookies secret is still created by default (like the HF token), so you can run **update-ytdlp-cookies** anytime; media-worker only uses it when ingest is enabled.
 
 To enable the feature: set **`TF_VAR_enable_youtube_ingest=true`** in the **root** `.env`, run **terraform-apply** and **terraform-output**, then run **`PLATFORM=aws nx run stereo-spot:update-ytdlp-cookies`** (optionally with `--cookies-file <path>`). The script also sets **`TF_VAR_enable_youtube_ingest=true`** in root `.env` after pushing cookies. Re-deploy web-ui and media-worker. To disable: set the variable to `false`, apply and output, then re-deploy.
 
@@ -118,8 +118,8 @@ When YouTube URL ingest is enabled (**`TF_VAR_enable_youtube_ingest=true`**) and
    - In Chrome: install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc). Log in to YouTube with the dedicated account, open the extension, export cookies for the current site in Netscape / cookies.txt format.  
    - Save the file as **`ytdlp_cookies.txt`** at the **project root** (default; you can pass a different path with `--cookies-file`). Do **not** commit it (`ytdlp_cookies.txt` is in `.gitignore`).
 
-2. **Enable feature and apply**  
-   - Set **`TF_VAR_enable_youtube_ingest=true`** in the **root** `.env`, run **terraform-apply** (so the ytdlp-cookies secret exists), then **terraform-output**. The file **`packages/aws-infra/.env`** will contain **`YTDLP_COOKIES_SECRET_ARN`**.
+2. **Apply and output**  
+   - Run **terraform-apply** and **terraform-output**. The ytdlp-cookies secret is created by default (like the HF token). The file **`packages/aws-infra/.env`** will contain **`YTDLP_COOKIES_SECRET_ARN`**.
 
 3. **Push to Secrets Manager**  
    - From the workspace root run:  

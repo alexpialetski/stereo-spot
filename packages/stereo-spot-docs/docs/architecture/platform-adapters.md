@@ -17,6 +17,8 @@ The **`adapters`** package (stereo-spot-adapters) is the **single composition ro
 
 Apps and workers do **not** read `PLATFORM` themselves. They call `*_from_env()` (e.g. `object_storage_from_env()`, `job_store_from_env()`) from the **adapters** package; the facade selects the implementation inside those functions.
 
+**Where PLATFORM is set:** So the same image can run on AWS or GCP, we set `PLATFORM` explicitly per deployment. On AWS: ECS task definitions (web-ui, media-worker, video-worker) and the SageMaker inference model include `PLATFORM=aws`. For local runs and Nx commands, set `PLATFORM=aws` in the root `.env` (it is loaded for every Nx command). On GCP, set `PLATFORM=gcp` in the equivalent runtime environment.
+
 ## Architecture
 
 ```mermaid

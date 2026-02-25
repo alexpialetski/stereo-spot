@@ -177,3 +177,37 @@ class OperatorLinksProvider(Protocol):
     def get_cost_dashboard_url(self) -> str | None:
         """Return a deep link to the cost/billing dashboard (e.g. filtered by app), or None."""
         ...
+
+
+@runtime_checkable
+class ConversionMetricsEmitter(Protocol):
+    """Emits conversion metrics (duration, size) to a cloud provider (e.g. CloudWatch).
+    No-op implementation for disabled or unsupported providers."""
+
+    def emit_conversion_metrics(self, duration_seconds: float, size_bytes: int) -> None:
+        """Emit segment conversion duration and size metrics. May be a no-op."""
+        ...
+
+
+class NoOpConversionMetricsEmitter:
+    """ConversionMetricsEmitter that does nothing.
+    Use when METRICS_PROVIDER is none or unsupported."""
+
+    def emit_conversion_metrics(self, duration_seconds: float, size_bytes: int) -> None:
+        pass
+
+
+@runtime_checkable
+class HfTokenProvider(Protocol):
+    """Provides Hugging Face token (e.g. from cloud secret store). No-op returns None."""
+
+    def get_hf_token(self) -> str | None:
+        """Return HF token or None if not configured or unavailable."""
+        ...
+
+
+class NoOpHfTokenProvider:
+    """HfTokenProvider that always returns None. Use when not on a supported cloud."""
+
+    def get_hf_token(self) -> str | None:
+        return None

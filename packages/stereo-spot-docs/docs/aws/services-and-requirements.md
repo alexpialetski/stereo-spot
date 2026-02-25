@@ -14,7 +14,7 @@ How each generic requirement maps to an AWS service in the current implementatio
 | **Job / segment state** | **DynamoDB** | Jobs table (PK job_id; GSIs for list completed / in-progress). SegmentCompletions (PK job_id, SK segment_index). ReassemblyTriggered (PK job_id) for trigger idempotency and reassembly lock. |
 | **Inference** | **SageMaker** or **HTTP** | Default: SageMaker async endpoint (GPU, e.g. ml.g4dn) for iw3. Alternative: HTTP URL (your own inference server). |
 | **Container registry** | **ECR** | One repo per image: web-ui, media-worker, video-worker, stereo-inference. ECS and SageMaker pull from ECR. |
-| **Inference image build** | **CodeBuild** | stereo-inference image: CodeBuild clones repo, docker build, push to ECR. Triggered by `nx run stereo-inference:sagemaker-build`. |
+| **Inference image build** | **CodeBuild** | stereo-inference image: CodeBuild clones repo, docker build, push to ECR. Triggered by `nx run stereo-inference:inference-build`. |
 | **Load balancing** | **ALB** | Web-ui ECS service behind ALB; HTTPS to the dashboard and API. |
 
 All workloads use **IAM task roles**; no long-lived credentials in config.

@@ -20,7 +20,7 @@ def _run_aws(cookies_data: bytes) -> None:
     infra = load_env(infra_env_path("aws"))
     secret_arn = infra.get("YTDLP_COOKIES_SECRET_ARN")
     if not secret_arn:
-        print("Error: YTDLP_COOKIES_SECRET_ARN not in infra .env. Set TF_VAR_enable_youtube_ingest=true and apply first.", file=sys.stderr)
+        print("Error: YTDLP_COOKIES_SECRET_ARN not in infra .env. Run terraform-apply and terraform-output first.", file=sys.stderr)
         sys.exit(1)
 
     payload = json.dumps({"cookies_base64": base64.b64encode(cookies_data).decode("ascii")})

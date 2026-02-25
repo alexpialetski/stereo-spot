@@ -32,14 +32,20 @@ Optional:
 
 import os
 
-from stereo_spot_shared.interfaces import OperatorLinksProvider
+from stereo_spot_shared.interfaces import (
+    ConversionMetricsEmitter,
+    HfTokenProvider,
+    OperatorLinksProvider,
+)
 
+from .conversion_metrics import CloudWatchConversionMetricsEmitter
 from .dynamodb_stores import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
     InferenceInvocationsStore,
     ReassemblyTriggeredLock,
 )
+from .hf_token import AwsSecretsManagerHfTokenProvider
 from .operator_links import AWSOperatorLinksProvider
 from .s3_storage import S3ObjectStorage
 from .sqs_queues import SQSQueueReceiver, SQSQueueSender
@@ -298,3 +304,14 @@ def operator_links_from_env() -> OperatorLinksProvider | None:
         region=region,
         cost_explorer_url=cost_url,
     )
+
+
+def conversion_metrics_emitter_from_env() -> ConversionMetricsEmitter:
+    """Build CloudWatch conversion metrics emitter.
+    Optional env: METRICS_NAMESPACE, ETA_CLOUD_NAME, AWS_REGION."""
+    return CloudWatchConversionMetricsEmitter()
+
+
+def hf_token_provider_from_env() -> HfTokenProvider:
+    """Build HF token provider from Secrets Manager. Reads HF_TOKEN_ARN, AWS_REGION."""
+    return AwsSecretsManagerHfTokenProvider()

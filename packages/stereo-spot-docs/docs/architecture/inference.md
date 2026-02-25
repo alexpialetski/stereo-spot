@@ -57,4 +57,4 @@ This ensures the worker never sends more concurrent requests than the endpoint c
 
 ## Package
 
-The **stereo-inference** package provides the inference container (e.g. iw3/nunif for 2D→stereo). It is built and deployed separately (e.g. via CodeBuild and SageMaker, or run as your own HTTP service). Storage and metrics are adapter-based so the same image can target AWS or GCP.
+The **stereo-inference** package provides the inference container (e.g. iw3/nunif for 2D→stereo). It is built and deployed separately (e.g. via CodeBuild and SageMaker, or run as your own HTTP service). Storage, metrics, and HF token (for model weight download) are adapter-based so the same image can target AWS or GCP.

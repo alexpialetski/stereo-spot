@@ -3,8 +3,10 @@
 from .env_config import (
     chunking_queue_receiver_from_env,
     chunking_queue_sender_from_env,
+    conversion_metrics_emitter_from_env,
     deletion_queue_receiver_from_env,
     deletion_queue_sender_from_env,
+    hf_token_provider_from_env,
     inference_invocations_store_from_env,
     ingest_queue_receiver_from_env,
     ingest_queue_receiver_from_env_or_none,
@@ -31,8 +33,10 @@ from .env_config import (
 __all__ = [
     "chunking_queue_receiver_from_env",
     "chunking_queue_sender_from_env",
+    "conversion_metrics_emitter_from_env",
     "deletion_queue_receiver_from_env",
     "deletion_queue_sender_from_env",
+    "hf_token_provider_from_env",
     "inference_invocations_store_from_env",
     "ingest_queue_receiver_from_env",
     "ingest_queue_receiver_from_env_or_none",

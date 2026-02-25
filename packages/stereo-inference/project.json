@@ -3,7 +3,11 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "packages/stereo-inference",
-  "implicitDependencies": ["shared-types", "aws-adapters", "adapters"],
+  "implicitDependencies": [
+    "shared-types",
+    "aws-adapters",
+    "adapters"
+  ],
   "targets": {
     "test": {
       "executor": "nx:run-commands",
@@ -12,37 +16,55 @@
         "cwd": "{projectRoot}"
       },
       "configurations": {},
-      "dependsOn": ["stereo-spot:install-deps"]
+      "dependsOn": [
+        "stereo-spot:install-deps"
+      ]
     },
     "lint": {
       "executor": "nx:run-commands",
-      "options": { "command": "ruff check . tests", "cwd": "{projectRoot}" },
+      "options": {
+        "command": "ruff check . tests",
+        "cwd": "{projectRoot}"
+      },
       "configurations": {},
-      "dependsOn": ["stereo-spot:install-deps"]
+      "dependsOn": [
+        "stereo-spot:install-deps"
+      ]
     },
-    "sagemaker-build": {
+    "inference-build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": ". packages/aws-infra/.env && aws codebuild start-build --project-name \"${CODEBUILD_PROJECT_NAME}\" --region \"${REGION}\"",
+        "command": "PLATFORM=${PLATFORM:-aws} python scripts/inference_build.py",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {
         "no-cache": {
-          "command": ". packages/aws-infra/.env && aws codebuild start-build --project-name \"${CODEBUILD_PROJECT_NAME}\" --region \"${REGION}\" --environment-variables-override name=DOCKER_BUILD_EXTRA_ARGS,value=--no-cache,type=PLAINTEXT"
+          "command": "PLATFORM=${PLATFORM:-aws} python scripts/inference_build.py --no-cache",
+          "cwd": "{workspaceRoot}"
         }
       },
-      "dependsOn": ["aws-infra:terraform-output"],
-      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
+      "dependsOn": [
+        "aws-infra:terraform-output"
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/packages/aws-infra/.env"
+      ]
     },
-    "sagemaker-deploy": {
+    "inference-redeploy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash packages/stereo-inference/scripts/deploy-sagemaker.sh packages/aws-infra/.env",
+        "command": "PLATFORM=${PLATFORM:-aws} python scripts/inference_redeploy.py",
         "cwd": "{workspaceRoot}"
       },
       "configurations": {},
-      "dependsOn": ["aws-infra:terraform-output"],
-      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
+      "dependsOn": [
+        "aws-infra:terraform-output"
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/packages/aws-infra/.env"
+      ]
     }
   }
 }

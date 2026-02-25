@@ -56,13 +56,13 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 ## stereo-inference
 
-**Purpose:** Custom inference container (e.g. iw3/nunif: 2D→stereo SBS/anaglyph). Used by SageMaker or run as HTTP server. Storage and metrics are adapter-based.
+**Purpose:** Custom inference container (e.g. iw3/nunif: 2D→stereo SBS/anaglyph). Used by SageMaker or run as HTTP server. Storage, metrics, and HF token (for weight download) are adapter-based.
 
-**Main targets:** `test`, `lint`, `sagemaker-build` (trigger CodeBuild), `sagemaker-deploy` (update SageMaker endpoint). When `inference_backend=http`, you run your own server.
+**Main targets:** `test`, `lint`, `inference-build` (trigger image build, e.g. CodeBuild when PLATFORM=aws), `inference-redeploy` (update endpoint). When `inference_backend=http`, you run your own server.
 
-**Env (in container):** Storage and metrics provider; optional `IW3_LOW_VRAM=1` for smaller GPUs.
+**Env (in container):** Storage and metrics provider; HF token via adapter when `HF_TOKEN_ARN` is set (e.g. AWS); optional `IW3_LOW_VRAM=1` for smaller GPUs.
 
-**Dependencies:** shared-types (segment key parsing). No aws-adapters in image; uses storage adapter (S3/GCS) and optional metrics.
+**Dependencies:** shared-types, adapters (and thus aws-adapters when PLATFORM=aws). Uses storage, metrics, and HF token adapters; no cloud-specific code in the package.
 
 ---
 

@@ -8,6 +8,7 @@ lives in one place.
 
 import os
 
+from stereo_spot_shared import NoOpConversionMetricsEmitter, NoOpHfTokenProvider
 from stereo_spot_shared.interfaces import ObjectStorage
 
 
@@ -174,3 +175,23 @@ def job_events_normalizer_from_env():
     _require_aws()
     from stereo_spot_aws_adapters.job_events import job_events_normalizer_from_env as _f
     return _f()
+
+
+def conversion_metrics_emitter_from_env():
+    """Return ConversionMetricsEmitter from METRICS_PROVIDER (aws | gcp | none).
+    Default aws. No-op for gcp/none/unknown."""
+    provider = (os.environ.get("METRICS_PROVIDER") or "aws").strip().lower()
+    if provider == "aws":
+        _require_aws()
+        from stereo_spot_aws_adapters.env_config import conversion_metrics_emitter_from_env as _f
+        return _f()
+    return NoOpConversionMetricsEmitter()
+
+
+def hf_token_provider_from_env():
+    """Return HfTokenProvider from PLATFORM (aws | gcp). AWS uses Secrets Manager (HF_TOKEN_ARN)."""
+    if _platform() == "aws":
+        _require_aws()
+        from stereo_spot_aws_adapters.env_config import hf_token_provider_from_env as _f
+        return _f()
+    return NoOpHfTokenProvider()

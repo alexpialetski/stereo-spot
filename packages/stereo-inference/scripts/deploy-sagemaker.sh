@@ -56,7 +56,7 @@ IW3_VIDEO_CODEC="${SAGEMAKER_IW3_VIDEO_CODEC:-libx264}"
 ENV_JSON=$(jq -n \
   --arg hf "$HF_TOKEN_SECRET_ARN" \
   --arg codec "$IW3_VIDEO_CODEC" \
-  '{HF_TOKEN_ARN: $hf, IW3_VIDEO_CODEC: $codec} + (if $codec == "h264_nvenc" then {NVIDIA_DRIVER_CAPABILITIES: "all"} else {} end)')
+  '{PLATFORM: "aws", HF_TOKEN_ARN: $hf, IW3_VIDEO_CODEC: $codec} + (if $codec == "h264_nvenc" then {NVIDIA_DRIVER_CAPABILITIES: "all"} else {} end)')
 PRIMARY_CONTAINER=$(jq -n --arg image "$IMAGE_URI" --argjson env "$ENV_JSON" '{Image: $image, Environment: $env}')
 
 echo "Creating SageMaker model ${MODEL_NAME} (IW3_VIDEO_CODEC=${IW3_VIDEO_CODEC})..."

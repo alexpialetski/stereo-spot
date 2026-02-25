@@ -49,7 +49,7 @@ resource "aws_ecr_repository" "inference" {
 }
 
 # Bootstrap: build and push a SageMaker-compliant stub image so the endpoint reaches InService on first apply.
-# Stub implements GET /ping and POST /invocations on 8080. Replace with real image via sagemaker-build then sagemaker-deploy.
+# Stub implements GET /ping and POST /invocations on 8080. Replace with real image via inference-build then inference-redeploy.
 # Requires Docker and AWS CLI where Terraform runs (from packages/aws-infra). Runs only on create.
 resource "null_resource" "inference_ecr_bootstrap" {
   count = var.inference_backend == "sagemaker" ? 1 : 0

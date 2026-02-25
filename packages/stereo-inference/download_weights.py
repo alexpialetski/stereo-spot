@@ -1,7 +1,9 @@
 """
 Download StereoCrafter model weights from Hugging Face at container startup.
 
-Reads HF_TOKEN from Secrets Manager via HF_TOKEN_ARN (env), then downloads:
+Uses HfTokenProvider from adapters (e.g. AWS Secrets Manager when PLATFORM=aws).
+If HF_TOKEN_ARN is set, token is read from the configured cloud secret store.
+Downloads:
 - stabilityai/stable-video-diffusion-img2vid-xt-1-1
 - tencent/DepthCrafter
 - TencentARC/StereoCrafter
@@ -30,61 +32,20 @@ REPOS = [
 ]
 
 
-def _secrets_manager_region() -> str | None:
-    """Region for Secrets Manager: from AWS_REGION env or parsed from HF_TOKEN_ARN."""
-    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
-    if region:
-        return region
-    arn = os.environ.get("HF_TOKEN_ARN")
-    if arn and arn.startswith("arn:aws:secretsmanager:"):
-        parts = arn.split(":")
-        if len(parts) >= 4:
-            return parts[3]  # e.g. us-east-1
-    return None
-
-
-def _region_from_secret_arn(arn: str) -> str | None:
-    """Parse region from Secrets Manager ARN (arn:aws:secretsmanager:REGION:account:...)."""
-    if arn and arn.startswith("arn:aws:secretsmanager:") and arn.count(":") >= 3:
-        return arn.split(":")[3]
-    return None
-
-
 def get_hf_token() -> str | None:
-    """Retrieve Hugging Face token from AWS Secrets Manager using HF_TOKEN_ARN."""
-    arn = os.environ.get("HF_TOKEN_ARN")
-    if not arn:
-        return None
-    try:
-        import boto3
-        import json
-
-        region = _secrets_manager_region() or _region_from_secret_arn(arn)
-        if not region:
-            logger.error("Cannot determine region for Secrets Manager (set AWS_REGION or use a full secret ARN)")
-            return None
-        client = boto3.client("secretsmanager", region_name=region)
-        response = client.get_secret_value(SecretId=arn)
-        secret = response.get("SecretString")
-        if not secret:
-            return None
-        try:
-            data = json.loads(secret)
-            if isinstance(data, dict):
-                return data.get("hf_token") or data.get("HF_TOKEN") or data.get("token")
-            return None
-        except json.JSONDecodeError:
-            return secret  # Plain string token
-    except Exception as e:
-        logger.error("Failed to fetch HF token from Secrets Manager: %s", e)
-        return None
+    """Return Hugging Face token from platform adapter (e.g. Secrets Manager when PLATFORM=aws)."""
+    from stereo_spot_adapters.env_config import hf_token_provider_from_env
+    provider = hf_token_provider_from_env()
+    return provider.get_hf_token()
 
 
 def download_weights() -> bool:
     """Download all model repos to WEIGHTS_DIR. Returns True on success."""
     token = get_hf_token()
     if not token:
-        logger.warning("HF_TOKEN_ARN not set or token unavailable; skipping weight download")
+        logger.warning(
+            "HF token not available (set HF_TOKEN_ARN when using AWS); skipping weight download"
+        )
         return False
 
     try:
@@ -138,4 +99,5 @@ def download_weights() -> bool:
 
 if __name__ == "__main__":
     ok = download_weights()
+    # Exit 1 only when download failed and token was expected (HF_TOKEN_ARN set).
     sys.exit(0 if ok or not os.environ.get("HF_TOKEN_ARN") else 1)
