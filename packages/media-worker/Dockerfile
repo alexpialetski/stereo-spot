@@ -17,10 +17,11 @@ COPY --from=deno-builder /usr/local/bin/deno /usr/local/bin/deno
 
 WORKDIR /app
 
-# Monorepo: copy and install shared-types and aws-adapters first
+# Monorepo: copy and install shared-types, adapters, aws-adapters first
 COPY packages/shared-types /shared-types
+COPY packages/adapters /adapters
 COPY packages/aws-adapters /aws-adapters
-RUN pip install --no-cache-dir -e /shared-types -e /aws-adapters
+RUN pip install --no-cache-dir -e /shared-types -e /adapters -e /aws-adapters
 
 COPY packages/media-worker /media-worker
 RUN pip install --no-cache-dir -e /media-worker
