@@ -1,6 +1,5 @@
 """AWS implementations of stereo-spot cloud interfaces."""
 
-from .cloudwatch_metrics import get_conversion_metrics
 from .dynamodb_stores import (
     DynamoDBJobStore,
     DynamoSegmentCompletionStore,
@@ -23,6 +22,5 @@ __all__ = [
     "S3ObjectStorage",
     "SQSQueueReceiver",
     "SQSQueueSender",
-    "get_conversion_metrics",
     "operator_links_from_env",
 ]

@@ -196,17 +196,3 @@ class JobEvent(BaseModel):
     completed_at: int | None = Field(None, description="Unix timestamp when completed")
 
 
-# --- Analytics (conversion metrics for LLM / history) ---
-
-class AnalyticsSnapshot(BaseModel):
-    """Result of gathering conversion metrics (CloudWatch, Cloud Monitoring, etc.)."""
-
-    timestamp: str = Field(..., description="ISO timestamp when snapshot was taken")
-    cloud: str = Field(..., description="Cloud identifier, e.g. 'aws' or 'gcp'")
-    endpoint_name: str | None = Field(None, description="Inference endpoint name (e.g. SageMaker)")
-    region: str | None = Field(None, description="Region (e.g. us-east-1)")
-    period_hours: float = Field(..., description="Metric period in hours")
-    metrics: dict[str, object] = Field(
-        default_factory=dict, description="Metric name -> stats or error dict"
-    )
-    log_summary: dict[str, object] | None = Field(None, description="Optional log-derived summary")

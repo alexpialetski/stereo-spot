@@ -1,4 +1,4 @@
-"""AWS CloudWatch metrics adapter. Emits StereoSpot/Conversion metrics. Bucket boundaries must match aws-adapters SEGMENT_SIZE_BUCKETS."""
+"""AWS CloudWatch metrics adapter. Emits StereoSpot/Conversion metrics (segment size buckets: 0-5, 5-20, 20-50, 50+ MB)."""
 
 from __future__ import annotations
 

@@ -1,16 +1,15 @@
 """
 Cloud-agnostic interfaces for job store, segment-completion store, queues,
-object storage, and analytics.
+and object storage.
 
 Implementations (e.g. AWS via DynamoDB, SQS, S3, CloudWatch) live in
 separate packages (e.g. aws-adapters). Pipeline logic depends on these
 interfaces and receives the implementation by config.
 """
 
-from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from .models import AnalyticsSnapshot, Job, JobListItem, SegmentCompletion
+from .models import Job, JobListItem, SegmentCompletion
 
 
 @runtime_checkable
@@ -160,24 +159,6 @@ class ObjectStorage(Protocol):
 
     def list_object_keys(self, bucket: str, prefix: str) -> list[str]:
         """List object keys under the given prefix. Returns up to 1000 keys per call."""
-        ...
-
-
-@runtime_checkable
-class ConversionMetricsProvider(Protocol):
-    """Provider for conversion metrics (e.g. CloudWatch, Cloud Monitoring)."""
-
-    def get_conversion_metrics(
-        self,
-        start_time: datetime,
-        end_time: datetime,
-        period_seconds: int,
-        *,
-        region: str | None = None,
-        endpoint_name: str | None = None,
-        cloud_name: str = "aws",
-    ) -> AnalyticsSnapshot:
-        """Fetch conversion metrics for the given time range and return a snapshot."""
         ...
 
 

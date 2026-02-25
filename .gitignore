@@ -65,9 +65,6 @@ tfplan
 packages/helm/values-from-terraform.yaml
 logs.txt
 
-# Analytics gather output (regenerate with nx run analytics:gather)
-packages/analytics/latest.json
-
 # 3D Linker EXE copied into web-ui static by serve script (built by desktop-launcher-setup)
 packages/web-ui/src/stereo_spot_web_ui/static/3d_setup.exe
 

@@ -6,7 +6,7 @@ sidebar_position: 1
 
 Per-package purpose, main Nx targets, and how each fits in the pipeline. Single source for this narrative; in-repo package READMEs are minimal stubs with a link here.
 
-**On this page:** [web-ui](#web-ui) · [desktop-launcher-setup](#desktop-launcher-setup) · [media-worker](#media-worker) · [video-worker](#video-worker) · [stereo-inference](#stereo-inference) · [shared-types](#shared-types) · [aws-adapters](#aws-adapters) · [aws-infra-setup](#aws-infra-setup) · [aws-infra](#aws-infra) · [analytics](#analytics) · [integration](#integration)
+**On this page:** [web-ui](#web-ui) · [desktop-launcher-setup](#desktop-launcher-setup) · [media-worker](#media-worker) · [video-worker](#video-worker) · [stereo-inference](#stereo-inference) · [shared-types](#shared-types) · [aws-adapters](#aws-adapters) · [aws-infra-setup](#aws-infra-setup) · [aws-infra](#aws-infra) · [integration](#integration)
 
 ## web-ui
 
@@ -101,16 +101,6 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 **Purpose:** Terraform: S3, SQS, DynamoDB, ECS cluster, ECR, CodeBuild (stereo-inference build), task definitions and services (Fargate), SageMaker or HTTP inference, ALB. Backend dependency on aws-infra-setup.
 
 **Main targets:** Same Terraform targets; `terraform-output` exports resource names/URLs to env file for workers and smoke-test; `ecr-login` (Docker login to ECR); `update-hf-token` (writes HF_TOKEN from .env to Secrets Manager for SageMaker).
-
----
-
-## analytics
-
-**Purpose:** Gather conversion metrics from CloudWatch (AWS) or future cloud monitoring. Optional; not required for the pipeline.
-
-**Main targets:** `gather` (with configs: aws, gcp), `test`, `lint`.
-
-**Dependencies:** shared-types; uses Terraform outputs for env (e.g. aws-infra).
 
 ---
 
