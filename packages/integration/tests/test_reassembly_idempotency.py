@@ -4,7 +4,6 @@ exactly one reassembly run and one final.mp4; the other run skips (conditional u
 on ReassemblyTriggered fails) and deletes the message without overwriting.
 """
 
-import json
 import shutil
 import time
 from pathlib import Path
@@ -21,7 +20,6 @@ from stereo_spot_adapters.env_config import (
     segment_completion_store_from_env,
 )
 from stereo_spot_shared import Job, JobStatus, ReassemblyPayload, SegmentCompletion, StereoMode
-from video_worker.output_events import process_one_output_event_message
 
 
 @pytest.mark.skipif(
@@ -127,22 +125,11 @@ def test_reassembly_idempotency_two_messages_one_winner(
     assert first_ok is True
     assert second_ok is True
 
-    # 5b. Simulate video-worker output-events: final.mp4 → set job completed
-    s3_event_body = json.dumps({
-        "Records": [
-            {
-                "s3": {
-                    "bucket": {"name": output_bucket},
-                    "object": {"key": final_key},
-                }
-            }
-        ]
-    })
-    process_one_output_event_message(
-        s3_event_body,
-        segment_store,
-        output_bucket,
-        job_store=job_store,
+    # 5b. Simulate job-worker: final.mp4 → set job completed
+    job_store.update(
+        job_id,
+        status=JobStatus.COMPLETED.value,
+        completed_at=int(time.time()),
     )
 
     # 6. Assert: exactly one final.mp4, Job completed

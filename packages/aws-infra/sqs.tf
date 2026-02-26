@@ -43,6 +43,12 @@ resource "aws_sqs_queue" "job_events_dlq" {
   tags = { Name = "${local.name}-job-events-dlq" }
 }
 
+resource "aws_sqs_queue" "job_status_events_dlq" {
+  name = "${local.name}-job-status-events-dlq"
+
+  tags = { Name = "${local.name}-job-status-events-dlq" }
+}
+
 # Main queues with redrive to DLQ
 resource "aws_sqs_queue" "chunking" {
   name                       = "${local.name}-chunking"
@@ -130,6 +136,18 @@ resource "aws_sqs_queue" "job_events" {
   tags = { Name = "${local.name}-job-events" }
 }
 
+resource "aws_sqs_queue" "job_status_events" {
+  name                       = "${local.name}-job-status-events"
+  visibility_timeout_seconds = 120 # 2 min; job-worker does DynamoDB put + reassembly trigger
+  message_retention_seconds  = 1209600
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.job_status_events_dlq.arn
+    maxReceiveCount     = var.dlq_max_receive_count
+  })
+
+  tags = { Name = "${local.name}-job-status-events" }
+}
+
 # Allow S3 input bucket to send events to chunking queue (prefix input/, suffix .mp4)
 resource "aws_sqs_queue_policy" "chunking_allow_s3" {
   queue_url = aws_sqs_queue.chunking.id
@@ -189,6 +207,29 @@ resource "aws_sqs_queue_policy" "output_events_allow_s3" {
         Principal = { Service = "s3.amazonaws.com" }
         Action    = "sqs:SendMessage"
         Resource  = aws_sqs_queue.output_events.arn
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = aws_s3_bucket.output.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Allow S3 output bucket to send events to job-status-events queue (duplicate of output-events for job-worker)
+resource "aws_sqs_queue_policy" "job_status_events_allow_s3" {
+  queue_url = aws_sqs_queue.job_status_events.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowS3OutputBucketSendMessage"
+        Effect    = "Allow"
+        Principal = { Service = "s3.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.job_status_events.arn
         Condition = {
           ArnLike = {
             "aws:SourceArn" = aws_s3_bucket.output.arn

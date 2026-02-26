@@ -6,7 +6,7 @@ sidebar_position: 1
 
 Per-package purpose, main Nx targets, and how each fits in the pipeline. Single source for this narrative; in-repo package READMEs are minimal stubs with a link here.
 
-**On this page:** [web-ui](#web-ui) · [desktop-launcher-setup](#desktop-launcher-setup) · [media-worker](#media-worker) · [video-worker](#video-worker) · [stereo-inference](#stereo-inference) · [shared-types](#shared-types) · [aws-adapters](#aws-adapters) · [aws-infra-setup](#aws-infra-setup) · [aws-infra](#aws-infra) · [integration](#integration)
+**On this page:** [web-ui](#web-ui) · [desktop-launcher-setup](#desktop-launcher-setup) · [media-worker](#media-worker) · [video-worker](#video-worker) · [job-worker](#job-worker) · [stereo-inference](#stereo-inference) · [shared-types](#shared-types) · [aws-adapters](#aws-adapters) · [aws-infra-setup](#aws-infra-setup) · [aws-infra](#aws-infra) · [integration](#integration)
 
 ## web-ui
 
@@ -44,13 +44,25 @@ Per-package purpose, main Nx targets, and how each fits in the pipeline. Single 
 
 ## video-worker
 
-**Purpose:** Coordinator: consumes video-worker queue and output-events queue. Invokes inference (stub, SageMaker, or HTTP). With SageMaker: invokes async, records invocation in a store, deletes segment message; output-events consumer writes SegmentCompletion only when a SageMaker result event is processed. After each SegmentCompletion put, runs reassembly trigger (conditional create + send to reassembly queue).
+**Purpose:** Inference only: consumes video-worker queue and output-events queue. Invokes inference (stub, SageMaker, or HTTP) per segment; writes result to the output bucket. Consumes output-events only to **release the inference semaphore** (backpressure). Does not write SegmentCompletions or update job status; the **job-worker** does that via the job-status-events queue.
 
 **Main targets:** `test`, `lint`, `build` (Docker), `deploy`.
 
-**Env:** Queues, job store, segment-completion store, reassembly queue sender; inference endpoint name or HTTP URL, region. See AWS section for SageMaker/HTTP vars.
+**Env:** Video-worker queue, output-events queue, job store (for marking job failed on invoke exception), inference endpoint name or HTTP URL, region. See AWS section for SageMaker/HTTP vars.
 
-**Dependencies:** shared-types, aws-adapters. Uses segment key parser from shared-types; writes SegmentCompletions; triggers reassembly when last segment completes.
+**Dependencies:** shared-types, aws-adapters. Uses segment key parser from shared-types.
+
+---
+
+## job-worker
+
+**Purpose:** Job lifecycle: consumes **job-status-events** queue (duplicate S3 events from the output bucket). Writes **SegmentCompletions** (on segment file events for stub/HTTP, and on SageMaker success events), updates job status (failed on SageMaker failure; reassembling when sending to reassembly queue; completed on final.mp4 or .reassembly-done), and triggers reassembly when all segments are complete. Single place for job progress and status used by the UI.
+
+**Main targets:** `test`, `lint`, `build` (Docker), `deploy`.
+
+**Env:** Job-status-events queue URL, job store, segment-completion store, reassembly-triggered lock, reassembly queue sender, inference-invocations store (for SageMaker path). See aws-infra outputs.
+
+**Dependencies:** shared-types, aws-adapters, adapters, video-worker (for reassembly_trigger and S3 event parsing).
 
 ---
 

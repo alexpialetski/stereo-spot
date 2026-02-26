@@ -1,6 +1,7 @@
 """
 Inference queue consumer: receive S3 event (segment), run model (SageMaker/HTTP/stub),
-upload result or invoke async; write SegmentCompletion for stub/HTTP.
+upload result or invoke async. Stub/HTTP: upload segment to S3 only; job-worker writes
+SegmentCompletion when it sees the segment file event on job_status_events.
 SageMaker: invoke async, put to invocation store, delete message (completion via output-events).
 Backpressure: optional semaphore limits in-flight invocations; output-events releases on completion.
 """
@@ -12,12 +13,11 @@ import threading
 import time
 
 from stereo_spot_aws_adapters.dynamodb_stores import InferenceInvocationsStore
-from stereo_spot_shared import JobStatus, SegmentCompletion, VideoWorkerPayload
+from stereo_spot_shared import JobStatus, VideoWorkerPayload
 from stereo_spot_shared.interfaces import (
     JobStore,
     ObjectStorage,
     QueueReceiver,
-    SegmentCompletionStore,
 )
 
 from .config import get_settings
@@ -72,7 +72,6 @@ def _use_http_backend() -> bool:
 def process_one_message(
     payload_str: str | bytes,
     storage: ObjectStorage,
-    segment_store: SegmentCompletionStore,
     output_bucket: str,
     job_store: JobStore | None = None,
 ) -> bool:
@@ -81,10 +80,9 @@ def process_one_message(
 
     Returns True if the message was processed successfully, False if skipped (invalid).
 
-    When INFERENCE_BACKEND=sagemaker: passes segment_s3_uri and output_s3_uri to
-    the SageMaker endpoint (which writes the result to S3); video-worker only
-    writes SegmentCompletion. When INFERENCE_BACKEND=stub (default): downloads
-    segment, runs stub, uploads result, writes SegmentCompletion.
+    When INFERENCE_BACKEND=sagemaker: use run_loop with invocation_store (event-driven completion).
+    When INFERENCE_BACKEND=stub or http: download segment, run inference, upload result to S3.
+    SegmentCompletion is written by job-worker when it sees the segment file event.
     """
     payload = parse_s3_event_body(payload_str)
     if payload is None:
@@ -101,7 +99,6 @@ def process_one_message(
     output_s3_uri = build_output_segment_uri(
         output_bucket, payload.job_id, payload.segment_index
     )
-    completed_at = int(time.time())
 
     if _use_sagemaker_backend():
         raise ValueError(
@@ -127,16 +124,8 @@ def process_one_message(
         output_key = build_output_segment_key(payload.job_id, payload.segment_index)
         storage.upload(output_bucket, output_key, output_bytes)
 
-    completion = SegmentCompletion(
-        job_id=payload.job_id,
-        segment_index=payload.segment_index,
-        output_s3_uri=output_s3_uri,
-        completed_at=completed_at,
-        total_segments=payload.total_segments,
-    )
-    segment_store.put(completion)
     logger.info(
-        "video-worker: job_id=%s segment_index=%s/%s complete -> %s",
+        "video-worker: job_id=%s segment_index=%s/%s complete -> %s (completion via job-worker)",
         payload.job_id,
         payload.segment_index,
         payload.total_segments,
@@ -153,7 +142,6 @@ def _max_in_flight() -> int:
 def run_loop(
     receiver: QueueReceiver,
     storage: ObjectStorage,
-    segment_store: SegmentCompletionStore,
     output_bucket: str,
     job_store: JobStore | None = None,
     *,
@@ -193,7 +181,6 @@ def run_loop(
                 ok = process_one_message(
                     body,
                     storage,
-                    segment_store,
                     output_bucket,
                     job_store=job_store,
                 )

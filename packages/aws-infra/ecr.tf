@@ -35,6 +35,18 @@ resource "aws_ecr_repository" "video_worker" {
   tags = { Name = "${local.name}-video-worker" }
 }
 
+resource "aws_ecr_repository" "job_worker" {
+  name                 = "${local.name}-job-worker"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = { Name = "${local.name}-job-worker" }
+}
+
 # Stereo-inference container. Push image here; SageMaker model references it.
 resource "aws_ecr_repository" "inference" {
   name                 = "${local.name}-inference"

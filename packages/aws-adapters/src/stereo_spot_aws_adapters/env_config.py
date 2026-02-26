@@ -138,6 +138,17 @@ def output_events_queue_receiver_from_env() -> SQSQueueReceiver:
     )
 
 
+def job_status_events_queue_receiver_from_env() -> SQSQueueReceiver:
+    """Build SQSQueueReceiver for job-status-events queue from JOB_STATUS_EVENTS_QUEUE_URL."""
+    url = os.environ["JOB_STATUS_EVENTS_QUEUE_URL"]
+    return SQSQueueReceiver(
+        url,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+        wait_time_seconds=_sqs_wait_time_seconds(),
+    )
+
+
 def segment_output_queue_receiver_from_env() -> SQSQueueReceiver:
     """Alias for output_events_queue_receiver_from_env. Use OUTPUT_EVENTS_QUEUE_URL."""
     return output_events_queue_receiver_from_env()

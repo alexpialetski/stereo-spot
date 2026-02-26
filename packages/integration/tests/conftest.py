@@ -82,6 +82,16 @@ def _create_reassembly_triggered_table(client: object) -> str:
     return "int-test-reassembly-triggered"
 
 
+def _create_inference_invocations_table(client: object) -> str:
+    client.create_table(
+        TableName="int-test-inference-invocations",
+        BillingMode="PAY_PER_REQUEST",
+        KeySchema=[{"AttributeName": "output_location", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "output_location", "AttributeType": "S"}],
+    )
+    return "int-test-inference-invocations"
+
+
 @pytest.fixture
 def integration_env(moto_aws: None) -> dict[str, str]:
     """
@@ -98,6 +108,7 @@ def integration_env(moto_aws: None) -> dict[str, str]:
     jobs_table = _create_jobs_table(dynamodb)
     segment_completions_table = _create_segment_completions_table(dynamodb)
     reassembly_triggered_table = _create_reassembly_triggered_table(dynamodb)
+    inference_invocations_table = _create_inference_invocations_table(dynamodb)
 
     chunking_resp = sqs.create_queue(QueueName="int-test-chunking")
     chunking_queue_url = chunking_resp["QueueUrl"]
@@ -107,6 +118,8 @@ def integration_env(moto_aws: None) -> dict[str, str]:
     reassembly_queue_url = reassembly_resp["QueueUrl"]
     output_events_resp = sqs.create_queue(QueueName="int-test-output-events")
     output_events_queue_url = output_events_resp["QueueUrl"]
+    job_status_events_resp = sqs.create_queue(QueueName="int-test-job-status-events")
+    job_status_events_queue_url = job_status_events_resp["QueueUrl"]
     deletion_resp = sqs.create_queue(QueueName="int-test-deletion")
     deletion_queue_url = deletion_resp["QueueUrl"]
     ingest_resp = sqs.create_queue(QueueName="int-test-ingest")
@@ -121,9 +134,11 @@ def integration_env(moto_aws: None) -> dict[str, str]:
         "JOBS_TABLE_NAME": jobs_table,
         "SEGMENT_COMPLETIONS_TABLE_NAME": segment_completions_table,
         "REASSEMBLY_TRIGGERED_TABLE_NAME": reassembly_triggered_table,
+        "INFERENCE_INVOCATIONS_TABLE_NAME": inference_invocations_table,
         "CHUNKING_QUEUE_URL": chunking_queue_url,
         "VIDEO_WORKER_QUEUE_URL": video_worker_queue_url,
         "OUTPUT_EVENTS_QUEUE_URL": output_events_queue_url,
+        "JOB_STATUS_EVENTS_QUEUE_URL": job_status_events_queue_url,
         "REASSEMBLY_QUEUE_URL": reassembly_queue_url,
         "DELETION_QUEUE_URL": deletion_queue_url,
         "INGEST_QUEUE_URL": ingest_queue_url,

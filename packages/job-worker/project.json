@@ -1,0 +1,46 @@
+{
+  "name": "job-worker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "packages/job-worker",
+  "implicitDependencies": ["shared-types", "aws-adapters", "adapters", "video-worker"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -f packages/job-worker/Dockerfile -t stereo-spot-job-worker:latest .",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "outputs": []
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": ". packages/aws-infra/.env && docker tag stereo-spot-job-worker:latest \"${ECR_JOB_WORKER_URL}:latest\" && docker push \"${ECR_JOB_WORKER_URL}:latest\" && aws ecs update-service --cluster \"$ECS_CLUSTER_NAME\" --service job-worker --force-new-deployment --region us-east-1",
+        "cwd": "{workspaceRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["aws-infra:terraform-output", "job-worker:build"],
+      "inputs": ["default", "{workspaceRoot}/packages/aws-infra/.env"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pytest -v",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ruff check src tests",
+        "cwd": "{projectRoot}"
+      },
+      "configurations": {},
+      "dependsOn": ["stereo-spot:install-deps"]
+    }
+  }
+}

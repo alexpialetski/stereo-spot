@@ -67,6 +67,23 @@ resource "aws_cloudwatch_metric_alarm" "output_events_dlq" {
   alarm_description = "Messages in output-events dead-letter queue; investigate failed output-event processing."
 }
 
+resource "aws_cloudwatch_metric_alarm" "job_status_events_dlq" {
+  alarm_name          = "${local.name}-job-status-events-dlq-messages"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+
+  dimensions = {
+    QueueName = aws_sqs_queue.job_status_events_dlq.name
+  }
+
+  alarm_description = "Messages in job-status-events dead-letter queue; investigate failed job-status processing."
+}
+
 resource "aws_cloudwatch_metric_alarm" "job_events_dlq" {
   alarm_name          = "${local.name}-job-events-dlq-messages"
   comparison_operator = "GreaterThanThreshold"

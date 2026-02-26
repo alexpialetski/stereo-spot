@@ -38,6 +38,11 @@ output "output_events_queue_url" {
   value       = aws_sqs_queue.output_events.url
 }
 
+output "job_status_events_queue_url" {
+  description = "URL of the job-status-events SQS queue (duplicate output bucket events for job-worker)"
+  value       = aws_sqs_queue.job_status_events.url
+}
+
 output "deletion_queue_url" {
   description = "URL of the deletion SQS queue (job removal cleanup)"
   value       = aws_sqs_queue.deletion.url
@@ -113,6 +118,11 @@ output "ecr_media_worker_url" {
 output "ecr_video_worker_url" {
   description = "ECR repository URL for video-worker image"
   value       = aws_ecr_repository.video_worker.repository_url
+}
+
+output "ecr_job_worker_url" {
+  description = "ECR repository URL for job-worker image"
+  value       = aws_ecr_repository.job_worker.repository_url
 }
 
 output "ecr_inference_url" {

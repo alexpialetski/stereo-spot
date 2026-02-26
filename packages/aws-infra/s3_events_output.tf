@@ -35,5 +35,36 @@ resource "aws_s3_bucket_notification" "output" {
     filter_prefix = "sagemaker-async-failures/"
   }
 
-  depends_on = [aws_sqs_queue_policy.output_events_allow_s3]
+  # Duplicate events to job-status-events for job-worker (SegmentCompletion, job status, reassembly)
+  queue {
+    id            = "job-status-segment-files"
+    queue_arn     = aws_sqs_queue.job_status_events.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "jobs/"
+    filter_suffix = ".mp4"
+  }
+
+  queue {
+    id            = "job-status-reassembly-done"
+    queue_arn     = aws_sqs_queue.job_status_events.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "jobs/"
+    filter_suffix = ".reassembly-done"
+  }
+
+  queue {
+    id            = "job-status-sagemaker-responses"
+    queue_arn     = aws_sqs_queue.job_status_events.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "sagemaker-async-responses/"
+  }
+
+  queue {
+    id            = "job-status-sagemaker-failures"
+    queue_arn     = aws_sqs_queue.job_status_events.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "sagemaker-async-failures/"
+  }
+
+  depends_on = [aws_sqs_queue_policy.output_events_allow_s3, aws_sqs_queue_policy.job_status_events_allow_s3]
 }

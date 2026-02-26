@@ -67,6 +67,12 @@ def output_events_queue_receiver_from_env():
     return _f()
 
 
+def job_status_events_queue_receiver_from_env():
+    _require_aws()
+    from stereo_spot_aws_adapters.env_config import job_status_events_queue_receiver_from_env as _f
+    return _f()
+
+
 def segment_output_queue_receiver_from_env():
     _require_aws()
     from stereo_spot_aws_adapters.env_config import segment_output_queue_receiver_from_env as _f

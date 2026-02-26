@@ -1,11 +1,16 @@
 """
-End-to-end integration test: create job → upload → chunking → video-worker → reassembly → completed.
+End-to-end integration test: create job → upload → chunking → video-worker
+→ job-worker (SegmentCompletion + trigger) → reassembly → completed.
 
 Uses moto for AWS resources. Requires ffmpeg to generate a minimal source video.
+Video-worker only uploads segments; we simulate job-worker by putting
+SegmentCompletions and calling maybe_trigger_reassembly; after reassembly we set
+job completed (as job-worker would on final.mp4).
 """
 
 import json
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -24,10 +29,9 @@ from stereo_spot_adapters.env_config import (
     video_worker_queue_receiver_from_env,
     video_worker_queue_sender_from_env,
 )
-from stereo_spot_shared import JobStatus, build_segment_key
+from stereo_spot_shared import JobStatus, SegmentCompletion, build_segment_key
 from stereo_spot_web_ui.main import app
 from video_worker.inference import process_one_message
-from video_worker.output_events import process_one_output_event_message
 from video_worker.reassembly_trigger import maybe_trigger_reassembly
 
 
@@ -105,14 +109,13 @@ def test_e2e_pipeline_create_upload_chunking_video_reassembly_completed(
     total_segments = job.total_segments
     mode = job.mode
 
-    # 5. Send video-worker messages (S3 event shape for each segment) and process each
+    # 5. Send video-worker messages and process each (video-worker uploads only)
     video_sender = video_worker_queue_sender_from_env()
     for i in range(total_segments):
         segment_key = build_segment_key(job_id, i, total_segments, mode)
         body = _make_s3_event_body(input_bucket, segment_key)
         video_sender.send(body)
 
-    segment_store = segment_completion_store_from_env()
     video_receiver = video_worker_queue_receiver_from_env()
     processed = 0
     for _ in range(total_segments):
@@ -120,18 +123,25 @@ def test_e2e_pipeline_create_upload_chunking_video_reassembly_completed(
         if not messages:
             break
         msg = messages[0]
-        ok = process_one_message(
-            msg.body,
-            storage,
-            segment_store,
-            output_bucket,
-        )
+        ok = process_one_message(msg.body, storage, output_bucket, job_store=job_store)
         if ok:
             video_receiver.delete(msg.receipt_handle)
             processed += 1
     assert processed == total_segments
 
-    # 6. Simulate video-worker reassembly trigger: conditional create + send to queue
+    # 6. Simulate job-worker: put SegmentCompletions, then trigger reassembly
+    segment_store = segment_completion_store_from_env()
+    for i in range(total_segments):
+        seg_key = f"jobs/{job_id}/segments/{i}.mp4"
+        segment_store.put(
+            SegmentCompletion(
+                job_id=job_id,
+                segment_index=i,
+                output_s3_uri=f"s3://{output_bucket}/{seg_key}",
+                completed_at=int(time.time()),
+                total_segments=total_segments,
+            )
+        )
     lock = reassembly_triggered_lock_from_env()
     reassembly_sender = reassembly_queue_sender_from_env()
     maybe_trigger_reassembly(job_id, job_store, segment_store, lock, reassembly_sender)
@@ -152,12 +162,11 @@ def test_e2e_pipeline_create_upload_chunking_video_reassembly_completed(
     assert ok is True
     reassembly_receiver.delete(msg.receipt_handle)
 
-    # 7b. Simulate video-worker output-events: final.mp4 created → set job completed
-    process_one_output_event_message(
-        _make_s3_event_body(output_bucket, f"jobs/{job_id}/final.mp4"),
-        segment_store,
-        output_bucket,
-        job_store=job_store,
+    # 7b. Simulate job-worker: final.mp4 created → set job completed
+    job_store.update(
+        job_id,
+        status=JobStatus.COMPLETED.value,
+        completed_at=int(time.time()),
     )
 
     # 8. Assert Job completed and final.mp4 exists

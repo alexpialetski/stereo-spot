@@ -148,7 +148,7 @@ resource "aws_iam_role_policy" "media_worker_task" {
   })
 }
 
-# Video worker: S3, DynamoDB SegmentCompletions, SQS video-worker, SageMaker InvokeEndpoint
+# Video worker: inference only; S3, SQS video-worker + output_events, Jobs (mark failed), SageMaker; job-worker owns SegmentCompletion/reassembly
 resource "aws_iam_role" "video_worker_task" {
   name               = "${local.name}-video-worker-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
@@ -169,11 +169,6 @@ resource "aws_iam_role_policy" "video_worker_task" {
         },
         {
           Effect   = "Allow"
-          Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query"]
-          Resource = [aws_dynamodb_table.segment_completions.arn]
-        },
-        {
-          Effect   = "Allow"
           Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
           Resource = [aws_dynamodb_table.jobs.arn]
         },
@@ -181,16 +176,6 @@ resource "aws_iam_role_policy" "video_worker_task" {
           Effect   = "Allow"
           Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
           Resource = [aws_sqs_queue.video_worker.arn, aws_sqs_queue.output_events.arn]
-        },
-        {
-          Effect   = "Allow"
-          Action   = ["dynamodb:PutItem"]
-          Resource = aws_dynamodb_table.reassembly_triggered.arn
-        },
-        {
-          Effect   = "Allow"
-          Action   = ["sqs:SendMessage"]
-          Resource = aws_sqs_queue.reassembly.arn
         }
       ],
       var.inference_backend == "sagemaker" ? [
@@ -201,11 +186,58 @@ resource "aws_iam_role_policy" "video_worker_task" {
         },
         {
           Effect   = "Allow"
-          Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:DeleteItem"]
+          Action   = ["dynamodb:PutItem", "dynamodb:GetItem"]
           Resource = [aws_dynamodb_table.inference_invocations.arn]
         }
       ] : []
     )
+  })
+}
+
+# Job worker: job_status_events queue, Jobs, SegmentCompletions, ReassemblyTriggered, reassembly queue, InferenceInvocations (delete)
+resource "aws_iam_role" "job_worker_task" {
+  name               = "${local.name}-job-worker-task"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
+  tags               = { Name = "${local.name}-job-worker-task" }
+}
+
+resource "aws_iam_role_policy" "job_worker_task" {
+  name = "job-worker"
+  role = aws_iam_role.job_worker_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Resource = [aws_sqs_queue.job_status_events.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Resource = [aws_dynamodb_table.jobs.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem", "dynamodb:Query"]
+        Resource = [aws_dynamodb_table.segment_completions.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.reassembly_triggered.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.reassembly.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:DeleteItem"]
+        Resource = [aws_dynamodb_table.inference_invocations.arn]
+      }
+    ]
   })
 }
 
@@ -357,6 +389,7 @@ locals {
   web_ui_image       = "${aws_ecr_repository.web_ui.repository_url}:${var.ecs_image_tag}"
   media_worker_image = "${aws_ecr_repository.media_worker.repository_url}:${var.ecs_image_tag}"
   video_worker_image = "${aws_ecr_repository.video_worker.repository_url}:${var.ecs_image_tag}"
+  job_worker_image   = "${aws_ecr_repository.job_worker.repository_url}:${var.ecs_image_tag}"
   ecs_env_common = [
     { name = "AWS_REGION", value = local.region },
     { name = "PLATFORM", value = "aws" }
@@ -413,12 +446,18 @@ locals {
     { name = "INPUT_BUCKET_NAME", value = aws_s3_bucket.input.id },
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
-    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
     { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url },
     { name = "OUTPUT_EVENTS_QUEUE_URL", value = aws_sqs_queue.output_events.url },
+  ], local.video_worker_inference_env)
+  job_worker_env = concat(local.ecs_env_common, [
+    { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
+    { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
+    { name = "SEGMENT_COMPLETIONS_TABLE_NAME", value = aws_dynamodb_table.segment_completions.name },
+    { name = "JOB_STATUS_EVENTS_QUEUE_URL", value = aws_sqs_queue.job_status_events.url },
     { name = "REASSEMBLY_TRIGGERED_TABLE_NAME", value = aws_dynamodb_table.reassembly_triggered.name },
     { name = "REASSEMBLY_QUEUE_URL", value = aws_sqs_queue.reassembly.url },
-  ], local.video_worker_inference_env)
+    { name = "INFERENCE_INVOCATIONS_TABLE_NAME", value = aws_dynamodb_table.inference_invocations.name },
+  ])
 }
 
 resource "aws_ecs_task_definition" "web_ui" {
@@ -501,6 +540,31 @@ resource "aws_ecs_task_definition" "video_worker" {
   }])
 }
 
+resource "aws_ecs_task_definition" "job_worker" {
+  family                   = "job-worker"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.ecs_video_worker_cpu
+  memory                   = var.ecs_video_worker_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.job_worker_task.arn
+
+  container_definitions = jsonencode([{
+    name        = "job-worker"
+    image       = local.job_worker_image
+    essential   = true
+    environment = local.job_worker_env
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = "/ecs/${local.name}/job-worker"
+        "awslogs-region"        = local.region
+        "awslogs-stream-prefix" = "ecs"
+      }
+    }
+  }])
+}
+
 # --- CloudWatch log groups for ECS ---
 resource "aws_cloudwatch_log_group" "web_ui" {
   name              = "/ecs/${local.name}/web-ui"
@@ -514,6 +578,11 @@ resource "aws_cloudwatch_log_group" "media_worker" {
 
 resource "aws_cloudwatch_log_group" "video_worker" {
   name              = "/ecs/${local.name}/video-worker"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "job_worker" {
+  name              = "/ecs/${local.name}/job-worker"
   retention_in_days = 7
 }
 
@@ -564,6 +633,27 @@ resource "aws_ecs_service" "video_worker" {
   name            = "video-worker"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.video_worker.arn
+  desired_count   = 0
+  launch_type     = "FARGATE"
+
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
+  network_configuration {
+    subnets          = module.vpc.private_subnets
+    security_groups  = [aws_security_group.fargate_tasks.id]
+    assign_public_ip = false
+  }
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+}
+
+resource "aws_ecs_service" "job_worker" {
+  name            = "job-worker"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.job_worker.arn
   desired_count   = 0
   launch_type     = "FARGATE"
 
