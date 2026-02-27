@@ -194,51 +194,8 @@ resource "aws_sqs_queue_policy" "video_worker_allow_s3" {
   })
 }
 
-# Allow S3 output bucket to send events to output-events queue (segment files and SageMaker async responses)
-resource "aws_sqs_queue_policy" "output_events_allow_s3" {
-  queue_url = aws_sqs_queue.output_events.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "AllowS3OutputBucketSendMessage"
-        Effect    = "Allow"
-        Principal = { Service = "s3.amazonaws.com" }
-        Action    = "sqs:SendMessage"
-        Resource  = aws_sqs_queue.output_events.arn
-        Condition = {
-          ArnLike = {
-            "aws:SourceArn" = aws_s3_bucket.output.arn
-          }
-        }
-      }
-    ]
-  })
-}
-
-# Allow S3 output bucket to send events to job-status-events queue (duplicate of output-events for job-worker)
-resource "aws_sqs_queue_policy" "job_status_events_allow_s3" {
-  queue_url = aws_sqs_queue.job_status_events.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "AllowS3OutputBucketSendMessage"
-        Effect    = "Allow"
-        Principal = { Service = "s3.amazonaws.com" }
-        Action    = "sqs:SendMessage"
-        Resource  = aws_sqs_queue.job_status_events.arn
-        Condition = {
-          ArnLike = {
-            "aws:SourceArn" = aws_s3_bucket.output.arn
-          }
-        }
-      }
-    ]
-  })
-}
+# Output bucket events: S3 → SNS → output_events and job_status_events (see s3_events_output_sns.tf).
+# SQS policies output_events_allow_sns and job_status_events_allow_sns allow SNS to send.
 
 # Allow web-ui task role to send to ingest queue (URL / YouTube jobs)
 resource "aws_sqs_queue_policy" "ingest_allow_web_ui" {

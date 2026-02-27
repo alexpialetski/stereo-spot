@@ -88,6 +88,11 @@ output "stream_sessions_table_name" {
   value       = aws_dynamodb_table.stream_sessions.name
 }
 
+output "stream_upload_role_arn" {
+  description = "ARN of IAM role for stream upload credentials (AssumeRole; set STREAM_UPLOAD_ROLE_ARN for session creds)"
+  value       = aws_iam_role.stream_upload.arn
+}
+
 # --- ECS / ECR ---
 
 output "ecs_cluster_name" {

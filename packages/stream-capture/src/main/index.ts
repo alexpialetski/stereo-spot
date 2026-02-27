@@ -8,10 +8,10 @@ import { uploadChunk } from "../upload/client.js";
 let mainWindow: BrowserWindow | null = null;
 let session: CreateStreamSessionResponse | null = null;
 let chunkIndex = 0;
-let uploadInProgress = false;
+let _uploadInProgress = false;
 let stopRequested = false;
 
-function getWindow(): BrowserWindow | null {
+function _getWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
@@ -20,13 +20,13 @@ function createWindow(): void {
     width: 520,
     height: 560,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "../preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
-  const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
-  mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+  const _isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+  mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -87,11 +87,11 @@ ipcMain.handle("upload-chunk", async (_, buffer: ArrayBuffer) => {
 });
 
 ipcMain.on("stream-started", () => {
-  uploadInProgress = true;
+  _uploadInProgress = true;
 });
 
 ipcMain.on("stream-stopped", () => {
-  uploadInProgress = false;
+  _uploadInProgress = false;
 });
 
 ipcMain.handle("get-session", () => {

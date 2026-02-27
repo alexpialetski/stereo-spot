@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld("streamCapture", {
   uploadChunk: (buffer: ArrayBuffer) => ipcRenderer.invoke("upload-chunk", buffer),
   getSession: () => ipcRenderer.invoke("get-session"),
   requestStop: () => ipcRenderer.invoke("request-stop"),
-  onChunkUploaded: (cb: (index: number) => void) => {
+  onChunkUploaded: (_cb: (index: number) => void) => {
     // Chunk index is returned from upload-chunk; UI will call getSession after each upload
     // So we don't need an event here; UI can pass a callback to the capture loop
     return () => {};

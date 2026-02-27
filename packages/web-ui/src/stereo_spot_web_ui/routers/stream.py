@@ -18,7 +18,6 @@ from ..deps import (
     get_object_storage,
     get_output_bucket,
     get_stream_sessions_store_optional,
-    get_templates,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +69,10 @@ def _mint_stream_upload_credentials(
     region: str | None,
     duration_seconds: int = STREAM_CREDENTIALS_DURATION_SEC,
 ) -> dict[str, Any]:
-    """Get temporary credentials scoped to stream_input/{session_id}/* (PutObject only)."""
+    """Get temporary credentials scoped to stream_input/{session_id}/* (PutObject only).
+    Uses AssumeRole when STREAM_UPLOAD_ROLE_ARN is set (works with session credentials);
+    otherwise GetFederationToken (requires long-term credentials).
+    """
     policy = {
         "Version": "2012-10-17",
         "Statement": [
@@ -83,14 +85,34 @@ def _mint_stream_upload_credentials(
     }
     policy_json = json.dumps(policy)
     sts = boto3.client("sts", region_name=region)
-    resp = sts.get_federation_token(
-        Name=f"stream-{session_id}",
-        Policy=policy_json,
-        DurationSeconds=duration_seconds,
-    )
-    creds = resp["Credentials"]
+    role_arn = os.environ.get("STREAM_UPLOAD_ROLE_ARN")
+
+    if role_arn:
+        # AssumeRole works with session credentials (SSO, assumed role); session name max 64 chars
+        session_name = f"stream-{session_id}"[:64]
+        resp = sts.assume_role(
+            RoleArn=role_arn,
+            RoleSessionName=session_name,
+            Policy=policy_json,
+            DurationSeconds=duration_seconds,
+        )
+        creds = resp["Credentials"]
+    else:
+        # GetFederationToken requires long-term credentials (IAM user)
+        name = f"stream-{session_id}"[:32]
+        resp = sts.get_federation_token(
+            Name=name,
+            Policy=policy_json,
+            DurationSeconds=duration_seconds,
+        )
+        creds = resp["Credentials"]
+
     expires = creds["Expiration"]
-    expires_at = expires.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(expires, "strftime") else str(expires)
+    expires_at = (
+        expires.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if hasattr(expires, "strftime")
+        else str(expires)
+    )
     return {
         "access_key_id": creds["AccessKeyId"],
         "secret_access_key": creds["SecretAccessKey"],

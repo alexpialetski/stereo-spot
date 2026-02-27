@@ -27,7 +27,9 @@ def client_with_stream_store(app_with_mocks, mock_stream_store):
         del app.state.stream_sessions_store
 
 
-def test_create_stream_session_returns_session_id_and_upload(client_with_stream_store, mock_stream_store):
+def test_create_stream_session_returns_session_id_and_upload(
+    client_with_stream_store, mock_stream_store
+):
     """POST /stream_sessions returns session_id, playlist_url, upload credentials."""
     with patch("stereo_spot_web_ui.routers.stream.boto3") as boto3_mock:
         sts = MagicMock()
@@ -96,8 +98,10 @@ def test_playlist_session_not_found_404(client_with_stream_store, mock_stream_st
     assert resp.status_code == 404
 
 
-def test_playlist_returns_m3u8_with_segments(client_with_stream_store, mock_stream_store):
-    """GET playlist returns M3U8 with segment URLs in order; no #EXT-X-ENDLIST when session not ended."""
+def test_playlist_returns_m3u8_with_segments(
+    client_with_stream_store, mock_stream_store
+):
+    """GET playlist returns M3U8 with segment URLs; no #EXT-X-ENDLIST when not ended."""
     prefix = "stream_output/sess-1/"
     keys = [f"{prefix}seg_00000.mp4", f"{prefix}seg_00001.mp4"]
     storage = MagicMock()

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import sys
 import urllib.error
 import urllib.request
@@ -26,8 +27,20 @@ def main() -> int:
         default="http://localhost:8000",
         help="Web UI base URL",
     )
+    parser.add_argument(
+        "--no-verify-ssl",
+        action="store_true",
+        help="Skip SSL certificate verification (insecure; for testing only)",
+    )
     args = parser.parse_args()
     base = args.base_url.rstrip("/")
+
+    open_kw: dict = {"timeout": 10}
+    if args.no_verify_ssl:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        open_kw["context"] = ctx
 
     # 1. Create session
     req = urllib.request.Request(
@@ -37,7 +50,7 @@ def main() -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, **open_kw) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         print(f"POST /stream_sessions failed: {e.code} {e.reason}", file=sys.stderr)
@@ -59,7 +72,7 @@ def main() -> int:
     # 2. GET playlist (may be empty or have segments)
     req = urllib.request.Request(f"{base}/stream/{session_id}/playlist.m3u8")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, **open_kw) as resp:
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -80,7 +93,7 @@ def main() -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, **open_kw) as resp:
             pass
     except urllib.error.HTTPError as e:
         print(f"POST .../end failed: {e.code}", file=sys.stderr)
@@ -89,7 +102,7 @@ def main() -> int:
     # 4. GET playlist again; when store is used, should include #EXT-X-ENDLIST
     req = urllib.request.Request(f"{base}/stream/{session_id}/playlist.m3u8")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, **open_kw) as resp:
             body = resp.read().decode()
     except urllib.error.HTTPError as e:
         print(f"GET playlist after end failed: {e.code}", file=sys.stderr)

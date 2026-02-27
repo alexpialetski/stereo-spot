@@ -37,7 +37,7 @@ def test_process_one_message_invalid_body_returns_false() -> None:
 
 
 def test_process_stream_chunk_stub_backend() -> None:
-    """process_stream_chunk (stub): download input, process, upload to stream_output/...; idempotent overwrite OK."""
+    """process_stream_chunk (stub): download, process, upload to stream_output/...; overwrite OK."""
     storage = MagicMock()
     storage.download.return_value = b"fake chunk bytes"
     payload = StreamChunkPayload(
