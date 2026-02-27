@@ -2,10 +2,12 @@
 
 from stereo_spot_shared import (
     StereoMode,
+    StreamChunkPayload,
     build_segment_key,
     parse_input_key,
     parse_output_segment_key,
     parse_segment_key,
+    parse_stream_chunk_key,
 )
 
 
@@ -107,3 +109,71 @@ class TestOutputSegmentKeyParser:
         assert parse_output_segment_key("b", "jobs/job-abc/segments/foo.mp4") is None
         assert parse_output_segment_key("b", "jobs/job-abc/segments/-1.mp4") is None
         assert parse_output_segment_key("b", "jobs//segments/0.mp4") is None
+
+
+class TestStreamChunkKeyParser:
+    """Parse stream_input/{session_id}/chunk_{index:05d}.mp4 into StreamChunkPayload."""
+
+    def test_valid_stream_chunk_key_with_output_bucket(self) -> None:
+        bucket = "input-bucket"
+        output_bucket = "output-bucket"
+        session_id = "session-abc"
+        key = "stream_input/session-abc/chunk_00042.mp4"
+
+        payload = parse_stream_chunk_key(
+            bucket,
+            key,
+            output_bucket=output_bucket,
+            default_mode=StereoMode.SBS,
+        )
+
+        assert isinstance(payload, StreamChunkPayload)
+        assert payload is not None
+        assert payload.session_id == session_id
+        assert payload.chunk_index == 42
+        assert payload.mode == StereoMode.SBS
+        assert (
+            payload.input_s3_uri
+            == "s3://input-bucket/stream_input/session-abc/chunk_00042.mp4"
+        )
+        assert (
+            payload.output_s3_uri
+            == "s3://output-bucket/stream_output/session-abc/seg_00042.mp4"
+        )
+
+    def test_invalid_stream_chunk_keys_return_none(self) -> None:
+        assert (
+            parse_stream_chunk_key(
+                "b",
+                "stream_input//chunk_00001.mp4",
+                output_bucket="out",
+            )
+            is None
+        )
+        assert (
+            parse_stream_chunk_key(
+                "b",
+                "stream_input/session/chunk_notanumber.mp4",
+                output_bucket="out",
+            )
+            is None
+        )
+        assert (
+            parse_stream_chunk_key(
+                "b",
+                "input/session/chunk_00001.mp4",
+                output_bucket="out",
+            )
+            is None
+        )
+
+    def test_invalid_default_mode_returns_none(self) -> None:
+        assert (
+            parse_stream_chunk_key(
+                "b",
+                "stream_input/s/chunk_00001.mp4",
+                output_bucket="out",
+                default_mode="invalid-mode",
+            )
+            is None
+        )

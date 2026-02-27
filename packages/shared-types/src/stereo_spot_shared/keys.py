@@ -12,8 +12,9 @@ Parser behaviour: Invalid keys return None. Callers must check and handle accord
 """
 
 import re
+from typing import overload
 
-from .models import StereoMode, VideoWorkerPayload
+from .models import StereoMode, StreamChunkPayload, VideoWorkerPayload
 
 _SEGMENT_KEY_PREFIX = "segments/"
 _OUTPUT_SEGMENT_KEY_PREFIX = "jobs/"
@@ -23,6 +24,9 @@ _SEGMENT_KEY_FILENAME_RE = re.compile(
 )
 _INPUT_KEY_PREFIX = "input/"
 _INPUT_KEY_SUFFIX = "/source.mp4"
+_STREAM_INPUT_PREFIX = "stream_input/"
+_STREAM_CHUNK_FILENAME_RE = re.compile(r"^chunk_(\d{5})\.mp4$")
+_STREAM_OUTPUT_PREFIX = "stream_output/"
 
 
 def build_segment_key(
@@ -137,3 +141,87 @@ def parse_output_segment_key(bucket: str, key: str) -> tuple[str, int] | None:
     if segment_index < 0:
         return None
     return (job_id, segment_index)
+
+
+@overload
+def parse_stream_chunk_key(
+    bucket: str,
+    key: str,
+    *,
+    output_bucket: None = None,
+    default_mode: StereoMode | str = StereoMode.SBS,
+) -> StreamChunkPayload | None:
+    ...
+
+
+@overload
+def parse_stream_chunk_key(
+    bucket: str,
+    key: str,
+    *,
+    output_bucket: str,
+    default_mode: StereoMode | str = StereoMode.SBS,
+) -> StreamChunkPayload | None:
+    ...
+
+
+def parse_stream_chunk_key(
+    bucket: str,
+    key: str,
+    *,
+    output_bucket: str | None = None,
+    default_mode: StereoMode | str = StereoMode.SBS,
+) -> StreamChunkPayload | None:
+    """
+    Parse a streaming chunk key into the canonical StreamChunkPayload.
+
+    Expected input key format: stream_input/{session_id}/chunk_{index:05d}.mp4
+
+    Args:
+        bucket: Input S3 bucket name.
+        key: Object key under the input bucket.
+        output_bucket: Optional output bucket name; when provided, output_s3_uri
+            is populated using stream_output/{session_id}/seg_{index:05d}.mp4.
+        default_mode: Mode to use when no session metadata is available; must
+            be a valid StereoMode value (e.g. StereoMode.SBS).
+
+    Returns:
+        StreamChunkPayload with session_id, chunk_index, input_s3_uri, optional
+        output_s3_uri, and mode, or None if the key is invalid.
+    """
+    if not key.startswith(_STREAM_INPUT_PREFIX):
+        return None
+    rest = key[len(_STREAM_INPUT_PREFIX) :]
+    if "/" not in rest:
+        return None
+    session_id, filename = rest.split("/", 1)
+    if not session_id:
+        return None
+    match = _STREAM_CHUNK_FILENAME_RE.match(filename)
+    if not match:
+        return None
+    chunk_index = int(match.group(1))
+    if chunk_index < 0:
+        return None
+
+    mode_value = default_mode.value if isinstance(default_mode, StereoMode) else default_mode
+    try:
+        mode = StereoMode(mode_value)
+    except ValueError:
+        return None
+
+    input_s3_uri = f"s3://{bucket}/{key}"
+    output_s3_uri: str | None = None
+    if output_bucket is not None:
+        output_s3_uri = (
+            f"s3://{output_bucket}/{_STREAM_OUTPUT_PREFIX}"
+            f"{session_id}/seg_{chunk_index:05d}.mp4"
+        )
+
+    return StreamChunkPayload(
+        session_id=session_id,
+        chunk_index=chunk_index,
+        input_s3_uri=input_s3_uri,
+        output_s3_uri=output_s3_uri,
+        mode=mode,
+    )

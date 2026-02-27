@@ -62,6 +62,36 @@ class VideoWorkerPayload(BaseModel):
     mode: StereoMode
 
 
+class StreamChunkPayload(BaseModel):
+    """
+    Payload for streaming chunks (stream_input/{session_id}/chunk_{index:05d}.mp4).
+
+    This is the canonical payload returned by parse_stream_chunk_key and consumed by
+    the video-worker streaming path. output_s3_uri may be populated by the parser
+    (when the output bucket is known) or by the caller.
+    """
+
+    session_id: str
+    chunk_index: int = Field(..., ge=0)
+    input_s3_uri: str = Field(
+        ...,
+        description=(
+            "s3://<input-bucket>/stream_input/{session_id}/chunk_{index:05d}.mp4"
+        ),
+    )
+    output_s3_uri: str | None = Field(
+        None,
+        description=(
+            "s3://<output-bucket>/stream_output/{session_id}/seg_{index:05d}.mp4; "
+            "may be None if the output bucket is not yet known"
+        ),
+    )
+    mode: StereoMode = Field(
+        StereoMode.SBS,
+        description="Output stereo format for the stream; defaults to SBS when unknown",
+    )
+
+
 # Alias for clarity when parsing segment keys
 SegmentKeyPayload = VideoWorkerPayload
 

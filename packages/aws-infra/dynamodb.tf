@@ -110,6 +110,26 @@ resource "aws_dynamodb_table" "inference_invocations" {
   tags = { Name = "${local.name}-inference-invocations" }
 }
 
+# StreamSessions: PK session_id; optional TTL for automatic expiry
+resource "aws_dynamodb_table" "stream_sessions" {
+  name         = "${local.name}-stream-sessions"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key = "session_id"
+
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  tags = { Name = "${local.name}-stream-sessions" }
+}
+
 # Push subscriptions: Web Push subscription payloads for job-events notifications (web-ui stores, reads for sending)
 resource "aws_dynamodb_table" "push_subscriptions" {
   name         = "${local.name}-push-subscriptions"

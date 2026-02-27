@@ -19,6 +19,13 @@ resource "aws_s3_bucket_notification" "input" {
     filter_suffix = ".mp4"
   }
 
+  queue {
+    queue_arn     = aws_sqs_queue.video_worker.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "stream_input/"
+    filter_suffix = ".mp4"
+  }
+
   depends_on = [
     aws_sqs_queue_policy.chunking_allow_s3,
     aws_sqs_queue_policy.video_worker_allow_s3,
