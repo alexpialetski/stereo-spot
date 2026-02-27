@@ -221,6 +221,39 @@ def test_sagemaker_success_store_miss_idempotent_delete() -> None:
     invocation_store.delete.assert_not_called()
 
 
+def test_sagemaker_success_stream_record_delete_only() -> None:
+    """Stream SageMaker success: delete from store only, no SegmentCompletion."""
+    segment_store = MagicMock()
+    invocation_store = MagicMock()
+    invocation_store.get.return_value = {
+        "job_id": "__stream__",
+        "session_id": "session-abc",
+        "segment_index": 42,
+        "total_segments": 0,
+        "output_s3_uri": "s3://output-bucket/stream_output/session-abc/seg_00042.mp4",
+    }
+    job_store = MagicMock()
+    reassembly_triggered = MagicMock()
+    reassembly_sender = MagicMock()
+    body = make_s3_event_body("output-bucket", "sagemaker-async-responses/stream-response-id")
+    result = process_one_job_status_event_message(
+        body,
+        segment_store,
+        "output-bucket",
+        job_store=job_store,
+        reassembly_triggered=reassembly_triggered,
+        reassembly_sender=reassembly_sender,
+        invocation_store=invocation_store,
+    )
+    assert result is True
+    segment_store.put.assert_not_called()
+    job_store.update.assert_not_called()
+    reassembly_sender.send.assert_not_called()
+    invocation_store.delete.assert_called_once_with(
+        "s3://output-bucket/sagemaker-async-responses/stream-response-id"
+    )
+
+
 def test_sagemaker_failure_marks_failed_deletes_from_store() -> None:
     """SageMaker failure: mark job failed, delete from store."""
     segment_store = MagicMock()
@@ -250,6 +283,34 @@ def test_sagemaker_failure_marks_failed_deletes_from_store() -> None:
     invocation_store.delete.assert_called_once_with(
         "s3://output-bucket/sagemaker-async-failures/fail-id"
     )
+
+
+def test_sagemaker_failure_stream_record_delete_only() -> None:
+    """SageMaker failure for stream: delete from store only, do not mark job failed."""
+    segment_store = MagicMock()
+    invocation_store = MagicMock()
+    invocation_store.get.return_value = {
+        "job_id": "__stream__",
+        "session_id": "session-xyz",
+        "segment_index": 1,
+        "output_s3_uri": "s3://output-bucket/stream_output/session-xyz/seg_00001.mp4",
+    }
+    job_store = MagicMock()
+    reassembly_triggered = MagicMock()
+    reassembly_sender = MagicMock()
+    body = make_s3_event_body("output-bucket", "sagemaker-async-failures/stream-fail-id")
+    result = process_one_job_status_event_message(
+        body,
+        segment_store,
+        "output-bucket",
+        job_store=job_store,
+        reassembly_triggered=reassembly_triggered,
+        reassembly_sender=reassembly_sender,
+        invocation_store=invocation_store,
+    )
+    assert result is True
+    job_store.update.assert_not_called()
+    invocation_store.delete.assert_called_once()
 
 
 def test_sagemaker_failure_no_record_idempotent_delete() -> None:

@@ -24,21 +24,21 @@ Reference docs in the repo root:
 
 ---
 
-## Phase 2 – Video-worker and job-worker changes
+## Phase 2 – Video-worker and job-worker changes ✅ (completed)
 
-5. **Branch on key prefix in video-worker**
+5. **Branch on key prefix in video-worker** ✅
    - In the S3 event handling, branch on `stream_input/` vs existing batch segment prefixes and construct the appropriate payload type (see orchestration plan).
    - Guard the streaming path behind a configuration flag so it can be enabled/disabled per environment and rolled out gradually.
-6. **Implement `process_stream_chunk`**
+6. **Implement `process_stream_chunk`** ✅
    - For stream payloads, invoke inference with `input_uri`, `output_uri`, and `mode`, writing to `stream_output/{session_id}/seg_{index:05d}.mp4` per `streaming-implementation-orchestration.md`.
    - Ensure `process_stream_chunk` is idempotent on `(session_id, index)` so duplicate S3 events or client retries are safe (overwriting the same output key is acceptable).
    - Do not write SegmentCompletions or trigger reassembly for streams.
    - Define a retry policy and maximum attempts for failed chunks, and decide what happens when a chunk permanently fails (e.g. log and skip the segment).
-7. **SageMaker async backpressure integration**
+7. **SageMaker async backpressure integration** ✅
    - Extend the invocation store to mark stream vs batch entries.
    - In job-worker, skip SegmentCompletion/reassembly for stream entries while still cleaning up the invocation store (see orchestration doc details).
-   - Implement per-session and global concurrency limits for streaming invocations so batch traffic is not starved.
-   - Define behavior when async inference queues are saturated (e.g. fail fast vs enqueue with bounded retries).
+   - Implement per-session and global concurrency limits for streaming invocations so batch traffic is not starved. *(Deferred: v1 shares same semaphore; acceptable.)*
+   - Define behavior when async inference queues are saturated (e.g. fail fast vs enqueue with bounded retries). *(Same as batch: semaphore blocks until slot free.)*
 
 ---
 

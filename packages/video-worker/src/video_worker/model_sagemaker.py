@@ -42,6 +42,8 @@ def invoke_sagemaker_async(
     mode: str = "anaglyph",
     region_name: str | None = None,
     client: object | None = None,
+    session_id: str | None = None,
+    chunk_index: int | None = None,
 ) -> str:
     """
     Upload request to S3 and call InvokeEndpointAsync. Returns the OutputLocation (S3 URI).
@@ -55,13 +57,20 @@ def invoke_sagemaker_async(
         mode: Output stereo format ("anaglyph" or "sbs").
         region_name: AWS region; if None, uses default.
         client: Optional boto3 sagemaker-runtime client (for testing).
+        session_id: For stream path; when set with chunk_index, request key is stream/...
+        chunk_index: For stream path; used with session_id for request key.
 
     Returns:
         OutputLocation S3 URI where the async response will appear.
     """
-    job_id, segment_index = _job_id_segment_from_output_uri(output_s3_uri)
     output_bucket, _ = parse_s3_uri_or_raise(output_s3_uri)
-    request_key = f"sagemaker-invocation-requests/{job_id}/{segment_index}.json"
+    if session_id is not None and chunk_index is not None:
+        request_key = f"sagemaker-invocation-requests/stream/{session_id}/{chunk_index}.json"
+        log_id, log_seg = session_id, chunk_index
+    else:
+        job_id, segment_index = _job_id_segment_from_output_uri(output_s3_uri)
+        request_key = f"sagemaker-invocation-requests/{job_id}/{segment_index}.json"
+        log_id, log_seg = job_id, segment_index
     request_s3_uri = f"s3://{output_bucket}/{request_key}"
 
     payload = {
@@ -91,7 +100,7 @@ def invoke_sagemaker_async(
     )
     logger.info(
         "job_id=%s segment_index=%s uploaded invocation request to %s",
-        job_id, segment_index, request_s3_uri,
+        log_id, log_seg, request_s3_uri,
     )
 
     invocation_timeout = min(

@@ -32,6 +32,9 @@ class VideoWorkerSettings(BaseSettings):
     # Max concurrent SageMaker async invocations (1–20)
     inference_max_in_flight: int = 5
 
+    # Streaming: when True, process stream_input/ keys as stream chunks (default False for rollout)
+    streaming_enabled: bool = False
+
     @field_validator("inference_max_in_flight", mode="before")
     @classmethod
     def parse_and_clamp_max_in_flight(cls, v: object) -> int:

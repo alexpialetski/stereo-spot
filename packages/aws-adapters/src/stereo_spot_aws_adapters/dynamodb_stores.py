@@ -325,34 +325,43 @@ class InferenceInvocationsStore:
         segment_index: int,
         total_segments: int,
         output_s3_uri: str,
+        *,
+        session_id: str | None = None,
     ) -> None:
-        """Store correlation for output_location. TTL set so item expires if event never arrives."""
+        """Store correlation for output_location. TTL set so item expires if event never arrives.
+        When session_id is set (stream path), job_id is stored as __stream__ so job-worker
+        skips SegmentCompletion/reassembly and only deletes."""
         now = int(time.time())
         ttl = now + INFERENCE_INVOCATIONS_TTL_SECONDS
-        self._table.put_item(
-            Item={
-                "output_location": output_location,
-                "job_id": job_id,
-                "segment_index": segment_index,
-                "total_segments": total_segments,
-                "output_s3_uri": output_s3_uri,
-                "created_at": now,
-                "ttl": ttl,
-            }
-        )
+        stored_job_id = "__stream__" if session_id is not None else job_id
+        item: dict = {
+            "output_location": output_location,
+            "job_id": stored_job_id,
+            "segment_index": segment_index,
+            "total_segments": total_segments,
+            "output_s3_uri": output_s3_uri,
+            "created_at": now,
+            "ttl": ttl,
+        }
+        if session_id is not None:
+            item["session_id"] = session_id
+        self._table.put_item(Item=item)
 
     def get(self, output_location: str) -> dict[str, str | int] | None:
-        """Return job_id, segment_index, total_segments, output_s3_uri if found; else None."""
+        """Return job_id, segment_index, total_segments, output_s3_uri; + session_id if stream."""
         resp = self._table.get_item(Key={"output_location": output_location})
         item = resp.get("Item")
         if not item:
             return None
-        return {
+        out: dict[str, str | int] = {
             "job_id": item["job_id"],
             "segment_index": int(item["segment_index"]),
             "total_segments": int(item["total_segments"]),
             "output_s3_uri": item["output_s3_uri"],
         }
+        if "session_id" in item:
+            out["session_id"] = item["session_id"]
+        return out
 
     def delete(self, output_location: str) -> None:
         """Remove the correlation. Idempotent if item does not exist."""

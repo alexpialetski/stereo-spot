@@ -3,14 +3,19 @@ Parse S3 event notification payload from the video-worker queue message body.
 
 S3 sends to SQS a JSON body with Records[].s3.bucket.name and Records[].s3.object.key.
 The object key may be URL-encoded (e.g. %2F for /). We decode it then use
-parse_segment_key from shared-types to get the canonical VideoWorkerPayload.
+parse_segment_key or parse_stream_chunk_key from shared-types for batch vs stream.
 """
 
 import json
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote_plus
 
-from stereo_spot_shared import VideoWorkerPayload, parse_segment_key
+from stereo_spot_shared import (
+    StreamChunkPayload,
+    VideoWorkerPayload,
+    parse_segment_key,
+    parse_stream_chunk_key,
+)
 
 
 def _bucket_key_from_s3_event_data(data: dict[str, Any]) -> tuple[str, str] | None:
@@ -79,3 +84,35 @@ def parse_s3_event_bucket_key(body: str | bytes) -> tuple[str, str] | None:
     except (json.JSONDecodeError, TypeError):
         return None
     return _bucket_key_from_s3_event_data(data)
+
+
+def parse_video_worker_message(
+    body: str | bytes,
+    output_bucket: str,
+) -> tuple[VideoWorkerPayload | StreamChunkPayload | None, Literal["batch", "stream"] | None]:
+    """
+    Parse S3 event body into either a batch (VideoWorkerPayload) or stream (StreamChunkPayload).
+
+    Branches on key prefix: stream_input/ -> stream, else -> batch.
+    For stream, output_bucket is used to build output_s3_uri in the payload.
+
+    Returns:
+        (payload, "batch" | "stream") if valid; (None, None) if invalid.
+    """
+    if isinstance(body, bytes):
+        body = body.decode("utf-8")
+    try:
+        data: dict[str, Any] = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return (None, None)
+    result = _bucket_key_from_s3_event_data(data)
+    if result is None:
+        return (None, None)
+    bucket_name, key = result
+    if key.startswith("stream_input/"):
+        payload = parse_stream_chunk_key(
+            bucket_name, key, output_bucket=output_bucket, default_mode="sbs"
+        )
+        return (payload, "stream") if payload else (None, None)
+    payload = parse_segment_key(bucket_name, key)
+    return (payload, "batch") if payload else (None, None)

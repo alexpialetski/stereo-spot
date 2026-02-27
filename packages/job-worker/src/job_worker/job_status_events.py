@@ -142,7 +142,7 @@ def process_one_job_status_event_message(
                 )
         return True
 
-    # SageMaker success: write SegmentCompletion, delete from store, trigger reassembly
+    # SageMaker success: write SegmentCompletion, delete from store, trigger reassembly (batch only)
     if key.startswith("sagemaker-async-responses/"):
         if invocation_store is None:
             logger.debug("job-status-events: no invocation store, skip SageMaker success %s", key)
@@ -151,6 +151,15 @@ def process_one_job_status_event_message(
         if record is None:
             logger.warning(
                 "job-status-events: no invocation record for %s (idempotent delete)", s3_uri
+            )
+            return True
+        # Stream: delete from store only; no SegmentCompletion or reassembly
+        if record.get("job_id") == "__stream__" or "session_id" in record:
+            invocation_store.delete(s3_uri)
+            logger.info(
+                "job-status-events: stream session_id=%s chunk_index=%s SageMaker success (ack)",
+                record.get("session_id", "?"),
+                record.get("segment_index", "?"),
             )
             return True
         job_id = record["job_id"]
@@ -182,27 +191,35 @@ def process_one_job_status_event_message(
         )
         return True
 
-    # SageMaker failure: mark job failed, delete from store
+    # SageMaker failure: mark job failed (batch only), delete from store
     if key.startswith("sagemaker-async-failures/"):
         if invocation_store is None:
             logger.debug("job-status-events: no invocation store, skip SageMaker failure %s", key)
             return True
         record = invocation_store.get(s3_uri)
         if record is not None:
-            job_id = record["job_id"]
-            segment_index = record["segment_index"]
-            try:
-                job_store.update(job_id, status=JobStatus.FAILED.value)
+            if record.get("job_id") == "__stream__" or "session_id" in record:
+                invocation_store.delete(s3_uri)
                 logger.info(
-                    "job-status-events: job_id=%s segment_index=%s SageMaker failure, job failed",
-                    job_id,
-                    segment_index,
+                    "job-status-events: stream session_id=%s chunk_index=%s SM failure (ack)",
+                    record.get("session_id", "?"),
+                    record.get("segment_index", "?"),
                 )
-            except Exception as e:
-                logger.exception(
-                    "job-status-events: failed to mark job %s failed: %s", job_id, e
-                )
-            invocation_store.delete(s3_uri)
+            else:
+                job_id = record["job_id"]
+                segment_index = record["segment_index"]
+                try:
+                    job_store.update(job_id, status=JobStatus.FAILED.value)
+                    logger.info(
+                        "job-status-events: job_id=%s segment_index=%s SageMaker failure -> failed",
+                        job_id,
+                        segment_index,
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "job-status-events: failed to mark job %s failed: %s", job_id, e
+                    )
+                invocation_store.delete(s3_uri)
         else:
             logger.warning(
                 "job-status-events: no invocation record for failure %s (idempotent delete)",

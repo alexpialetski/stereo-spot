@@ -4,7 +4,11 @@ import json
 
 from stereo_spot_shared import StereoMode
 
-from video_worker.s3_event import parse_s3_event_body, parse_s3_event_bucket_key
+from video_worker.s3_event import (
+    parse_s3_event_body,
+    parse_s3_event_bucket_key,
+    parse_video_worker_message,
+)
 
 
 def test_parse_valid_s3_event_segment_key() -> None:
@@ -89,3 +93,52 @@ def test_parse_s3_event_bucket_key_valid() -> None:
 def test_parse_s3_event_bucket_key_invalid_returns_none() -> None:
     assert parse_s3_event_bucket_key("not json") is None
     assert parse_s3_event_bucket_key(json.dumps({"Records": []})) is None
+
+
+def test_parse_video_worker_message_batch() -> None:
+    """parse_video_worker_message returns (VideoWorkerPayload, 'batch') for segments/ key."""
+    body = json.dumps({
+        "Records": [
+            {
+                "s3": {
+                    "bucket": {"name": "input-bucket"},
+                    "object": {"key": "segments/job-xyz/00001_00005_sbs.mp4"},
+                }
+            }
+        ]
+    })
+    payload, kind = parse_video_worker_message(body, "output-bucket")
+    assert kind == "batch"
+    assert payload is not None
+    assert payload.job_id == "job-xyz"
+    assert payload.segment_index == 1
+    assert payload.total_segments == 5
+    assert payload.mode == StereoMode.SBS
+
+
+def test_parse_video_worker_message_stream() -> None:
+    """parse_video_worker_message returns (StreamChunkPayload, 'stream') for stream_input/ key."""
+    body = json.dumps({
+        "Records": [
+            {
+                "s3": {
+                    "bucket": {"name": "input-bucket"},
+                    "object": {"key": "stream_input/session-abc/chunk_00042.mp4"},
+                }
+            }
+        ]
+    })
+    payload, kind = parse_video_worker_message(body, "output-bucket")
+    assert kind == "stream"
+    assert payload is not None
+    assert payload.session_id == "session-abc"
+    assert payload.chunk_index == 42
+    assert payload.input_s3_uri == "s3://input-bucket/stream_input/session-abc/chunk_00042.mp4"
+    assert payload.output_s3_uri == "s3://output-bucket/stream_output/session-abc/seg_00042.mp4"
+    assert payload.mode == StereoMode.SBS
+
+
+def test_parse_video_worker_message_invalid_returns_none_none() -> None:
+    payload, kind = parse_video_worker_message("not json", "output-bucket")
+    assert payload is None
+    assert kind is None

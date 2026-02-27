@@ -2,7 +2,13 @@
 Output object key for segment results. Single place for the convention.
 
 Output bucket key format: jobs/{job_id}/segments/{segment_index}.mp4
+Stream output: stream_output/{session_id}/seg_{chunk_index:05d}.mp4
 """
+
+
+def build_stream_output_uri(output_bucket: str, session_id: str, chunk_index: int) -> str:
+    """Build S3 URI for a stream segment output (s3://bucket/stream_output/session_id/seg_N.mp4)."""
+    return f"s3://{output_bucket}/stream_output/{session_id}/seg_{chunk_index:05d}.mp4"
 
 
 def build_output_segment_key(job_id: str, segment_index: int) -> str:

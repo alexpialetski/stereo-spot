@@ -38,10 +38,11 @@ architecture-beta
 - **SegmentCompletions:** PK `job_id`, SK `segment_index`. Query by `job_id` returns segments in order for reassembly.
 - **ReassemblyTriggered:** PK `job_id`. Used for video-worker trigger idempotency and media-worker reassembly lock. TTL on `ttl` attribute for expiry.
 - **InferenceInvocations:** PK `output_location` (S3 URI of SageMaker async result). Used when inference_backend=sagemaker to correlate output-events (SageMaker result) to job/segment. TTL for cleanup.
+- **StreamSessions:** PK `session_id`. Used for streaming (live pipeline): session create/end and playlist `#EXT-X-ENDLIST`. Optional TTL for expiry.
 
 ## S3 and SQS
 
-- **Input bucket:** Prefixes input/ (source uploads) and segments/ (segment files). Two S3 event notifications: input/*.mp4 to chunking queue; segments/*.mp4 to video-worker queue.
+- **Input bucket:** Prefixes input/ (source uploads), segments/ (segment files), and stream_input/ (streaming chunks). S3 event notifications: input/*.mp4 → chunking queue; segments/*.mp4 and stream_input/*.mp4 → video-worker queue.
 - **Output bucket:** Prefix `jobs/<job_id>/segments/` (segment outputs), `jobs/<job_id>/final.mp4` (final file). S3 event notifications to **output-events** queue: `jobs/*.mp4` (segment files) and `sagemaker-async-responses/`, `sagemaker-async-failures/` (SageMaker async results). Lifecycle: expire `jobs/*/segments/` after 1 day. CORS for playback.
 - **Queues:** Chunking, video-worker, output-events, reassembly, deletion; optionally **ingest** when **`TF_VAR_enable_youtube_ingest=true`** (set in root `.env`). Each queue has a DLQ and max receive count (e.g. 3-5). Visibility timeouts set in Terraform (chunking 15 min, video-worker 40 min, reassembly 1 h, ingest 20 min when present). Web-ui sends to deletion (job removal) and, when ingest is enabled, to ingest (create job from URL); media-worker consumes chunking, reassembly, deletion, and ingest (if configured). Video-worker consumes video-worker and output-events queues.
 
@@ -49,7 +50,7 @@ architecture-beta
 
 - **web-ui:** Behind ALB; task role for S3 and DynamoDB.
 - **media-worker:** Scale on chunking + reassembly queue depth (Application Auto Scaling). Desired count 0 when idle.
-- **video-worker:** Scale on video-worker queue depth. Desired count 0 when idle.
+- **video-worker:** Scale on video-worker queue depth. Desired count 0 when idle. Consumes the same queue for batch (segments/) and stream (stream_input/); branches on key prefix. Set **`STREAMING_ENABLED=true`** (env) to process stream chunks; otherwise stream messages are dropped (message deleted). Job-worker does not write SegmentCompletion or trigger reassembly for stream SageMaker results (invocation store marks stream with `session_id`).
 
 **SageMaker async endpoint** (when inference_backend=sagemaker): Endpoint config sets **max_concurrent_invocations_per_instance = 1** (`async_inference_config.client_config`) so each instance pulls one request at a time from the internal queue; with multiple instances this spreads work across them. The video-worker uses a semaphore to cap in-flight invocations to the instance count (see [Inference backend](/docs/architecture/inference#concurrency-and-backpressure)).
 

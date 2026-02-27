@@ -11,9 +11,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import cast
 
 from stereo_spot_aws_adapters.dynamodb_stores import InferenceInvocationsStore
-from stereo_spot_shared import JobStatus, VideoWorkerPayload
+from stereo_spot_shared import JobStatus, StreamChunkPayload, VideoWorkerPayload
 from stereo_spot_shared.interfaces import (
     JobStore,
     ObjectStorage,
@@ -24,8 +25,12 @@ from .config import get_settings
 from .model_http import invoke_http_endpoint
 from .model_sagemaker import invoke_sagemaker_async
 from .model_stub import process_segment
-from .output_key import build_output_segment_key, build_output_segment_uri
-from .s3_event import parse_s3_event_body
+from .output_key import (
+    build_output_segment_key,
+    build_output_segment_uri,
+    build_stream_output_uri,
+)
+from .s3_event import parse_s3_event_body, parse_video_worker_message
 from .s3_uri import parse_s3_uri
 
 logger = logging.getLogger(__name__)
@@ -67,6 +72,63 @@ def _use_sagemaker_backend() -> bool:
 
 def _use_http_backend() -> bool:
     return get_settings().use_http_backend
+
+
+def _streaming_enabled() -> bool:
+    return get_settings().streaming_enabled
+
+
+def process_stream_chunk(
+    payload: StreamChunkPayload,
+    storage: ObjectStorage,
+    output_bucket: str,
+) -> bool:
+    """
+    Process a single stream chunk (stream_input/...). Idempotent: overwriting same output key is OK.
+
+    Does not write SegmentCompletion or trigger reassembly. Uses same inference path as batch
+    (stub: download/process/upload; HTTP: invoke_http_endpoint; SageMaker uses run_loop path).
+    """
+    output_s3_uri = payload.output_s3_uri
+    if not output_s3_uri:
+        output_s3_uri = build_stream_output_uri(
+            output_bucket, payload.session_id, payload.chunk_index
+        )
+    logger.info(
+        "video-worker: session_id=%s chunk_index=%s start",
+        payload.session_id,
+        payload.chunk_index,
+    )
+    if _use_sagemaker_backend():
+        raise ValueError(
+            "SageMaker backend uses event-driven completion; stream handled in run_loop."
+        )
+    if _use_http_backend():
+        http_url = get_settings().inference_http_url
+        if not http_url:
+            raise ValueError("INFERENCE_BACKEND=http requires INFERENCE_HTTP_URL")
+        invoke_http_endpoint(
+            http_url,
+            payload.input_s3_uri,
+            output_s3_uri,
+            mode=payload.mode.value,
+        )
+    else:
+        parsed = parse_s3_uri(payload.input_s3_uri)
+        if parsed is None:
+            return False
+        input_bucket, input_key = parsed
+        chunk_bytes = storage.download(input_bucket, input_key)
+        output_bytes = process_segment(chunk_bytes)
+        output_key = f"stream_output/{payload.session_id}/seg_{payload.chunk_index:05d}.mp4"
+        storage.upload(output_bucket, output_key, output_bytes)
+    logger.info(
+        "video-worker: session_id=%s chunk_index=%s complete -> %s",
+        payload.session_id,
+        payload.chunk_index,
+        output_s3_uri,
+    )
+    return True
 
 
 def process_one_message(
@@ -176,7 +238,34 @@ def run_loop(
             logger.debug("video-worker: received %s message(s)", len(messages))
         for msg in messages:
             body = msg.body
-            payload = parse_s3_event_body(body)
+            parsed_payload, kind = parse_video_worker_message(body, output_bucket)
+            if parsed_payload is None or kind is None:
+                _log_job_id_from_inference_body(
+                    body, "video-worker: job_id=%s invalid S3 event body"
+                )
+                continue
+            if kind == "stream":
+                if not _streaming_enabled():
+                    logger.warning(
+                        "video-worker: stream message ignored (streaming disabled)"
+                    )
+                    continue
+                stream_payload = cast(StreamChunkPayload, parsed_payload)
+                try:
+                    ok = process_stream_chunk(
+                        stream_payload, storage, output_bucket
+                    )
+                    if ok:
+                        receiver.delete(msg.receipt_handle)
+                except Exception as e:
+                    logger.exception(
+                        "video-worker: session_id=%s chunk_index=%s failed: %s",
+                        stream_payload.session_id,
+                        stream_payload.chunk_index,
+                        e,
+                    )
+                continue
+            batch_payload = cast(VideoWorkerPayload, parsed_payload)
             try:
                 ok = process_one_message(
                     body,
@@ -187,12 +276,12 @@ def run_loop(
                 if ok:
                     receiver.delete(msg.receipt_handle)
             except Exception as e:
-                job_id_ctx = payload.job_id if payload else _job_id_for_inference_body(body)
                 logger.exception(
                     "video-worker: job_id=%s failed to process message: %s",
-                    job_id_ctx, e,
+                    batch_payload.job_id,
+                    e,
                 )
-                _mark_job_failed(job_store, payload)
+                _mark_job_failed(job_store, batch_payload)
         if not messages:
             time.sleep(poll_interval_sec)
 
@@ -226,12 +315,71 @@ def _run_loop_sagemaker_fire_and_forget(
             continue
         for msg in messages:
             body = msg.body
-            payload = parse_s3_event_body(body)
-            if payload is None:
+            parsed_payload, kind = parse_video_worker_message(body, output_bucket)
+            if parsed_payload is None or kind is None:
                 _log_job_id_from_inference_body(
                     body, "video-worker: job_id=%s invalid S3 event body"
                 )
                 continue
+            if kind == "stream":
+                if not _streaming_enabled():
+                    logger.info(
+                        "video-worker: stream message dropped (streaming disabled)"
+                    )
+                    receiver.delete(msg.receipt_handle)
+                    continue
+                stream_payload = cast(StreamChunkPayload, parsed_payload)
+                output_s3_uri = stream_payload.output_s3_uri or build_stream_output_uri(
+                    output_bucket,
+                    stream_payload.session_id,
+                    stream_payload.chunk_index,
+                )
+                if inference_semaphore is not None:
+                    inference_semaphore.acquire()
+                logger.info(
+                    "video-worker: session_id=%s chunk_index=%s invoking SageMaker async",
+                    stream_payload.session_id,
+                    stream_payload.chunk_index,
+                )
+                try:
+                    output_location = invoke_sagemaker_async(
+                        stream_payload.input_s3_uri,
+                        output_s3_uri,
+                        endpoint_name,
+                        mode=stream_payload.mode.value,
+                        region_name=region_name,
+                        client=sagemaker_client,
+                        session_id=stream_payload.session_id,
+                        chunk_index=stream_payload.chunk_index,
+                    )
+                except Exception as e:
+                    if inference_semaphore is not None:
+                        inference_semaphore.release()
+                    logger.exception(
+                        "video-worker: session_id=%s chunk_index=%s invoke_async failed: %s",
+                        stream_payload.session_id,
+                        stream_payload.chunk_index,
+                        e,
+                    )
+                    continue
+                invocation_store.put(
+                    output_location,
+                    "__stream__",
+                    stream_payload.chunk_index,
+                    0,
+                    output_s3_uri,
+                    session_id=stream_payload.session_id,
+                )
+                receiver.delete(msg.receipt_handle)
+                logger.info(
+                    "video-worker: session_id=%s chunk_index=%s invoked (done via output-events)",
+                    stream_payload.session_id,
+                    stream_payload.chunk_index,
+                )
+                continue
+            if kind != "batch":
+                continue
+            payload = cast(VideoWorkerPayload, parsed_payload)
             if inference_semaphore is not None:
                 inference_semaphore.acquire()
             logger.info(
