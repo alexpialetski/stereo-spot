@@ -24,10 +24,22 @@ variable "enable_youtube_ingest" {
   default     = false
 }
 
+variable "video_worker_streaming_enabled" {
+  description = "Set STREAMING_ENABLED=true on video-worker ECS task to process stream_input/ chunks; when false (default), stream messages are dropped."
+  type        = bool
+  default     = true
+}
+
 variable "load_balancer_certificate_id" {
-  description = "When set, enable load balancer HTTPS listener and HTTP→HTTPS redirect. On AWS this is the ACM certificate ARN. Set by root update-alb-certificates script. Empty = HTTP only."
+  description = "When set, enable load balancer HTTPS listener. On AWS this is the ACM certificate ARN. Set by root update-alb-certificates script. Empty = HTTP only."
   type        = string
   default     = ""
+}
+
+variable "alb_http_redirect_to_https" {
+  description = "When true and a certificate is set, HTTP (80) redirects to HTTPS (443). When false, HTTP forwards to the target group so both HTTP and HTTPS work."
+  type        = bool
+  default     = false
 }
 
 # --- ECS compute ---

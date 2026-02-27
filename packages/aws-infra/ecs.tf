@@ -349,14 +349,14 @@ resource "aws_lb_target_group" "web_ui" {
   tags = { Name = "${local.name}-web-ui" }
 }
 
-# Single port-80 listener: forward to TG when HTTP-only, redirect to HTTPS when certs present (avoids destroy+create race).
+# Port-80 listener: forward to TG when HTTP-only or when alb_http_redirect_to_https is false; redirect to HTTPS when cert present and redirect enabled.
 resource "aws_lb_listener" "web_ui_http" {
   load_balancer_arn = aws_lb.web_ui.arn
   port              = "80"
   protocol          = "HTTP"
 
   dynamic "default_action" {
-    for_each = local.enable_alb_https ? [] : [1]
+    for_each = (local.enable_alb_https && var.alb_http_redirect_to_https) ? [] : [1]
     content {
       type             = "forward"
       target_group_arn = aws_lb_target_group.web_ui.arn
@@ -364,7 +364,7 @@ resource "aws_lb_listener" "web_ui_http" {
   }
 
   dynamic "default_action" {
-    for_each = local.enable_alb_https ? [1] : []
+    for_each = (local.enable_alb_https && var.alb_http_redirect_to_https) ? [1] : []
     content {
       type = "redirect"
       redirect {
@@ -460,6 +460,7 @@ locals {
     { name = "JOBS_TABLE_NAME", value = aws_dynamodb_table.jobs.name },
     { name = "VIDEO_WORKER_QUEUE_URL", value = aws_sqs_queue.video_worker.url },
     { name = "OUTPUT_EVENTS_QUEUE_URL", value = aws_sqs_queue.output_events.url },
+    { name = "STREAMING_ENABLED", value = tostring(var.video_worker_streaming_enabled) },
   ], local.video_worker_inference_env)
   job_worker_env = concat(local.ecs_env_common, [
     { name = "OUTPUT_BUCKET_NAME", value = aws_s3_bucket.output.id },
