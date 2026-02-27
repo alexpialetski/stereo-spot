@@ -52,3 +52,14 @@ npm run start
 ## Packaging and distribution (Phase 4 item 16)
 
 Target platforms (e.g. Windows, macOS, Linux) and packaging (electron-builder or similar) are not yet implemented. Updates are manual (re-download). To add packaging, introduce electron-builder in `packages/stream-capture` and define build targets per platform; document the chosen update strategy (manual vs auto-update) in this section.
+
+## Feature gating and rollout
+
+Streaming is gated by **STREAMING_ENABLED** on the video-worker (default `false`). Enable in dev/staging first; run a small load test (multiple parallel sessions) before enabling in production. See [AWS runbooks §10 Streaming](/docs/aws/runbooks#10-streaming-live-3d-pipeline).
+
+## Non-goals (this phase)
+
+- **Ultra-low latency** — Chunk duration is 5 s; end-to-end latency is not sub-second.
+- **Mobile capture** — Desktop capture only (Electron); no browser or mobile app capture in scope.
+- **DRM or access control** — Playlist and segment URLs are presigned; no per-user auth or DRM.
+- **Credential refresh** — Temp credentials last 1 h; streams longer than 1 h will fail when they expire.

@@ -79,22 +79,27 @@ Reference docs in the repo root:
 
 ---
 
-## Phase 5 – Testing, observability, rollout, and docs
+## Phase 5 – Testing, observability, rollout, and docs ✅
 
-17. **End‑to‑end tests**
+17. **End‑to‑end tests** ✅
    - Manually or via scripts: create a session, upload a few chunks, verify segments in `stream_output/`, and open the playlist URL in PotPlayer/ffplay (see playback doc’s testing guidance).
    - Include multi-session tests to verify isolation (no cross-session leakage) and basic failure scenarios (missing chunk, failed inference, no `/end` call).
-18. **Automated tests**
+   - *Script: `scripts/stream_e2e.py` — smoke test for create session, GET playlist, end session (requires web-ui and optional stream_sessions store).*
+18. **Automated tests** ✅
    - Unit tests for key parsing, stream vs batch branching, `process_stream_chunk` (including idempotency and error paths), and playlist generation (segment ordering and `#EXT-X-ENDLIST`).
    - Add integration tests around the playlist API and S3 listing behavior to ensure gaps or out-of-order segments are handled gracefully.
-19. **Observability and alerting**
+   - *Tests: shared-types test_keys (parse_stream_chunk_key); video-worker test_s3_event (stream msg), test_inference (process_stream_chunk); web-ui test_stream (playlist segments, ENDLIST, filtering).*
+19. **Observability and alerting** ✅
    - Add metrics for stream chunk processing (per-session counts, latencies, error rates), SQS queue depth, async inference in-flight counts, and playlist generation errors.
    - Ensure structured logs consistently include `session_id` and `index` across components.
    - Configure alerts for high error rates, growing queue depth, and sessions that do not emit `#EXT-X-ENDLIST` within an expected time window.
-20. **Rollout and feature gating**
+   - *Logs: web-ui stream router (session_id on create/end/playlist); video-worker (session_id, chunk_index). Metrics/alerts: see runbooks §10.*
+20. **Rollout and feature gating** ✅
    - Gate streaming behind a feature flag or environment config, initially enabling only for internal/testing accounts.
    - Perform a small load test (multiple parallel sessions over a bounded period) before enabling for all users and monitor metrics closely during rollout.
-21. **Documentation updates**
+   - *Video-worker: STREAMING_ENABLED (default false). Doc: runbooks §10, streaming-capture.*
+21. **Documentation updates** ✅
    - Keep `packages/stereo-spot-docs` in sync: add or update sections that describe the streaming capture app, orchestration path, HLS playback, and operational runbooks/troubleshooting, referencing the three root implementation docs and this tracking file.
    - Clearly document any non-goals for this phase (e.g. ultra-low latency, mobile capture, DRM) to avoid scope creep.
+   - *Docs: streaming-capture.md (app, feature gating, non-goals); aws/runbooks.md §10 (streaming); plan refs linked.*
 

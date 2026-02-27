@@ -116,6 +116,7 @@ async def create_stream_session(
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if stream_store is not None:
         stream_store.put(session_id, now_iso, mode_val, ended_at=None)
+    logger.info("stream_sessions create session_id=%s mode=%s", session_id, mode_val)
     region = os.environ.get("AWS_REGION")
     upload = _mint_stream_upload_credentials(session_id, input_bucket, region)
     base = _base_url(request)
@@ -139,8 +140,9 @@ async def end_stream_session(
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         stream_store.set_ended_at(session_id, now_iso)
+        logger.info("stream_sessions end session_id=%s", session_id)
     except Exception as e:
-        logger.warning("stream_sessions set_ended_at %s: %s", session_id, e)
+        logger.warning("stream_sessions set_ended_at session_id=%s: %s", session_id, e)
         raise HTTPException(status_code=500, detail="Failed to end session")
 
 
@@ -163,8 +165,9 @@ async def get_stream_playlist(
     prefix = f"stream_output/{session_id}/"
     try:
         keys = _list_segment_keys(object_storage, output_bucket, prefix)
+        logger.info("stream playlist session_id=%s segments=%s", session_id, len(keys))
     except Exception as e:
-        logger.exception("playlist list_segments session_id=%s: %s", session_id, e)
+        logger.exception("stream playlist list_segments session_id=%s: %s", session_id, e)
         raise HTTPException(status_code=503, detail="Failed to list segments")
     body = _build_playlist(
         object_storage, output_bucket, prefix, keys, add_endlist=ended_at is not None

@@ -1,14 +1,15 @@
-"""Tests for inference queue consumer (process_one_message, run_loop)."""
+"""Tests for inference queue consumer (process_one_message, process_stream_chunk, run_loop)."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
-from stereo_spot_shared import QueueMessage
+from stereo_spot_shared import QueueMessage, StereoMode, StreamChunkPayload
 
 from tests.helpers import make_s3_event_body
 from video_worker.inference import (
     _max_in_flight,
     process_one_message,
+    process_stream_chunk,
     run_loop,
 )
 
@@ -32,6 +33,44 @@ def test_process_one_message_invalid_body_returns_false() -> None:
     storage = MagicMock()
     result = process_one_message("not json", storage, "output-bucket")
     assert result is False
+    storage.download.assert_not_called()
+
+
+def test_process_stream_chunk_stub_backend() -> None:
+    """process_stream_chunk (stub): download input, process, upload to stream_output/...; idempotent overwrite OK."""
+    storage = MagicMock()
+    storage.download.return_value = b"fake chunk bytes"
+    payload = StreamChunkPayload(
+        session_id="sess-1",
+        chunk_index=42,
+        input_s3_uri="s3://input-bucket/stream_input/sess-1/chunk_00042.mp4",
+        output_s3_uri="s3://output-bucket/stream_output/sess-1/seg_00042.mp4",
+        mode=StereoMode.SBS,
+    )
+    with patch.dict("os.environ", {"INFERENCE_BACKEND": "stub"}, clear=False):
+        result = process_stream_chunk(payload, storage, "output-bucket")
+    assert result is True
+    storage.download.assert_called_once_with("input-bucket", "stream_input/sess-1/chunk_00042.mp4")
+    storage.upload.assert_called_once()
+    upload_args = storage.upload.call_args[0]
+    assert upload_args[0] == "output-bucket"
+    assert upload_args[1] == "stream_output/sess-1/seg_00042.mp4"
+    assert upload_args[2] == b"fake chunk bytes"
+
+
+def test_process_stream_chunk_sagemaker_backend_raises() -> None:
+    """process_stream_chunk with SageMaker backend raises (stream handled in run_loop)."""
+    storage = MagicMock()
+    payload = StreamChunkPayload(
+        session_id="s",
+        chunk_index=0,
+        input_s3_uri="s3://b/k",
+        output_s3_uri="s3://out/stream_output/s/seg_00000.mp4",
+        mode=StereoMode.SBS,
+    )
+    with patch.dict("os.environ", {"INFERENCE_BACKEND": "sagemaker"}, clear=False):
+        with pytest.raises(ValueError, match="event-driven completion"):
+            process_stream_chunk(payload, storage, "output-bucket")
     storage.download.assert_not_called()
 
 

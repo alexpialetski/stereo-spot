@@ -158,3 +158,22 @@ fields @timestamp, @logStream, @message
 Replace `<JOB_ID>` with the job UUID. When the web UI is configured with `NAME_PREFIX` (and region, e.g. via ECS), the job detail page shows an **Open logs** link that opens Logs Insights with these log groups and the above query pre-filled for that job.
 
 **SSE progress stream (web-ui):** Filter for `events stream` in the web-ui log group. You should see `events stream started`, then (when event-driven) updates from the job-events consumer, or (when polling) keepalives until `events stream ended (completed)`, `events stream ended (timeout)`, or `events stream ended (client disconnect)`.
+
+---
+
+## 10. Streaming (live 3D pipeline)
+
+Streaming uses the same **video-worker** queue as batch; messages are either **batch** (`segments/`) or **stream** (`stream_input/`). The worker branches on key prefix; stream chunks are processed by `process_stream_chunk` and written to `stream_output/{session_id}/seg_*.mp4`. No SegmentCompletion or reassembly for streams.
+
+**Feature gating:** Set **`STREAMING_ENABLED=true`** on the video-worker ECS task to process stream messages; when false (default), stream messages are dropped (deleted from the queue). Roll out by enabling in dev/staging first, then production after a small load test.
+
+**Playlist / session:** Web-ui exposes `POST /stream_sessions` (create; returns temp credentials and playlist URL), `POST /stream_sessions/{id}/end` (set ended), and `GET /stream/{session_id}/playlist.m3u8` (HLS EVENT playlist with presigned segment URLs). When the session has `ended_at`, the playlist includes `#EXT-X-ENDLIST`. Requires **STREAM_SESSIONS_TABLE_NAME** (and DynamoDB table) for session store; otherwise create works (STS) but end and playlist will 404 or behave without store.
+
+**Structured logs:** Web-ui logs `stream_sessions create session_id=...`, `stream_sessions end session_id=...`, and `stream playlist session_id=... segments=N`. Video-worker logs `session_id=... chunk_index=...` in `process_stream_chunk`. Use these in CloudWatch Logs Insights to trace a session.
+
+**Troubleshooting:**
+
+- **Playlist 404:** Session not in store (table missing or not configured). Ensure **STREAM_SESSIONS_TABLE_NAME** is set and the table exists; create session again.
+- **No segments in playlist:** List is under `stream_output/{session_id}/`; segments appear after video-worker processes each chunk. Check video-worker logs for `session_id=... chunk_index=...` and **STREAMING_ENABLED=true**. If chunks are uploaded to `stream_input/`, confirm S3 event notification for prefix `stream_input/` targets the video-worker queue (see [Infrastructure](/docs/aws/infrastructure)).
+- **Stream messages in video-worker DLQ:** Same as batch DLQ handling (receive, inspect, replay or discard). Stream chunks are idempotent (overwriting same output key is OK); replay is safe.
+- **Metrics and alerting (recommended):** Add CloudWatch metrics for stream chunk processing (per-session counts, latencies, error rates), video-worker queue depth, and playlist errors. Alerts: high error rate, growing queue depth, sessions that never get `#EXT-X-ENDLIST` within a time window. Not implemented in code; configure in Terraform or console.
