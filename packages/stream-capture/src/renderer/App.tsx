@@ -12,14 +12,29 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const stopRequestedRef = useRef(false);
 
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+
   const loadSources = useCallback(async () => {
-    if (!window.desktopCapturer) return;
-    const srcs = await window.desktopCapturer.getSources({
-      types: ["screen", "window"],
-    });
-    setSources(srcs);
-    if (srcs.length > 0 && !selectedSourceId) {
-      setSelectedSourceId(srcs[0].id);
+    setSourcesError(null);
+    if (!window.desktopCapturer) {
+      setSourcesError("Capture API not available. Restart the app.");
+      return;
+    }
+    try {
+      const srcs = await window.desktopCapturer.getSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 150, height: 150 },
+      });
+      setSources(srcs);
+      if (srcs.length > 0 && !selectedSourceId) {
+        setSelectedSourceId(srcs[0].id);
+      }
+      if (srcs.length === 0) {
+        setSourcesError("No screens or windows found. Grant display capture permission if prompted.");
+      }
+    } catch (e) {
+      setSourcesError(e instanceof Error ? e.message : String(e));
+      setSources([]);
     }
   }, [selectedSourceId]);
 
@@ -92,18 +107,32 @@ export default function App() {
 
       <section className="section">
         <label className="label">Capture source</label>
-        <select
-          value={selectedSourceId}
-          onChange={(e) => setSelectedSourceId(e.target.value)}
-          disabled={isStreaming}
-        >
-          <option value="">Select source…</option>
-          {sources.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+        <div className="source-row">
+          <select
+            value={selectedSourceId}
+            onChange={(e) => setSelectedSourceId(e.target.value)}
+            disabled={isStreaming}
+          >
+            <option value="">Select source…</option>
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => loadSources()}
+            disabled={isStreaming}
+            title="Refresh list of screens and windows"
+          >
+            Refresh
+          </button>
+        </div>
+        {sourcesError && (
+          <p className="hint error-hint">{sourcesError}</p>
+        )}
       </section>
 
       <section className="section">

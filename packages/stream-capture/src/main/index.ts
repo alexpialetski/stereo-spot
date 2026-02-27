@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
 import path from "path";
 import { createStreamSession, endStreamSession } from "../api/sessions.js";
 import type { CreateStreamSessionResponse } from "../api/types.js";
@@ -41,6 +41,21 @@ app.on("window-all-closed", () => {
 });
 
 // --- IPC handlers ---
+
+ipcMain.handle(
+  "get-sources",
+  async (
+    _,
+    opts: { types: ("screen" | "window")[]; thumbnailSize?: { width: number; height: number } }
+  ) => {
+    const srcs = await desktopCapturer.getSources(opts);
+    return srcs.map((s) => ({
+      id: s.id,
+      name: s.name,
+      thumbnail: s.thumbnail?.toDataURL() ?? "",
+    }));
+  }
+);
 
 ipcMain.handle("create-session", async (_, mode?: string) => {
   if (session) {

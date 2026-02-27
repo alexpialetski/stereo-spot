@@ -1,16 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { desktopCapturer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktopCapturer", {
-  getSources: async (opts: { types: string[] }) => {
-    const srcs = await desktopCapturer.getSources(opts);
-    return srcs.map((s: { id: string; name: string; thumbnail: { toDataURL: () => string } }) => ({
-      id: s.id,
-      name: s.name,
-      thumbnail: s.thumbnail?.toDataURL() ?? "",
-    }));
-  },
+  getSources: (opts: { types: string[]; thumbnailSize?: { width: number; height: number } }) =>
+    ipcRenderer.invoke("get-sources", opts),
 });
 
 contextBridge.exposeInMainWorld("streamCapture", {

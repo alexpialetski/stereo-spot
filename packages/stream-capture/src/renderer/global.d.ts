@@ -3,9 +3,10 @@ export {};
 declare global {
   interface Window {
     desktopCapturer?: {
-      getSources: (opts: { types: string[] }) => Promise<
-        { id: string; name: string; thumbnail: string }[]
-      >;
+      getSources: (opts: {
+        types: string[];
+        thumbnailSize?: { width: number; height: number };
+      }) => Promise<{ id: string; name: string; thumbnail: string }[]>;
     };
     streamCapture?: {
       createSession: (mode?: string) => Promise<{

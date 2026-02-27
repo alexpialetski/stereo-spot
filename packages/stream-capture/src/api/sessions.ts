@@ -3,6 +3,12 @@ import type {
   CreateStreamSessionResponse,
 } from "./types.js";
 import { DEFAULT_API_BASE } from "../constants.js";
+import { Agent } from "undici";
+
+/** Disables TLS certificate verification for HTTPS (e.g. self-signed or internal). Remove for production. */
+const insecureDispatcher = new Agent({
+  connect: { rejectUnauthorized: false },
+});
 
 const getBase = (): string => {
   if (typeof process !== "undefined" && process.env?.STREAM_CAPTURE_API_BASE) {
@@ -10,6 +16,8 @@ const getBase = (): string => {
   }
   return DEFAULT_API_BASE;
 };
+
+const fetchOpts = () => ({ dispatcher: insecureDispatcher });
 
 /**
  * Create a stream session; returns session_id, playlist_url, and temp upload credentials.
@@ -22,6 +30,7 @@ export async function createStreamSession(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode: body.mode ?? "sbs" }),
+    ...fetchOpts(),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -38,6 +47,7 @@ export async function endStreamSession(sessionId: string): Promise<void> {
   const res = await fetch(`${base}/stream_sessions/${encodeURIComponent(sessionId)}/end`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    ...fetchOpts(),
   });
   if (!res.ok && res.status !== 204) {
     const text = await res.text();

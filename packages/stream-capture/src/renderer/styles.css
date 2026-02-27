@@ -50,6 +50,30 @@ select {
   background: #fff;
 }
 
+.source-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.source-row select {
+  flex: 1;
+}
+
+button.secondary {
+  background: #e5e7eb;
+  color: #1a1a1a;
+}
+
+button.secondary:hover:not(:disabled) {
+  background: #d1d5db;
+}
+
+.error-hint {
+  color: #b91c1c;
+  margin-top: 6px;
+}
+
 .buttons {
   display: flex;
   gap: 10px;
