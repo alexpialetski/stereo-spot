@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+dist-main
 tmp
 out-tsc
 build
