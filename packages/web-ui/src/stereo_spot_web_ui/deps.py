@@ -119,3 +119,13 @@ def get_push_subscriptions_store(request: Request):
     from stereo_spot_adapters.env_config import push_subscriptions_store_from_env_or_none
 
     return push_subscriptions_store_from_env_or_none()
+
+
+def get_stream_sessions_store_optional(request: Request):
+    """Return StreamSessions store when STREAM_SESSIONS_TABLE_NAME is set; else None."""
+    store = getattr(request.app.state, "stream_sessions_store", None)
+    if store is not None:
+        return store
+    from stereo_spot_adapters.env_config import stream_sessions_store_from_env_or_none
+
+    return stream_sessions_store_from_env_or_none()

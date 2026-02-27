@@ -6,6 +6,7 @@ from .dynamodb_stores import (
     DynamoSegmentCompletionStore,
     InferenceInvocationsStore,
     ReassemblyTriggeredLock,
+    StreamSessionsStore,
 )
 from .env_config import operator_links_from_env
 from .operator_links import AWSOperatorLinksProvider
@@ -22,6 +23,7 @@ __all__ = [
     "PushSubscriptionsStore",
     "ReassemblyTriggeredLock",
     "S3ObjectStorage",
+    "StreamSessionsStore",
     "SQSQueueReceiver",
     "SQSQueueSender",
     "operator_links_from_env",

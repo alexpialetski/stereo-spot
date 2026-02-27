@@ -42,18 +42,18 @@ Reference docs in the repo root:
 
 ---
 
-## Phase 3 – Web‑ui backend: sessions and playlist
+## Phase 3 – Web‑ui backend: sessions and playlist ✅ (completed)
 
-8. **Session create API – `POST /stream_sessions`**
+8. **Session create API – `POST /stream_sessions`** ✅
    - Implement in `web-ui`, minting 1‑hour temporary credentials scoped to `stream_input/{session_id}/*` and returning `session_id`, `playlist_url`, and `upload` info, as specified in `streaming-implementation-client-capture.md` and `streaming-implementation-orchestration.md`.
    - Use STS/role assumption to mint credentials restricted to `s3:PutObject` (and `AbortMultipartUpload` if needed) on `stream_input/{session_id}/*` only (no read/list permissions).
-9. **Session end API – `POST /stream_sessions/{id}/end`**
+9. **Session end API – `POST /stream_sessions/{id}/end`** ✅
    - Mark `ended_at` in `stream_sessions` to support `#EXT-X-ENDLIST` behavior.
    - Clarify behavior for late-arriving chunks after `ended_at` (e.g. still process but do not extend playlist duration, or log and ignore).
-10. **Playlist API – `GET /stream/{session_id}/playlist.m3u8`**
+10. **Playlist API – `GET /stream/{session_id}/playlist.m3u8`** ✅
     - Implement according to `streaming-implementation-playback-hls.md`: list `stream_output/{session_id}/`, presign segment URLs, build EVENT playlist, and append `#EXT-X-ENDLIST` when `ended_at` is set.
     - Handle S3 eventual consistency by relying on the monotonic segment index model (e.g. `seg_{index:05d}.mp4`) and ensuring playlist generation is robust to slightly out-of-order visibility.
-11. **Session expiry and cleanup**
+11. **Session expiry and cleanup** *(deferred)*
     - Implement automatic session expiry (e.g. background job that sets `ended_at` after N minutes of inactivity) so sessions that never explicitly call `/end` still terminate and can emit `#EXT-X-ENDLIST`.
     - Define how long to retain stream input/output objects and any related metadata, and where lifecycle rules are configured (IaC).
 

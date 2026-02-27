@@ -48,7 +48,7 @@ architecture-beta
 
 ## ECS
 
-- **web-ui:** Behind ALB; task role for S3 and DynamoDB.
+- **web-ui:** Behind ALB; task role for S3, DynamoDB, and STS (GetFederationToken for stream upload credentials). **Streaming:** `POST /stream_sessions` (create session, 1 h temp credentials for `stream_input/{session_id}/*`), `POST /stream_sessions/{id}/end` (set ended_at), `GET /stream/{session_id}/playlist.m3u8` (HLS playlist with presigned segment URLs; adds `#EXT-X-ENDLIST` when session ended). Uses **StreamSessions** table when **STREAM_SESSIONS_TABLE_NAME** is set.
 - **media-worker:** Scale on chunking + reassembly queue depth (Application Auto Scaling). Desired count 0 when idle.
 - **video-worker:** Scale on video-worker queue depth. Desired count 0 when idle. Consumes the same queue for batch (segments/) and stream (stream_input/); branches on key prefix. Set **`STREAMING_ENABLED=true`** (env) to process stream chunks; otherwise stream messages are dropped (message deleted). Job-worker does not write SegmentCompletion or trigger reassembly for stream SageMaker results (invocation store marks stream with `session_id`).
 

@@ -95,6 +95,16 @@ resource "aws_iam_role_policy" "web_ui_task" {
           Effect   = "Allow"
           Action   = ["secretsmanager:GetSecretValue"]
           Resource = [aws_secretsmanager_secret.vapid.arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["sts:GetFederationToken"]
+          Resource = "*"
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+          Resource = [aws_dynamodb_table.stream_sessions.arn]
         }
       ],
       local.enable_youtube_ingest ? [{
@@ -408,7 +418,8 @@ locals {
       { name = "PUSH_SUBSCRIPTIONS_TABLE_NAME", value = aws_dynamodb_table.push_subscriptions.name },
       { name = "NAME_PREFIX", value = var.name_prefix },
       { name = "VAPID_SECRET_ARN", value = aws_secretsmanager_secret.vapid.arn },
-      { name = "WEB_UI_URL", value = local.alb_url }
+      { name = "WEB_UI_URL", value = local.alb_url },
+      { name = "STREAM_SESSIONS_TABLE_NAME", value = aws_dynamodb_table.stream_sessions.name }
     ],
     local.enable_youtube_ingest ? [{ name = "INGEST_QUEUE_URL", value = aws_sqs_queue.ingest[0].url }] : []
   )

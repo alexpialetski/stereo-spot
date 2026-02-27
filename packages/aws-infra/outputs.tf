@@ -83,6 +83,11 @@ output "push_subscriptions_table_name" {
   value       = aws_dynamodb_table.push_subscriptions.name
 }
 
+output "stream_sessions_table_name" {
+  description = "Name of the DynamoDB StreamSessions table (streaming create/end, playlist #EXT-X-ENDLIST)"
+  value       = aws_dynamodb_table.stream_sessions.name
+}
+
 # --- ECS / ECR ---
 
 output "ecs_cluster_name" {

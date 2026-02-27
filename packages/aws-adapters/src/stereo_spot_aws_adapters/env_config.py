@@ -28,6 +28,8 @@ Optional:
 - COST_EXPLORER_URL: optional override for the Cost Explorer deep link (default: App-tag filter).
 - INFERENCE_INVOCATIONS_TABLE_NAME: optional; when set (e.g. sagemaker),
   inference_invocations_store_from_env returns a store.
+- STREAM_SESSIONS_TABLE_NAME: optional; when set (e.g. web-ui ECS),
+  stream_sessions_store_from_env_or_none returns a StreamSessionsStore.
 """
 
 import os
@@ -44,6 +46,7 @@ from .dynamodb_stores import (
     DynamoSegmentCompletionStore,
     InferenceInvocationsStore,
     ReassemblyTriggeredLock,
+    StreamSessionsStore,
 )
 from .hf_token import AwsSecretsManagerHfTokenProvider
 from .operator_links import AWSOperatorLinksProvider
@@ -326,3 +329,25 @@ def conversion_metrics_emitter_from_env() -> ConversionMetricsEmitter:
 def hf_token_provider_from_env() -> HfTokenProvider:
     """Build HF token provider from Secrets Manager. Reads HF_TOKEN_ARN, AWS_REGION."""
     return AwsSecretsManagerHfTokenProvider()
+
+
+def stream_sessions_store_from_env() -> StreamSessionsStore:
+    """Build StreamSessionsStore from STREAM_SESSIONS_TABLE_NAME."""
+    table_name = os.environ["STREAM_SESSIONS_TABLE_NAME"]
+    return StreamSessionsStore(
+        table_name,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+    )
+
+
+def stream_sessions_store_from_env_or_none() -> StreamSessionsStore | None:
+    """Build StreamSessionsStore when STREAM_SESSIONS_TABLE_NAME is set; else None."""
+    table_name = os.environ.get("STREAM_SESSIONS_TABLE_NAME")
+    if not table_name:
+        return None
+    return StreamSessionsStore(
+        table_name,
+        region_name=_get_region(),
+        endpoint_url=_get_endpoint_url(),
+    )

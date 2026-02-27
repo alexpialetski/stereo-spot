@@ -366,3 +366,69 @@ class InferenceInvocationsStore:
     def delete(self, output_location: str) -> None:
         """Remove the correlation. Idempotent if item does not exist."""
         self._table.delete_item(Key={"output_location": output_location})
+
+
+class StreamSessionsStore:
+    """
+    Stream sessions table: session_id (PK), created_at, mode, ended_at (optional).
+    Used by web-ui for session create/end and playlist #EXT-X-ENDLIST.
+    """
+
+    def __init__(
+        self,
+        table_name: str,
+        *,
+        region_name: str | None = None,
+        endpoint_url: str | None = None,
+    ) -> None:
+        self._table_name = table_name
+        self._resource = boto3.resource(
+            "dynamodb",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+        )
+        self._table = self._resource.Table(table_name)
+
+    def get(self, session_id: str) -> dict[str, str | int] | None:
+        """Return session record (session_id, created_at, mode, ended_at) or None."""
+        resp = self._table.get_item(Key={"session_id": session_id})
+        item = resp.get("Item")
+        if not item:
+            return None
+        out: dict[str, str | int] = {
+            "session_id": item["session_id"],
+            "created_at": item["created_at"],
+            "mode": item["mode"],
+        }
+        if "ended_at" in item:
+            out["ended_at"] = item["ended_at"]
+        return out
+
+    def put(
+        self,
+        session_id: str,
+        created_at: str,
+        mode: str,
+        *,
+        ended_at: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> None:
+        """Create or overwrite a stream session record."""
+        item: dict[str, Any] = {
+            "session_id": session_id,
+            "created_at": created_at,
+            "mode": mode,
+        }
+        if ended_at is not None:
+            item["ended_at"] = ended_at
+        if ttl_seconds is not None:
+            item["ttl"] = int(time.time()) + ttl_seconds
+        self._table.put_item(Item=item)
+
+    def set_ended_at(self, session_id: str, ended_at: str) -> None:
+        """Set ended_at for an existing session (for POST .../end)."""
+        self._table.update_item(
+            Key={"session_id": session_id},
+            UpdateExpression="SET ended_at = :ea",
+            ExpressionAttributeValues={":ea": ended_at},
+        )

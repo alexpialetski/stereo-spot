@@ -18,6 +18,7 @@ from .deps import get_operator_links_provider
 from .job_events_consumer import run_job_events_consumer
 from .routers.jobs import router as jobs_router
 from .routers.launch import router as launch_router
+from .routers.stream import router as stream_router
 
 # Load .env from STEREOSPOT_ENV_FILE if set (e.g. by nx run web-ui:serve). Unset in ECS.
 bootstrap_env()
@@ -136,4 +137,5 @@ app.state.templates = templates
 
 # Launch first so /playlist.m3u and /playlist/... are matched before any catch-all in jobs.
 app.include_router(launch_router)
+app.include_router(stream_router)
 app.include_router(jobs_router)

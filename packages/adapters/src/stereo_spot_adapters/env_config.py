@@ -177,6 +177,14 @@ def push_subscriptions_store_from_env_or_none():
     return _f()
 
 
+def stream_sessions_store_from_env_or_none():
+    _require_aws()
+    from stereo_spot_aws_adapters.env_config import (
+        stream_sessions_store_from_env_or_none as _f,
+    )
+    return _f()
+
+
 def job_events_normalizer_from_env():
     _require_aws()
     from stereo_spot_aws_adapters.job_events import job_events_normalizer_from_env as _f
