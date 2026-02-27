@@ -59,22 +59,23 @@ Reference docs in the repo root:
 
 ---
 
-## Phase 4 – Desktop capture app
+## Phase 4 – Desktop capture app ✅ (skeleton and core flow done)
 
-12. **Electron app skeleton**
+12. **Electron app skeleton** ✅
     - Create `packages/stream-capture` (or equivalent) with Electron main/renderer split as described in `streaming-implementation-client-capture.md`.
-13. **Session lifecycle integration**
+13. **Session lifecycle integration** ✅
     - On “Start streaming”, call `POST /stream_sessions` and store `session_id`, `playlist_url`, and temporary credentials.
     - On “Stop streaming”, call `POST /stream_sessions/{id}/end`.
-14. **Capture, encode, and upload**
+14. **Capture, encode, and upload** ✅
    - Implement source selection via `desktopCapturer`, 5 s chunking (initial target; tunable later based on end-to-end latency), MP4 (H.264 + AAC) encoding, and ordered uploads to `stream_input/{session_id}/chunk_{index:05d}.mp4` using temporary credentials, matching the client capture plan.
    - Implement per-chunk retry strategy for failed uploads (bounded retries with backoff) and define behavior when retries are exhausted (UI error, session stop, or degrade).
-15. **UI/UX**
+15. **UI/UX** ✅
     - Single-window app with Start/Stop, current chunk index, and prominently displayed copyable `playlist_url` (per client capture doc).
    - Clearly surface error states (e.g. persistent upload failures) and recommend user actions.
-16. **Packaging and distribution**
+16. **Packaging and distribution** *(deferred)*
    - Decide on target platforms (e.g. Windows, macOS, Linux) and implement packaging for each.
    - Define how updates to the app will be distributed (auto-update vs manual download) and how versions map to backend changes.
+   - *Doc: see `packages/stereo-spot-docs/docs/streaming-capture.md` for build/run and packaging notes.*
 
 ---
 

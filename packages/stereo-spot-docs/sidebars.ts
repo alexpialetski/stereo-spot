@@ -20,6 +20,7 @@ const sidebars: SidebarsConfig = {
       label: 'Packages',
       items: ['packages/overview'],
     },
+    'streaming-capture',
     'testing',
     'runbooks',
     'operations',

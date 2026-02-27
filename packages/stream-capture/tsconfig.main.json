@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-main",
+    "noEmit": false,
+    "jsx": "preserve"
+  },
+  "include": ["src/main/**/*", "src/api/**/*", "src/upload/**/*", "src/capture/**/*", "src/constants.ts", "src/preload.ts"],
+  "exclude": ["node_modules", "src/renderer"]
+}

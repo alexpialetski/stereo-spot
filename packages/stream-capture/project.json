@@ -1,0 +1,33 @@
+{
+  "name": "stream-capture",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "packages/stream-capture/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npm run build",
+        "cwd": "packages/stream-capture"
+      },
+      "configurations": {},
+      "outputs": ["{projectRoot}/dist-main", "{projectRoot}/dist"]
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npm run start:dev",
+        "cwd": "packages/stream-capture"
+      },
+      "configurations": {}
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx eslint src --ext .ts,.tsx",
+        "cwd": "packages/stream-capture"
+      },
+      "configurations": {}
+    }
+  }
+}
